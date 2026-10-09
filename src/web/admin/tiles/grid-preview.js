@@ -544,8 +544,12 @@
       }
       let climatePreviewState = null;
       if (previewKind === 'climate') {
-        climatePreviewState = parseClimatePreviewPayload(
-          tile.sensor_entity ? (metaValues[tile.sensor_entity] ?? '') : '');
+        climatePreviewState = applyClimateSensorOverrides(
+          parseClimatePreviewPayload(
+            tile.sensor_entity ? (metaValues[tile.sensor_entity] ?? '') : ''),
+          tile.climate_temperature_sensor || '',
+          tile.climate_humidity_sensor || '',
+          metaValues);
         if (!normalizeMdiIconName(rawIcon) &&
             !isExplicitlyDisabledValue(rawIcon)) {
           iconName = climatePreviewIcon(climatePreviewState, iconName);

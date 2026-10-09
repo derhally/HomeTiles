@@ -694,6 +694,9 @@ struct LocaleProfile {
 
   const char* tile_type_climate;
   const char* climate_entity;
+  // Optional sensors shown instead of the Climate entity's own current
+  // values: temperature sensor, humidity sensor, "no sensor" option.
+  const char* climate_sensor_labels[3];
   const char* climate_target_temperature;
   const char* climate_target_humidity;
   // Caption above the target humidity control in a Climate mini tile.
@@ -845,6 +848,9 @@ const char* weather_today_button_label(const char* language_code);
 const char* weather_tomorrow_label(const char* language_code);
 const char* climate_tile_type_label(const char* language_code);
 const char* climate_entity_label(const char* language_code);
+// 0 temperature sensor, 1 humidity sensor, 2 the empty "use the Climate
+// entity's own value" option.
+const char* climate_sensor_label(const char* language_code, uint8_t index);
 const char* climate_target_temperature_label(const char* language_code);
 const char* climate_target_humidity_label(const char* language_code);
 const char* climate_humidity_caption_label(const char* language_code);

@@ -807,6 +807,8 @@
       fd.append('media_entity', tile.sensor_entity || tile.media_entity || '');
     } else if (safeType === 17) {
       fd.append('climate_entity', tile.sensor_entity || tile.climate_entity || '');
+      fd.append('climate_temperature_sensor', tile.climate_temperature_sensor || '');
+      fd.append('climate_humidity_sensor', tile.climate_humidity_sensor || '');
       fd.append(
         'climate_slots_packed',
         (tile.sensor_gauge_min !== undefined &&

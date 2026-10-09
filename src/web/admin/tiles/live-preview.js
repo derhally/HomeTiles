@@ -101,8 +101,12 @@
     }
     let climatePreviewState = null;
     if (previewKind === 'climate') {
-      climatePreviewState = parseClimatePreviewPayload(
-        climateEntity ? (sensorMetaCache.values[climateEntity] ?? '') : '');
+      climatePreviewState = applyClimateSensorOverrides(
+        parseClimatePreviewPayload(
+          climateEntity ? (sensorMetaCache.values[climateEntity] ?? '') : ''),
+        document.getElementById(prefix + '_climate_temperature_sensor')?.value || '',
+        document.getElementById(prefix + '_climate_humidity_sensor')?.value || '',
+        sensorMetaCache.values);
       if (!normalizeMdiIconName(rawIcon) &&
           !isExplicitlyDisabledValue(rawIcon)) {
         iconName = climatePreviewIcon(climatePreviewState, iconName);

@@ -2599,6 +2599,16 @@ void tiles_update_sensor_by_entity(GridType grid_type, const char* entity_id, co
       queue_climate_tile_update(grid_type, i, value);
       Serial.printf("[%s] Climate %s@%u queued\n",
                     getGridName(grid_type), entity_id, i);
+    } else if (tile.type == TILE_CLIMATE && entity_id[0] &&
+               (tile.climate_temperature_sensor.equalsIgnoreCase(entity_id) ||
+                tile.climate_humidity_sensor.equalsIgnoreCase(entity_id))) {
+      // A temperature/humidity sensor of the tile changed: re-apply the
+      // cached Climate state, which takes the sensor value from the cache
+      // (apply_climate_sensor_overrides in tile_renderer.cpp).
+      String climate_payload;
+      if (get_cached_or_initial_payload(tile, climate_payload)) {
+        queue_climate_tile_update(grid_type, i, climate_payload.c_str());
+      }
     }
     if (tile.type == TILE_COVER && tile.sensor_entity.equalsIgnoreCase(entity_id)) {
       queue_cover_tile_update(grid_type, i, value);

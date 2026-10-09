@@ -330,6 +330,8 @@ Controls a `climate` entity. The icon and accent indicate active heating, coolin
 
 Configure mini-tiles for temperatures, humidity, targets, and mode, or choose **Automatic**. Arrange them in the [Climate mini-tile editor](web-admin.md#editing-climate-mini-tiles). Wide target controls show the active mode, such as **Heat**, **Cool**, or **Auto**, and a humidity target is labeled **Humidity**.
 
+**Temperature sensor** and **Humidity sensor** optionally replace the current temperature and humidity the climate entity reports, for example when a thermostat only estimates the room temperature. Pick any sensor offered by the Bridge; the tile, its header value, and the popup then show that sensor's state. Without a numeric state the value shows **--**. Leave a field on **Climate entity value** to keep the entity's own reading. Targets and modes always come from the climate entity.
+
 <figure class="ht-screenshot">
 <img style="width:156px" src="../images/tile-climate.png" alt="Climate tile while heating, with the target and plus/minus buttons" width="260" height="145" loading="lazy">
 <figcaption>Climate tile while heating</figcaption>

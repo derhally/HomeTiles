@@ -100,6 +100,27 @@
     return out;
   }
 
+  // Mirrors apply_climate_sensor_overrides (tile_renderer.cpp): a configured
+  // temperature or humidity sensor replaces the Climate entity's own current
+  // value; without a numeric sensor state the value shows "--".
+  function applyClimateSensorOverrides(state, temperatureEntity, humidityEntity, values) {
+    if (!state?.valid) return state;
+    const sensorNumber = entity => {
+      const numeric = Number.parseFloat(
+        String(values?.[entity] ?? '').trim().replace(',', '.'));
+      return Number.isFinite(numeric) ? numeric : null;
+    };
+    if (temperatureEntity) {
+      const value = sensorNumber(temperatureEntity);
+      state.current = value === null ? '--' : formatLocalizedNumber(value, 1, false);
+    }
+    if (humidityEntity) {
+      const value = sensorNumber(humidityEntity);
+      state.currentHumidity = value === null ? null : formatLocalizedNumber(value, 0, true);
+    }
+    return state;
+  }
+
   function climatePreviewIcon(state, baseIcon) {
     const action = String(state?.action || '').toLowerCase();
     const mode = String(state?.mode || '').toLowerCase();

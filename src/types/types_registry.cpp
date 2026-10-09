@@ -485,7 +485,8 @@ void append_media_fields_wrapper(String& html, const TileTypeWebContext& ctx) {
 
 void append_climate_fields_wrapper(String& html, const TileTypeWebContext& ctx) {
   append_climate_fields_html(
-      html, safeString(ctx.tab_id), safeStrings(ctx.climate_options));
+      html, safeString(ctx.tab_id), safeStrings(ctx.climate_options),
+      safeStrings(ctx.sensor_options));
 }
 
 void append_settings_fields_wrapper(String& html,

@@ -3,6 +3,17 @@
 void apply_climate_fields_from_request(WebServer& server, Tile& tile) {
   tile.sensor_entity =
       server.hasArg("climate_entity") ? server.arg("climate_entity") : "";
+  // Optional sensors for the current temperature/humidity; a request without
+  // the field keeps the stored sensor, an empty value uses the Climate
+  // entity's own value again.
+  if (server.hasArg("climate_temperature_sensor")) {
+    tile.climate_temperature_sensor =
+        server.arg("climate_temperature_sensor");
+  }
+  if (server.hasArg("climate_humidity_sensor")) {
+    tile.climate_humidity_sensor = server.arg("climate_humidity_sensor");
+  }
+  normalizeClimateSensors(tile);
   uint8_t popup_mode = TILE_POPUP_OPEN_SHORT_PRESS;
   if (server.hasArg("popup_open_mode")) {
     popup_mode =

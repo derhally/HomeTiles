@@ -1810,6 +1810,7 @@ static const LocaleProfile kLocaleDe = {
      "Regen", "Schnee", "Schneeregen", "Sonnig", "Windig", "Böig"},
     "Klima",
     "Klima-Entity",
+    {"Temperatursensor", "Luftfeuchtigkeitssensor", "Wert der Klima-Entity"},
     "Solltemperatur",
     "Soll-Luftfeuchtigkeit",
     "Luftfeuchte",
@@ -1918,6 +1919,7 @@ static const LocaleProfile kLocaleEn = {
      "Rain", "Snow", "Sleet", "Sunny", "Windy", "Windy"},
     "Climate",
     "Climate Entity",
+    {"Temperature sensor", "Humidity sensor", "Climate entity value"},
     "Target",
     "Target humidity",
     "Humidity",
@@ -2023,6 +2025,7 @@ static const LocaleProfile kLocaleFr = {
      "Pluie", "Neige", "Neige fondue", "Ensoleillé", "Venteux", "Rafales"},
     "Climat",
     "Entité climat",
+    {"Capteur de température", "Capteur d'humidité", "Valeur de l'entité climat"},
     "Température cible",
     "Humidité cible",
     "Humidité",
@@ -2727,6 +2730,7 @@ static const LocaleProfile kLocalePl = {
     {"Czysta noc", "Pochmurno", "Wyjątkowe", "Mgła", "Grad", "Burza", "Burza z deszczem", "Częściowo pochmurno", "Ulewny deszcz", "Deszcz", "Śnieg", "Deszcz ze śniegiem", "Słonecznie", "Wietrznie", "Porywisty wiatr"},
     "Klimatyzacja",
     "Encja klimatyzacji",
+    {"Czujnik temperatury", "Czujnik wilgotności", "Wartość encji klimatyzacji"},
     "Temperatura docelowa",
     "Wilgotność docelowa",
     "Wilgotność",
@@ -2961,6 +2965,11 @@ const char* climate_tile_type_label(const char* language_code) {
 
 const char* climate_entity_label(const char* language_code) {
   return locale(language_code).climate_entity;
+}
+
+const char* climate_sensor_label(const char* language_code, uint8_t index) {
+  if (index >= 3) index = 2;
+  return locale(language_code).climate_sensor_labels[index];
 }
 
 const char* climate_target_temperature_label(const char* language_code) {

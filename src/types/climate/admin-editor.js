@@ -247,6 +247,25 @@
         delete entity.dataset.configuredValue;
       }
     }
+    // Optional temperature/humidity sensors: like the entity, a configured
+    // value survives the asynchronous rebuild of the option list.
+    for (const field of ['climate_temperature_sensor', 'climate_humidity_sensor']) {
+      const select = document.getElementById(tab + '_' + field);
+      if (!select) continue;
+      const configured = String(data[field] || '');
+      if (configured && !Array.from(select.options || []).some(option => option.value === configured)) {
+        const option = document.createElement('option');
+        option.value = configured;
+        option.textContent = configured;
+        select.appendChild(option);
+      }
+      select.value = configured;
+      if (configured) {
+        select.dataset.configuredValue = configured;
+      } else {
+        delete select.dataset.configuredValue;
+      }
+    }
     const popup = document.getElementById(tab + '_climate_popup_open_mode');
     if (popup) popup.value = (data.popup_open_mode !== undefined)
       ? String(data.popup_open_mode) : '1';

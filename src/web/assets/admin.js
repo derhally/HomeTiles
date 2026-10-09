@@ -2642,6 +2642,8 @@ function syncTileRadiusControls(tabEl) {
         rebuildEntitySelect(tab + '_switch_entity', data.switches);
         rebuildEntitySelect(tab + '_media_entity', data.media);
         rebuildEntitySelect(tab + '_climate_entity', data.climates);
+        rebuildEntitySelect(tab + '_climate_temperature_sensor', data.sensors);
+        rebuildEntitySelect(tab + '_climate_humidity_sensor', data.sensors);
         rebuildEntitySelect(tab + '_cover_entity', data.covers);
         rebuildEntitySelect(tab + '_lock_entity', data.locks);
         rebuildEntitySelect(tab + '_alarm_entity', data.alarm_panels);
@@ -5815,6 +5817,20 @@ function syncTileRadiusControls(tabEl) {
       scheduleAutoSave(tab);
     });
     bindLive(climatePopupModeSelect, 'change', 'climatePopupMode', () => { updateDraft(tab); scheduleAutoSave(tab); });
+    // Temperature/humidity sensors replace the Climate entity's current
+    // values; the available mini fields follow them (climateEditorState).
+    for (const [field, name] of [['climate_temperature_sensor', 'climateTemperatureSensor'],
+                                 ['climate_humidity_sensor', 'climateHumiditySensor']]) {
+      const select = document.getElementById(prefix + '_' + field);
+      bindLive(select, 'change', name, () => {
+        if (select.value) {
+          select.dataset.configuredValue = select.value;
+        } else {
+          delete select.dataset.configuredValue;
+        }
+        syncClimateSlotFields(tab); updateTilePreview(tab); updateDraft(tab); scheduleAutoSave(tab);
+      });
+    }
     // Layout "with value" drops the current temperature from the automatic
     // mini fields (climateAutomaticEditorKinds).
     bindLive(document.getElementById(prefix + '_climate_view'), 'change', 'climateView', () => {
@@ -6120,8 +6136,12 @@ function syncTileRadiusControls(tabEl) {
     }
     let climatePreviewState = null;
     if (previewKind === 'climate') {
-      climatePreviewState = parseClimatePreviewPayload(
-        climateEntity ? (sensorMetaCache.values[climateEntity] ?? '') : '');
+      climatePreviewState = applyClimateSensorOverrides(
+        parseClimatePreviewPayload(
+          climateEntity ? (sensorMetaCache.values[climateEntity] ?? '') : ''),
+        document.getElementById(prefix + '_climate_temperature_sensor')?.value || '',
+        document.getElementById(prefix + '_climate_humidity_sensor')?.value || '',
+        sensorMetaCache.values);
       if (!normalizeMdiIconName(rawIcon) &&
           !isExplicitlyDisabledValue(rawIcon)) {
         iconName = climatePreviewIcon(climatePreviewState, iconName);
@@ -7580,6 +7600,8 @@ function syncTileRadiusControls(tabEl) {
       fd.append('media_entity', tile.sensor_entity || tile.media_entity || '');
     } else if (safeType === 17) {
       fd.append('climate_entity', tile.sensor_entity || tile.climate_entity || '');
+      fd.append('climate_temperature_sensor', tile.climate_temperature_sensor || '');
+      fd.append('climate_humidity_sensor', tile.climate_humidity_sensor || '');
       fd.append(
         'climate_slots_packed',
         (tile.sensor_gauge_min !== undefined &&
@@ -8175,8 +8197,12 @@ function syncTileRadiusControls(tabEl) {
       }
       let climatePreviewState = null;
       if (previewKind === 'climate') {
-        climatePreviewState = parseClimatePreviewPayload(
-          tile.sensor_entity ? (metaValues[tile.sensor_entity] ?? '') : '');
+        climatePreviewState = applyClimateSensorOverrides(
+          parseClimatePreviewPayload(
+            tile.sensor_entity ? (metaValues[tile.sensor_entity] ?? '') : ''),
+          tile.climate_temperature_sensor || '',
+          tile.climate_humidity_sensor || '',
+          metaValues);
         if (!normalizeMdiIconName(rawIcon) &&
             !isExplicitlyDisabledValue(rawIcon)) {
           iconName = climatePreviewIcon(climatePreviewState, iconName);
@@ -13949,8 +13975,11 @@ function maybeFillTitleFromMedia(tab) {
   function climateEditorState(tab) {
     const entity = document.getElementById(
       tab + '_climate_entity')?.value || '';
-    return parseClimatePreviewPayload(
-      sensorMetaCache?.values?.[entity] ?? '');
+    return applyClimateSensorOverrides(
+      parseClimatePreviewPayload(sensorMetaCache?.values?.[entity] ?? ''),
+      document.getElementById(tab + '_climate_temperature_sensor')?.value || '',
+      document.getElementById(tab + '_climate_humidity_sensor')?.value || '',
+      sensorMetaCache?.values);
   }
 
   function climateAvailableContentKinds(tab) {
@@ -15233,6 +15262,25 @@ function maybeFillTitleFromMedia(tab) {
         delete entity.dataset.configuredValue;
       }
     }
+    // Optional temperature/humidity sensors: like the entity, a configured
+    // value survives the asynchronous rebuild of the option list.
+    for (const field of ['climate_temperature_sensor', 'climate_humidity_sensor']) {
+      const select = document.getElementById(tab + '_' + field);
+      if (!select) continue;
+      const configured = String(data[field] || '');
+      if (configured && !Array.from(select.options || []).some(option => option.value === configured)) {
+        const option = document.createElement('option');
+        option.value = configured;
+        option.textContent = configured;
+        select.appendChild(option);
+      }
+      select.value = configured;
+      if (configured) {
+        select.dataset.configuredValue = configured;
+      } else {
+        delete select.dataset.configuredValue;
+      }
+    }
     const popup = document.getElementById(tab + '_climate_popup_open_mode');
     if (popup) popup.value = (data.popup_open_mode !== undefined)
       ? String(data.popup_open_mode) : '1';
@@ -15362,6 +15410,27 @@ function maybeFillTitleFromMedia(tab) {
         !!out.action;
     } catch (e) {}
     return out;
+  }
+
+  // Mirrors apply_climate_sensor_overrides (tile_renderer.cpp): a configured
+  // temperature or humidity sensor replaces the Climate entity's own current
+  // value; without a numeric sensor state the value shows "--".
+  function applyClimateSensorOverrides(state, temperatureEntity, humidityEntity, values) {
+    if (!state?.valid) return state;
+    const sensorNumber = entity => {
+      const numeric = Number.parseFloat(
+        String(values?.[entity] ?? '').trim().replace(',', '.'));
+      return Number.isFinite(numeric) ? numeric : null;
+    };
+    if (temperatureEntity) {
+      const value = sensorNumber(temperatureEntity);
+      state.current = value === null ? '--' : formatLocalizedNumber(value, 1, false);
+    }
+    if (humidityEntity) {
+      const value = sensorNumber(humidityEntity);
+      state.currentHumidity = value === null ? null : formatLocalizedNumber(value, 0, true);
+    }
+    return state;
   }
 
   function climatePreviewIcon(state, baseIcon) {
@@ -15792,6 +15861,10 @@ function maybeFillTitleFromMedia(tab) {
       tab + '_climate_geometry')?.value || '';
     formData.append('climate_entity',
       document.getElementById(tab + '_climate_entity')?.value || '');
+    formData.append('climate_temperature_sensor',
+      document.getElementById(tab + '_climate_temperature_sensor')?.value || '');
+    formData.append('climate_humidity_sensor',
+      document.getElementById(tab + '_climate_humidity_sensor')?.value || '');
     formData.append('popup_open_mode',
       document.getElementById(tab + '_climate_popup_open_mode')?.value || '1');
     const view = document.getElementById(tab + '_climate_view')?.value === '1' ? '1' : '0';
@@ -15815,6 +15888,12 @@ function maybeFillTitleFromMedia(tab) {
     if (entity) {
       entity.value = '';
       delete entity.dataset.configuredValue;
+    }
+    for (const field of ['climate_temperature_sensor', 'climate_humidity_sensor']) {
+      const select = document.getElementById(tab + '_' + field);
+      if (!select) continue;
+      select.value = '';
+      delete select.dataset.configuredValue;
     }
     const popup = document.getElementById(tab + '_climate_popup_open_mode');
     if (popup) popup.value = '1';

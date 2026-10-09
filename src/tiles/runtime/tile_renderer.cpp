@@ -2381,6 +2381,33 @@ static ClimatePopupInit build_climate_popup_init(
   return init;
 }
 
+// Climate tiles can show a temperature and/or humidity sensor instead of the
+// Climate entity's own current values (Tile::climate_*_sensor). A configured
+// sensor always wins: without a numeric state (not received yet, unknown,
+// unavailable) its value shows "--" instead of silently falling back to the
+// Climate entity. The sensors' payloads are folded into `hash` so a sensor
+// change re-renders an unchanged Climate payload.
+static void apply_climate_sensor_overrides(const Tile* tile, ClimateState* state,
+                                           uint32_t& hash) {
+  if (!tile || tile->type != TILE_CLIMATE) return;
+  auto apply = [&](const String& entity, bool* has, float* value) {
+    if (!entity.length()) return;
+    String payload;
+    tile_icon_source::cached_payload(entity, payload);
+    hash = (hash ^ fnv1a_hash(payload.c_str())) * 16777619u;
+    if (!state) return;
+    float numeric = 0.0f;
+    *has = parse_sensor_number(payload, numeric);
+    if (*has) *value = numeric;
+  };
+  apply(tile->climate_temperature_sensor,
+        state ? &state->has_current_temperature : nullptr,
+        state ? &state->current_temperature : nullptr);
+  apply(tile->climate_humidity_sensor,
+        state ? &state->has_current_humidity : nullptr,
+        state ? &state->current_humidity : nullptr);
+}
+
 static void update_climate_tile_state(
     GridType grid_type, uint8_t grid_index, const char* payload) {
   if (grid_index >= TILES_PER_GRID || !payload) return;
@@ -2389,7 +2416,9 @@ static void update_climate_tile_state(
   if (!states) return;
   ClimateTileWidgets& widget = widgets[grid_index];
 
-  const uint32_t payload_hash = fnv1a_hash(payload);
+  const Tile* sensor_tile = tile_renderer_get_tile_config(grid_type, grid_index);
+  uint32_t payload_hash = fnv1a_hash(payload);
+  apply_climate_sensor_overrides(sensor_tile, nullptr, payload_hash);
   if (widget.last_payload_hash == payload_hash) {
     refresh_climate_tile_content(
         grid_type, grid_index, states[grid_index]);
@@ -2398,6 +2427,8 @@ static void update_climate_tile_state(
 
   ClimateState state = parse_climate_payload(payload);
   if (!state.valid) return;
+  uint32_t sensor_hash = 0;
+  apply_climate_sensor_overrides(sensor_tile, &state, sensor_hash);
   const bool kept_optimistic_target =
       reconcile_climate_mini_target_state(
           grid_type, grid_index, state);
