@@ -55,10 +55,10 @@ Issue: GalusPeres/HomeTiles#30
 
 ## Sensor history
 
-- Binary Sensor (20): V7-compatible; localized icons/previews and history shipped.
-- Textual states use timeline/Activity; numeric keep graphs. Missing/unknown/unavailable stay distinct.
-- Climate: optional temp/humidity sensors override current (`/_tile_climate_sensors`); HW pending.
-- Bridge v0.6.40 (`581150b`): bounded Recorder paging, categorical history, legacy compatibility.
+- Binary Sensor (20): V7-compatible; localized icons/previews/history shipped.
+- Text states: timeline/Activity; numeric: graphs. Missing/unknown/unavailable distinct.
+- Bridge v0.6.40 (`581150b`): bounded Recorder paging, categorical history, legacy compat.
+- Weather: optional temp/humidity sensors replace current (`/_tile_weather_sensors`); HW pending.
 
 ## Editable tiles
 

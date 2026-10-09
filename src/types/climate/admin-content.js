@@ -2,11 +2,8 @@
   function climateEditorState(tab) {
     const entity = document.getElementById(
       tab + '_climate_entity')?.value || '';
-    return applyClimateSensorOverrides(
-      parseClimatePreviewPayload(sensorMetaCache?.values?.[entity] ?? ''),
-      document.getElementById(tab + '_climate_temperature_sensor')?.value || '',
-      document.getElementById(tab + '_climate_humidity_sensor')?.value || '',
-      sensorMetaCache?.values);
+    return parseClimatePreviewPayload(
+      sensorMetaCache?.values?.[entity] ?? '');
   }
 
   function climateAvailableContentKinds(tab) {

@@ -8,8 +8,7 @@
 
 void append_climate_fields_html(String& html,
                                 const String& tab_id,
-                                const std::vector<String>& climate_options,
-                                const std::vector<String>& sensor_options) {
+                                const std::vector<String>& climate_options) {
   const auto& tr = i18n::strings(configManager.getConfig().language);
   const char* language = configManager.getConfig().language;
   html += "<div id=\"";
@@ -28,31 +27,7 @@ void append_climate_fields_html(String& html,
     appendHtmlEscaped(html, humanizeIdentifier(entity, true) + " - " + entity);
     html += "</option>";
   }
-  html += "</select>";
-  // Optional sensors shown instead of the Climate entity's own current
-  // temperature and humidity. The empty option keeps the Climate value.
-  const char* const sensor_fields[] = {"climate_temperature_sensor",
-                                       "climate_humidity_sensor"};
-  for (uint8_t field = 0; field < 2; ++field) {
-    html += "<label>";
-    html += i18n::climate_sensor_label(language, field);
-    html += "</label><select id=\"";
-    html += tab_id;
-    html += "_";
-    html += sensor_fields[field];
-    html += "\"><option value=\"\">";
-    html += i18n::climate_sensor_label(language, 2);
-    html += "</option>";
-    for (const auto& entity : sensor_options) {
-      html += "<option value=\"";
-      appendHtmlEscaped(html, entity);
-      html += "\">";
-      appendHtmlEscaped(html, humanizeIdentifier(entity, true) + " - " + entity);
-      html += "</option>";
-    }
-    html += "</select>";
-  }
-  html += "<label>";
+  html += "</select><label>";
   html += tr.popup_open;
   html += "</label><select id=\"";
   html += tab_id;

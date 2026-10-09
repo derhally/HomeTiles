@@ -139,11 +139,11 @@ struct Tile {
   // Fixed icon color, color bar and state colors (tile_icon_colors.h), kept
   // in the /_tile_icon_colors sidecar. Empty = the type's default icon colors.
   String icon_colors;
-  // Climate only: optional sensor entities shown instead of the Climate
+  // Weather only: optional sensor entities shown instead of the weather
   // entity's own current temperature/humidity, kept in the
-  // /_tile_climate_sensors sidecar. Empty = the Climate entity's value.
-  String climate_temperature_sensor;
-  String climate_humidity_sensor;
+  // /_tile_weather_sensors sidecar. Empty = the weather entity's value.
+  String weather_temperature_sensor;
+  String weather_humidity_sensor;
 
   Tile()
       : type(TILE_EMPTY),
@@ -193,8 +193,8 @@ static inline bool tileContentEquals(const Tile& a, const Tile& b) {
          a.image_slideshow_sec == b.image_slideshow_sec &&
          a.icon_disc_mode == b.icon_disc_mode && a.icon_glow == b.icon_glow &&
          a.icon_colors == b.icon_colors &&
-         a.climate_temperature_sensor == b.climate_temperature_sensor &&
-         a.climate_humidity_sensor == b.climate_humidity_sensor;
+         a.weather_temperature_sensor == b.weather_temperature_sensor &&
+         a.weather_humidity_sensor == b.weather_humidity_sensor;
 }
 
 // A deleted (empty) tile keeps only its slot geometry. Its entity, texts and
@@ -248,13 +248,13 @@ static inline String tileIconSourceEntity(int type, const String& record) {
   return out;
 }
 
-// Climate temperature/humidity sensors (Tile::climate_*_sensor). An entity
-// is a trimmed Home Assistant id below kClimateSensorEntityMax bytes without
+// Weather temperature/humidity sensors (Tile::weather_*_sensor). An entity
+// is a trimmed Home Assistant id below kWeatherSensorEntityMax bytes without
 // whitespace or control characters; anything else is dropped ("" keeps the
-// Climate entity's own value).
-static constexpr size_t kClimateSensorEntityMax = 128;
+// weather entity's own value).
+static constexpr size_t kWeatherSensorEntityMax = 128;
 
-static inline String normalizeClimateSensorEntity(const String& value) {
+static inline String normalizeWeatherSensorEntity(const String& value) {
   // Plain character access only, so host tests can use a std::string String.
   const char* text = value.c_str();
   size_t begin = 0;
@@ -264,7 +264,7 @@ static inline String normalizeClimateSensorEntity(const String& value) {
                          text[end - 1] == '\r' || text[end - 1] == '\n')) {
     --end;
   }
-  if (end == begin || end - begin >= kClimateSensorEntityMax) return String();
+  if (end == begin || end - begin >= kWeatherSensorEntityMax) return String();
   bool has_domain = false;
   String entity;
   for (size_t i = begin; i < end; ++i) {
@@ -276,34 +276,34 @@ static inline String normalizeClimateSensorEntity(const String& value) {
   return has_domain ? entity : String();
 }
 
-// Only Climate tiles keep sensors; every other type clears them.
-static inline void normalizeClimateSensors(Tile& tile) {
-  if (tile.type != TILE_CLIMATE) {
-    tile.climate_temperature_sensor = "";
-    tile.climate_humidity_sensor = "";
+// Only Weather tiles keep sensors; every other type clears them.
+static inline void normalizeWeatherSensors(Tile& tile) {
+  if (tile.type != TILE_WEATHER) {
+    tile.weather_temperature_sensor = "";
+    tile.weather_humidity_sensor = "";
     return;
   }
-  tile.climate_temperature_sensor =
-      normalizeClimateSensorEntity(tile.climate_temperature_sensor);
-  tile.climate_humidity_sensor =
-      normalizeClimateSensorEntity(tile.climate_humidity_sensor);
+  tile.weather_temperature_sensor =
+      normalizeWeatherSensorEntity(tile.weather_temperature_sensor);
+  tile.weather_humidity_sensor =
+      normalizeWeatherSensorEntity(tile.weather_humidity_sensor);
 }
 
 // Sidecar record "<temperature>\n<humidity>" (either line may be empty), or
 // "" without sensors.
-static inline String climateSensorsRecord(const Tile& tile) {
-  if (tile.type != TILE_CLIMATE ||
-      (!tile.climate_temperature_sensor.length() &&
-       !tile.climate_humidity_sensor.length())) {
+static inline String weatherSensorsRecord(const Tile& tile) {
+  if (tile.type != TILE_WEATHER ||
+      (!tile.weather_temperature_sensor.length() &&
+       !tile.weather_humidity_sensor.length())) {
     return String();
   }
-  String record = tile.climate_temperature_sensor;
+  String record = tile.weather_temperature_sensor;
   record += '\n';
-  record += tile.climate_humidity_sensor;
+  record += tile.weather_humidity_sensor;
   return record;
 }
 
-static inline void applyClimateSensorsRecord(Tile& tile, const String& record) {
+static inline void applyWeatherSensorsRecord(Tile& tile, const String& record) {
   String temperature;
   String humidity;
   bool second = false;
@@ -314,9 +314,9 @@ static inline void applyClimateSensorsRecord(Tile& tile, const String& record) {
     }
     (second ? humidity : temperature) += *c;
   }
-  tile.climate_temperature_sensor = temperature;
-  tile.climate_humidity_sensor = humidity;
-  normalizeClimateSensors(tile);
+  tile.weather_temperature_sensor = temperature;
+  tile.weather_humidity_sensor = humidity;
+  normalizeWeatherSensors(tile);
 }
 
 // Clock/Text/Back use the otherwise unused display mode byte: 0 inherits
@@ -719,7 +719,7 @@ struct TileEntitySlot {
   String sensor_entity;
   // The other entity of the tile's rules (tile_icon_colors.h), or "".
   String rule_entity;
-  // Further state entities of the tile, one per line (Climate temperature
+  // Further state entities of the tile, one per line (Weather temperature
   // and humidity sensors), or "".
   String extra_entities;
 };

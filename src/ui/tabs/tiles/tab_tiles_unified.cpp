@@ -2599,21 +2599,22 @@ void tiles_update_sensor_by_entity(GridType grid_type, const char* entity_id, co
       queue_climate_tile_update(grid_type, i, value);
       Serial.printf("[%s] Climate %s@%u queued\n",
                     getGridName(grid_type), entity_id, i);
-    } else if (tile.type == TILE_CLIMATE && entity_id[0] &&
-               (tile.climate_temperature_sensor.equalsIgnoreCase(entity_id) ||
-                tile.climate_humidity_sensor.equalsIgnoreCase(entity_id))) {
-      // A temperature/humidity sensor of the tile changed: re-apply the
-      // cached Climate state, which takes the sensor value from the cache
-      // (apply_climate_sensor_overrides in tile_renderer.cpp).
-      String climate_payload;
-      if (get_cached_or_initial_payload(tile, climate_payload)) {
-        queue_climate_tile_update(grid_type, i, climate_payload.c_str());
-      }
     }
     if (tile.type == TILE_COVER && tile.sensor_entity.equalsIgnoreCase(entity_id)) {
       queue_cover_tile_update(grid_type, i, value);
       Serial.printf("[%s] Cover %s@%u queued\n",
                     getGridName(grid_type), entity_id, i);
+    }
+    // Weather tiles can show their current temperature/humidity from chosen
+    // sensors; re-render them from the cached weather payload.
+    if (tile.type == TILE_WEATHER && !powerManager.isInSleep() &&
+        (tile.weather_temperature_sensor.equalsIgnoreCase(entity_id) ||
+         tile.weather_humidity_sensor.equalsIgnoreCase(entity_id))) {
+      String weather_payload;
+      if (get_cached_or_initial_payload(tile, weather_payload)) {
+        queue_weather_tile_update(grid_type, i, weather_payload.c_str());
+      }
+      queue_weather_popup_sensor_refresh(entity_id);
     }
     if (tile.type == TILE_BINARY_SENSOR &&
         tile.sensor_entity.equalsIgnoreCase(entity_id)) {

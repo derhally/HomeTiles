@@ -438,7 +438,7 @@ static const char* kImagePathDir = "/_tile_links";
 static const char* kEntityPathDir = "/_tile_entities";
 static const char* kTitlePathDir = "/_tile_titles";
 static const char* kIconColorPathDir = "/_tile_icon_colors";
-static const char* kClimateSensorPathDir = "/_tile_climate_sensors";
+static const char* kWeatherSensorPathDir = "/_tile_weather_sensors";
 static const char* kTileGridDir = "/_tile_grids";
 static const char* kFolderIndexFile = "/_tile_grids/folders.bin";
 static constexpr uint32_t kFolderIndexMagic = 0x54464C44;  // 'TFLD'
@@ -576,7 +576,7 @@ static std::vector<uint32_t> g_image_sidecar_keys;
 static std::vector<uint32_t> g_entity_sidecar_keys;
 static std::vector<uint32_t> g_title_sidecar_keys;
 static std::vector<uint32_t> g_icon_color_sidecar_keys;
-static std::vector<uint32_t> g_climate_sensor_sidecar_keys;
+static std::vector<uint32_t> g_weather_sensor_sidecar_keys;
 
 static uint32_t sidecarKey(uint16_t folder_id, size_t index) {
   return (static_cast<uint32_t>(folder_id) << 8) | static_cast<uint8_t>(index);
@@ -605,7 +605,7 @@ static SidecarTexts g_image_sidecar_texts;
 static SidecarTexts g_entity_sidecar_texts;
 static SidecarTexts g_title_sidecar_texts;
 static SidecarTexts g_icon_color_sidecar_texts;
-static SidecarTexts g_climate_sensor_sidecar_texts;
+static SidecarTexts g_weather_sensor_sidecar_texts;
 
 static SemaphoreHandle_t sidecarTextsLock() {
   static SemaphoreHandle_t lock = xSemaphoreCreateMutex();
@@ -656,7 +656,7 @@ static SidecarTexts& sidecarTextsFor(const std::vector<uint32_t>& keys) {
   if (&keys == &g_image_sidecar_keys) return g_image_sidecar_texts;
   if (&keys == &g_entity_sidecar_keys) return g_entity_sidecar_texts;
   if (&keys == &g_title_sidecar_keys) return g_title_sidecar_texts;
-  if (&keys == &g_climate_sensor_sidecar_keys) return g_climate_sensor_sidecar_texts;
+  if (&keys == &g_weather_sensor_sidecar_keys) return g_weather_sensor_sidecar_texts;
   return g_icon_color_sidecar_texts;
 }
 
@@ -687,7 +687,7 @@ static void ensureSidecarIndexBuilt() {
   scanSidecarDir(kEntityPathDir, g_entity_sidecar_keys);
   scanSidecarDir(kTitlePathDir, g_title_sidecar_keys);
   scanSidecarDir(kIconColorPathDir, g_icon_color_sidecar_keys);
-  scanSidecarDir(kClimateSensorPathDir, g_climate_sensor_sidecar_keys);
+  scanSidecarDir(kWeatherSensorPathDir, g_weather_sensor_sidecar_keys);
 }
 
 static String entityPathFileLegacy(const char* prefix, size_t index) {
@@ -1149,57 +1149,57 @@ static void applyIconColorsFromSd(uint16_t folder_id, TileGridConfig& grid) {
   }
 }
 
-// Climate temperature/humidity sensors (climateSensorsRecord) do not fit
+// Weather temperature/humidity sensors (weatherSensorsRecord) do not fit
 // PackedTileV7 either and follow the same sidecar pattern as icon colors.
-static constexpr size_t kClimateSensorRecordMax = 2 * kClimateSensorEntityMax;
+static constexpr size_t kWeatherSensorRecordMax = 2 * kWeatherSensorEntityMax;
 
-static String climateSensorPathFile(uint16_t folder_id, size_t index) {
+static String weatherSensorPathFile(uint16_t folder_id, size_t index) {
   char path[64];
-  snprintf(path, sizeof(path), "%s/f%u_%02u.txt", kClimateSensorPathDir,
+  snprintf(path, sizeof(path), "%s/f%u_%02u.txt", kWeatherSensorPathDir,
            static_cast<unsigned>(folder_id), static_cast<unsigned>(index));
   return String(path);
 }
 
-static bool readClimateSensorsSd(uint16_t folder_id, size_t index, String& out) {
+static bool readWeatherSensorsSd(uint16_t folder_id, size_t index, String& out) {
   if (!storageReady()) return false;
   ensureSidecarIndexBuilt();
   const uint32_t key = sidecarKey(folder_id, index);
-  if (!sidecarKeyPresent(g_climate_sensor_sidecar_keys, key)) return false;
-  if (sidecarTextCached(g_climate_sensor_sidecar_texts, key, out)) return true;
-  const String path = climateSensorPathFile(folder_id, index);
+  if (!sidecarKeyPresent(g_weather_sensor_sidecar_keys, key)) return false;
+  if (sidecarTextCached(g_weather_sensor_sidecar_texts, key, out)) return true;
+  const String path = weatherSensorPathFile(folder_id, index);
   for (const String& candidate : {path, tmpPathFor(path), backupPathFor(path)}) {
     File file = storageFS().open(candidate, FILE_READ);
     if (!file) continue;
     const size_t size = file.size();
-    if (size == 0 || size > kClimateSensorRecordMax) { file.close(); continue; }
+    if (size == 0 || size > kWeatherSensorRecordMax) { file.close(); continue; }
     String value = file.readString();
     file.close();
     if (value.length() != size) continue;
     out = value;
-    sidecarTextStore(g_climate_sensor_sidecar_texts, key, value);
+    sidecarTextStore(g_weather_sensor_sidecar_texts, key, value);
     return true;
   }
   return false;
 }
 
-static bool writeClimateSensorsSd(uint16_t folder_id, size_t index, const String& record) {
+static bool writeWeatherSensorsSd(uint16_t folder_id, size_t index, const String& record) {
   if (!storageReady()) return false;
-  if (record.length() > kClimateSensorRecordMax) return false;
+  if (record.length() > kWeatherSensorRecordMax) return false;
   ensureSidecarIndexBuilt();
   const uint32_t key = sidecarKey(folder_id, index);
-  const String path = climateSensorPathFile(folder_id, index);
-  const bool present = sidecarKeyPresent(g_climate_sensor_sidecar_keys, key);
+  const String path = weatherSensorPathFile(folder_id, index);
+  const bool present = sidecarKeyPresent(g_weather_sensor_sidecar_keys, key);
   if (record.length() == 0) {
     if (!present) return true;
     for (const String& candidate : {path, tmpPathFor(path), backupPathFor(path)})
       if (storageFS().exists(candidate) && !storageFS().remove(candidate)) return false;
-    sidecarKeyRemove(g_climate_sensor_sidecar_keys, key);
+    sidecarKeyRemove(g_weather_sensor_sidecar_keys, key);
     return true;
   }
   String current;
-  if (readClimateSensorsSd(folder_id, index, current) && current == record) return true;
-  if (!storageFS().exists(kClimateSensorPathDir) && !storageFS().mkdir(kClimateSensorPathDir)) return false;
-  sidecarTextForget(g_climate_sensor_sidecar_texts, key);
+  if (readWeatherSensorsSd(folder_id, index, current) && current == record) return true;
+  if (!storageFS().exists(kWeatherSensorPathDir) && !storageFS().mkdir(kWeatherSensorPathDir)) return false;
+  sidecarTextForget(g_weather_sensor_sidecar_texts, key);
   const String temporary = tmpPathFor(path);
   if (storageFS().exists(temporary)) storageFS().remove(temporary);
   File file = storageFS().open(temporary, FILE_WRITE);
@@ -1210,18 +1210,18 @@ static bool writeClimateSensorsSd(uint16_t folder_id, size_t index, const String
     storageFS().remove(temporary);
     return false;
   }
-  sidecarKeyAdd(g_climate_sensor_sidecar_keys, key);
-  sidecarTextStore(g_climate_sensor_sidecar_texts, key, record);
+  sidecarKeyAdd(g_weather_sensor_sidecar_keys, key);
+  sidecarTextStore(g_weather_sensor_sidecar_texts, key, record);
   return true;
 }
 
-static void applyClimateSensorsFromSd(uint16_t folder_id, TileGridConfig& grid) {
+static void applyWeatherSensorsFromSd(uint16_t folder_id, TileGridConfig& grid) {
   for (size_t index = 0; index < TILES_PER_GRID; ++index) {
     Tile& tile = grid.tiles[index];
     String record;
-    if (tile.type != TILE_CLIMATE || !readClimateSensorsSd(folder_id, index, record)) continue;
+    if (tile.type != TILE_WEATHER || !readWeatherSensorsSd(folder_id, index, record)) continue;
     // Normalized again so a damaged or foreign file cannot reach the runtime.
-    applyClimateSensorsRecord(tile, record);
+    applyWeatherSensorsRecord(tile, record);
   }
 }
 
@@ -1265,10 +1265,10 @@ static bool gridSidecarsMatchStored(uint16_t folder_id,
             : sidecarKeyPresent(g_icon_color_sidecar_keys, key)) return false;
 
     String stored_sensors;
-    const String sensors = climateSensorsRecord(tile);
+    const String sensors = weatherSensorsRecord(tile);
     if (sensors.length()
-            ? (!readClimateSensorsSd(folder_id, index, stored_sensors) || stored_sensors != sensors)
-            : sidecarKeyPresent(g_climate_sensor_sidecar_keys, key)) return false;
+            ? (!readWeatherSensorsSd(folder_id, index, stored_sensors) || stored_sensors != sensors)
+            : sidecarKeyPresent(g_weather_sensor_sidecar_keys, key)) return false;
 
     const bool entity_required =
         entityTileStoresSensorEntity(tile.type) &&
@@ -2818,7 +2818,7 @@ bool TileConfig::loadFolderGridEntitiesOnly(uint16_t folder_id, TileEntitySlot* 
       out[i].type = full.tiles[i].type;
       out[i].sensor_entity = full.tiles[i].sensor_entity;
       out[i].rule_entity = tileIconSourceEntity(full.tiles[i].type, full.tiles[i].icon_colors);
-      const String sensors = climateSensorsRecord(full.tiles[i]);
+      const String sensors = weatherSensorsRecord(full.tiles[i]);
       out[i].extra_entities = sensors;
     }
     return true;
@@ -2850,15 +2850,15 @@ bool TileConfig::loadFolderGridEntitiesOnly(uint16_t folder_id, TileEntitySlot* 
     String record;
     if (readIconColorsSd(folder_id, i, record)) out[i].rule_entity = tileIconSourceEntity(out[i].type, record);
   }
-  // Climate sensors subscribe to their own state topics as well.
+  // Weather sensors subscribe to their own state topics as well.
   for (size_t i = 0; i < TILES_PER_GRID; ++i) {
-    if (out[i].type != TILE_CLIMATE) continue;
+    if (out[i].type != TILE_WEATHER) continue;
     String record;
-    if (!readClimateSensorsSd(folder_id, i, record)) continue;
+    if (!readWeatherSensorsSd(folder_id, i, record)) continue;
     Tile sensors;
-    sensors.type = TILE_CLIMATE;
-    applyClimateSensorsRecord(sensors, record);
-    out[i].extra_entities = climateSensorsRecord(sensors);
+    sensors.type = TILE_WEATHER;
+    applyWeatherSensorsRecord(sensors, record);
+    out[i].extra_entities = weatherSensorsRecord(sensors);
   }
   uint32_t sidecar_ms = millis() - t_sidecar0;
   if (read_ms + unpack_ms + sidecar_ms >= 5) {
@@ -3679,7 +3679,7 @@ bool TileConfig::deleteFolder(uint16_t folder_id) {
       sidecarKeyRemove(g_entity_sidecar_keys, sidecarKey(id, i));
       writeLongTitleSd(id, i, "");
       writeIconColorsSd(id, i, "");
-      writeClimateSensorsSd(id, i, "");
+      writeWeatherSensorsSd(id, i, "");
     }
   }
 
@@ -3785,7 +3785,7 @@ bool TileConfig::loadGrid(uint16_t folder_id, TileGridConfig& grid,
   applyLongEntityIdsFromSd(folder_id, grid);
   applyLongTitlesFromSd(folder_id, grid);
   applyIconColorsFromSd(folder_id, grid);
-  applyClimateSensorsFromSd(folder_id, grid);
+  applyWeatherSensorsFromSd(folder_id, grid);
 
   // Retired tile types become empty without renumbering the persisted enum.
   // Empty tiles saved before deletion cleared them still carry the deleted
@@ -3840,7 +3840,7 @@ bool TileConfig::saveGridInPlace(uint16_t folder_id, TileGridConfig& grid,
     }
     working.tiles[i].icon_colors = normalizeTileIconColors(
         working.tiles[i].type, working.tiles[i].icon_colors.c_str());
-    normalizeClimateSensors(working.tiles[i]);
+    normalizeWeatherSensors(working.tiles[i]);
   }
   if (ensure_navigation_tile) {
     if (folder_id == kRootFolderId) {
@@ -3903,8 +3903,8 @@ bool TileConfig::saveGridInPlace(uint16_t folder_id, TileGridConfig& grid,
       invalidateFolderEntityCache();
       return false;
     }
-    if (!writeClimateSensorsSd(folder_id, grid_idx, climateSensorsRecord(tile))) {
-      Serial.println("[TileConfig] Error saving climate sensors");
+    if (!writeWeatherSensorsSd(folder_id, grid_idx, weatherSensorsRecord(tile))) {
+      Serial.println("[TileConfig] Error saving weather sensors");
       invalidateFolderEntityCache();
       return false;
     }

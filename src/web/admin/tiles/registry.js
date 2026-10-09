@@ -109,11 +109,11 @@
 
         rebuildEntitySelect(tab + '_energy_entity', data.energy);
         rebuildEntitySelect(tab + '_weather_entity', data.weathers);
+        rebuildEntitySelect(tab + '_weather_temperature_sensor', data.sensors);
+        rebuildEntitySelect(tab + '_weather_humidity_sensor', data.sensors);
         rebuildEntitySelect(tab + '_switch_entity', data.switches);
         rebuildEntitySelect(tab + '_media_entity', data.media);
         rebuildEntitySelect(tab + '_climate_entity', data.climates);
-        rebuildEntitySelect(tab + '_climate_temperature_sensor', data.sensors);
-        rebuildEntitySelect(tab + '_climate_humidity_sensor', data.sensors);
         rebuildEntitySelect(tab + '_cover_entity', data.covers);
         rebuildEntitySelect(tab + '_lock_entity', data.locks);
         rebuildEntitySelect(tab + '_alarm_entity', data.alarm_panels);

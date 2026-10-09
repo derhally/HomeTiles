@@ -7,10 +7,6 @@
       tab + '_climate_geometry')?.value || '';
     formData.append('climate_entity',
       document.getElementById(tab + '_climate_entity')?.value || '');
-    formData.append('climate_temperature_sensor',
-      document.getElementById(tab + '_climate_temperature_sensor')?.value || '');
-    formData.append('climate_humidity_sensor',
-      document.getElementById(tab + '_climate_humidity_sensor')?.value || '');
     formData.append('popup_open_mode',
       document.getElementById(tab + '_climate_popup_open_mode')?.value || '1');
     const view = document.getElementById(tab + '_climate_view')?.value === '1' ? '1' : '0';
@@ -34,12 +30,6 @@
     if (entity) {
       entity.value = '';
       delete entity.dataset.configuredValue;
-    }
-    for (const field of ['climate_temperature_sensor', 'climate_humidity_sensor']) {
-      const select = document.getElementById(tab + '_' + field);
-      if (!select) continue;
-      select.value = '';
-      delete select.dataset.configuredValue;
     }
     const popup = document.getElementById(tab + '_climate_popup_open_mode');
     if (popup) popup.value = '1';

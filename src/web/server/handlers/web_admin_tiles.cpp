@@ -34,8 +34,8 @@ static String dynamicMqttEntityForTile(const Tile& tile) {
   entity.trim();
   const String rule_entity = tileIconSourceEntity(tile.type, tile.icon_colors);
   if (rule_entity.length()) entity += "|" + rule_entity;
-  // Climate temperature/humidity sensors subscribe to their states too.
-  const String sensors = climateSensorsRecord(tile);
+  // Weather temperature/humidity sensors subscribe to their states too.
+  const String sensors = weatherSensorsRecord(tile);
   if (sensors.length()) entity += "|" + sensors;
   return entity;
 }
@@ -409,11 +409,11 @@ void WebAdminServer::handleGetTiles() {
     out += ",\"icon_colors\":\"";
     appendJsonEscaped(out, tile.icon_colors);
     out += "\"";
-    if (tile.type == TILE_CLIMATE) {
-      out += ",\"climate_temperature_sensor\":\"";
-      appendJsonEscaped(out, tile.climate_temperature_sensor);
-      out += "\",\"climate_humidity_sensor\":\"";
-      appendJsonEscaped(out, tile.climate_humidity_sensor);
+    if (tile.type == TILE_WEATHER) {
+      out += ",\"weather_temperature_sensor\":\"";
+      appendJsonEscaped(out, tile.weather_temperature_sensor);
+      out += "\",\"weather_humidity_sensor\":\"";
+      appendJsonEscaped(out, tile.weather_humidity_sensor);
       out += "\"";
     }
     out += ",\"bg_color\":";
@@ -719,8 +719,8 @@ void WebAdminServer::handleSaveTiles() {
   }
   // Deletion: the old entity and options must not come back with a new tile.
   if (tile.type == TILE_EMPTY) clearEmptyTileFields(tile);
-  // Only Climate keeps its temperature/humidity sensors.
-  normalizeClimateSensors(tile);
+  // Only Weather keeps its temperature/humidity sensors.
+  normalizeWeatherSensors(tile);
 
   if (deleting_folder) {
     const uint16_t target_id = getNavigateTargetId(previous_tile);

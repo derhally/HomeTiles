@@ -295,6 +295,19 @@
       scheduleAutoSave(tab);
     });
     bindLive(weatherSelect, 'change', 'weatherEntity', () => { maybeFillTitleFromWeather(tab); updateTilePreview(tab); updateDraft(tab); scheduleAutoSave(tab); });
+    // Temperature/humidity sensors replace the weather entity's current values.
+    for (const [field, name] of [['weather_temperature_sensor', 'weatherTemperatureSensor'],
+                                 ['weather_humidity_sensor', 'weatherHumiditySensor']]) {
+      const select = document.getElementById(prefix + '_' + field);
+      bindLive(select, 'change', name, () => {
+        if (select.value) {
+          select.dataset.configuredValue = select.value;
+        } else {
+          delete select.dataset.configuredValue;
+        }
+        updateTilePreview(tab); updateDraft(tab); scheduleAutoSave(tab);
+      });
+    }
     bindLive(weatherPopupModeSelect, 'change', 'weatherPopupMode', () => { updateDraft(tab); scheduleAutoSave(tab); });
     bindLive(weatherColoredIconsCheck, 'change', 'weatherColoredIcons', () => { updateDraft(tab); scheduleAutoSave(tab); });
     bindLive(energySelect, 'change', 'energyEntity', () => {
@@ -359,20 +372,6 @@
       scheduleAutoSave(tab);
     });
     bindLive(climatePopupModeSelect, 'change', 'climatePopupMode', () => { updateDraft(tab); scheduleAutoSave(tab); });
-    // Temperature/humidity sensors replace the Climate entity's current
-    // values; the available mini fields follow them (climateEditorState).
-    for (const [field, name] of [['climate_temperature_sensor', 'climateTemperatureSensor'],
-                                 ['climate_humidity_sensor', 'climateHumiditySensor']]) {
-      const select = document.getElementById(prefix + '_' + field);
-      bindLive(select, 'change', name, () => {
-        if (select.value) {
-          select.dataset.configuredValue = select.value;
-        } else {
-          delete select.dataset.configuredValue;
-        }
-        syncClimateSlotFields(tab); updateTilePreview(tab); updateDraft(tab); scheduleAutoSave(tab);
-      });
-    }
     // Layout "with value" drops the current temperature from the automatic
     // mini fields (climateAutomaticEditorKinds).
     bindLive(document.getElementById(prefix + '_climate_view'), 'change', 'climateView', () => {
