@@ -107,9 +107,8 @@ inline uint8_t volumeRegister(float volume) {
   return static_cast<uint8_t>(value < 1 ? 1 : value);
 }
 
-// Absolute http:// URL with a host, printable ASCII without spaces. https://
-// is refused where the board cannot afford TLS downloads (ESP32-P4: the
-// Wi-Fi link runs over SDIO, see the media cover download).
+// Absolute http:// or https:// URL with a host, printable ASCII without
+// spaces. A caller may refuse https:// (https_allowed = false).
 inline ErrorCode validateUrl(const char* url, size_t length, bool https_allowed) {
   if (!url || length == 0 || length > kMaxUrlLength) return ErrorCode::InvalidUrl;
   for (size_t i = 0; i < length; ++i) {
