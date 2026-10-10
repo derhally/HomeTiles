@@ -173,6 +173,13 @@ static void tab5_timed_display_wait(const char* label) {
 #endif
 
 
+// A new OTA image stays pending-verify until it has run this long. A reset
+// before that (a crash during setup, Wi-Fi start or the first screensaver)
+// makes the bootloader return to the previous image (CONFIG_APP_ROLLBACK).
+// 2026-10-10: a boot-time crash on the Waveshare 7B was only recoverable over
+// USB because the image was confirmed at the start of setup().
+static constexpr uint32_t kOtaConfirmAfterMs = 60000;
+
 static void confirm_running_ota_if_needed() {
   const esp_partition_t* running = esp_ota_get_running_partition();
   if (!running) {
@@ -612,7 +619,9 @@ void setup() {
   Serial.printf("[Setup] Firmware: hometiles-%s-%s\n", FW_VERSION, Device::profile().key);
   GuitionS3Diagnostics::logBoot(FW_VERSION, Device::profile().key);
   GuitionS3Diagnostics::logOtaPartitions("boot");
-  confirm_running_ota_if_needed();
+  // A new OTA image is confirmed from loop() once it has run for a while
+  // (kOtaConfirmAfterMs), not here: a crash early in boot then lets the
+  // bootloader roll back instead of looping on the new image.
   log_memory_status("boot-start");
   Serial.flush();
 
@@ -980,6 +989,12 @@ void loop() {
 
   if (first_run) Serial.println("[Loop] millis()...");
   uint32_t now = millis();
+
+  static bool ota_confirm_done = false;
+  if (!ota_confirm_done && now >= kOtaConfirmAfterMs) {
+    ota_confirm_done = true;
+    confirm_running_ota_if_needed();
+  }
 
   if (first_run) Serial.println("[Loop] lv_tick_inc()...");
   lv_tick_inc(now - g_lvgl_tick_last_ms);
