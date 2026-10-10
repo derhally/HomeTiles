@@ -55,13 +55,9 @@ bool g_last_capability = false;
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-// TLS downloads are not affordable on the ESP32-P4: its Wi-Fi runs over SDIO
-// (see the media cover download in tile_renderer.cpp).
-#if CONFIG_IDF_TARGET_ESP32P4
-constexpr bool kHttpsAllowed = false;
-#else
+// https uses the same unverified TLS client as the screensaver image URL,
+// which the 7B downloads reliably; Home Assistant often has only an https URL.
 constexpr bool kHttpsAllowed = true;
-#endif
 
 constexpr const char* kLogPrefix = "[Speaker]";
 constexpr const char* kPrefsNamespace = "speaker";
