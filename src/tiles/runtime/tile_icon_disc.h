@@ -325,13 +325,17 @@ inline void follow_card_states(lv_obj_t* card) {
 }
 
 // A wrapped icon's disc is its parent; a round disc sits directly behind it.
+// A wrapping (concentric) disc holds its icon, so the object after it is not
+// its icon: a half-height tile without title has its value label right after
+// the corner disc, which made the screensaver treat the value as an icon (no
+// own text color, hidden with the icon).
 inline lv_obj_t* disc_of(lv_obj_t* icon) {
   if (!icon) return nullptr;
   lv_obj_t* parent = lv_obj_get_parent(icon);
   if (is_disc(parent)) return parent;
   const int32_t index = lv_obj_get_index(icon);
   lv_obj_t* below = parent && index > 0 ? lv_obj_get_child(parent, index - 1) : nullptr;
-  return is_disc(below) ? below : nullptr;
+  return is_disc(below) && lv_obj_get_child_count(below) == 0 ? below : nullptr;
 }
 
 // Rules (tile_icon_source.cpp) can force an icon color over the color the
