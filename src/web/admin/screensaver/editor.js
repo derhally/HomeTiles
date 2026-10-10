@@ -120,7 +120,8 @@
       };
       ssImageUrlPreview = {
         template,
-        src: template.replace(/\$\{(width|height|timestamp)\}/g, (_, key) => String(values[key]))
+        src: template.replace(/\$\{(width|height|timestamp)\}/g, (_, key) => String(values[key])),
+        failed: false
       };
     }
     return ssImageUrlPreview.src;
@@ -372,7 +373,19 @@
       (devicePx('--screensaver-shadow-6', 6) * scale) + 'px');
     const wallpaper = ssCurrentWallpaper();
     const imageUrlMode = !!(d.use_wallpapers && d.image_url);
-    if (imageUrlMode) {
+    // Like the panel (show_url_fallback): an image URL that cannot be loaded
+    // shows the default background, the microSD wallpaper or black.
+    // A JS property, not a data attribute: restored cached HTML keeps
+    // attributes but loses listeners.
+    if (imageUrlMode && !image.__ssUrlErrorBound) {
+      image.__ssUrlErrorBound = true;
+      image.addEventListener('error', () => {
+        if (!ssImageUrlPreview.src || image.dataset.src !== ssImageUrlPreview.src) return;
+        ssImageUrlPreview.failed = true;
+        renderScreensaverEditor();
+      });
+    }
+    if (imageUrlMode && !(ssImageUrlPreviewSrc(d) && ssImageUrlPreview.failed)) {
       const wanted = ssImageUrlPreviewSrc(d);
       if (image.dataset.src !== wanted) { image.src = wanted; image.dataset.src = wanted; }
       image.hidden = false;

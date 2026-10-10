@@ -80,6 +80,8 @@ struct ScreensaverState {
   int active_wallpaper = -1;
   String active_wallpaper_name;
   uint32_t next_wallpaper_ms = 0;
+  // The image URL could not be loaded; the default background is shown.
+  bool url_fallback = false;
   uint32_t next_slot_refresh_ms = 0;
   String slot_payloads[TILES_PER_GRID];
   // Track the unit separately: a retained state may deliver the value before
@@ -1309,6 +1311,7 @@ UrlTake take_url_image(ScreensaverState* st) {
   g_url_cache_template = g_url_generation_template;
   if (st && st->image) {
     present_wallpaper_dsc(st, dsc, -1, kUrlCacheName, false);
+    st->url_fallback = false;
   }
   return UrlTake::kReady;
 }
@@ -1319,20 +1322,47 @@ uint32_t url_retry_ms() {
   return duration_ms < kUrlRetryMaxMs ? duration_ms : kUrlRetryMaxMs;
 }
 
+bool apply_wallpaper(ScreensaverState* st, int index, bool allow_fallback,
+                     bool allow_disabled);
+void clear_live_wallpaper(ScreensaverState* st);
+
+// The default background, the one the screensaver shows without an image
+// URL: the first enabled microSD wallpaper (or any image in /images), else
+// black. Shown whenever the image URL cannot be loaded (user 2026-10-10:
+// "if the http request fails, it should show the default background"); the
+// next successful download replaces it. Returns whether an image is visible.
+bool show_url_fallback(ScreensaverState* st) {
+  if (!st || !st->image) return false;
+  if (st->url_fallback) {
+    return !lv_obj_has_flag(st->image, LV_OBJ_FLAG_HIDDEN);
+  }
+  st->url_fallback = true;
+  const bool shown = apply_wallpaper(st, first_enabled_wallpaper(), true, false);
+  if (!shown) clear_live_wallpaper(st);
+  // The last URL image is no longer shown: a reopened screensaver must not
+  // bring it back before a new download succeeds.
+  if (g_cache_dsc && g_cache_name == kUrlCacheName) {
+    free_screensaver_dsc(g_cache_dsc);
+    g_cache_name = String();
+  }
+  Serial.printf("[ScreensaverURL] Image unavailable: default background (%s)\n",
+                shown ? "microSD" : "black");
+  return shown;
+}
+
 // Opening: a download finished in the meantime, else the cached image of the
-// same template, else start a download and show black with the clock.
+// same template, else the default background while a download starts.
 bool show_url_source_on_open(ScreensaverState* st) {
   const UrlTake taken = take_url_image(st);
   if (taken == UrlTake::kReady) return true;
-  if (url_cache_valid()) {
+  if (taken != UrlTake::kFailed && url_cache_valid()) {
     present_wallpaper_dsc(st, g_cache_dsc, -1, kUrlCacheName, true);
     return true;
   }
+  const bool visible = show_url_fallback(st);
   if (!screensaver_url_fetch::busy()) request_url_image();
-  st->active_wallpaper = -1;
-  st->active_wallpaper_name = kUrlCacheName;
   st->next_wallpaper_ms = millis() + url_retry_ms();
-  return false;
+  return visible;
 }
 
 // Timer tick while the URL source is active.
@@ -1340,6 +1370,9 @@ void service_url_source(ScreensaverState* st, uint32_t now) {
   const UrlTake taken = take_url_image(st);
   if (taken == UrlTake::kReady) return;
   if (taken == UrlTake::kFailed) {
+    // A failed request (HTTP error, timeout, bad image) shows the default
+    // background; the next attempt follows the slide interval.
+    show_url_fallback(st);
     st->next_wallpaper_ms = now + url_retry_ms();
     return;
   }
@@ -1353,10 +1386,11 @@ void service_url_source(ScreensaverState* st, uint32_t now) {
     st->next_wallpaper_ms = now + (kInteractionSettleBeforeSlideMs - since_activity);
     return;
   }
-  // The shown image stays until the download is decoded; a failed or
-  // refused request retries after the bounded interval.
+  // The shown image stays until the download is decoded. A refused request
+  // (no network yet) counts as a failure; both retry after the bounded
+  // interval.
+  if (!request_url_image()) show_url_fallback(st);
   st->next_wallpaper_ms = now + url_retry_ms();
-  request_url_image();
 }
 
 bool apply_wallpaper(ScreensaverState* st, int index, bool allow_fallback,
