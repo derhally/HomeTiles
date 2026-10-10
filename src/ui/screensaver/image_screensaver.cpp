@@ -14,6 +14,7 @@
 #include <soc/soc_caps.h>
 #endif
 #include <string.h>
+#include <time.h>
 
 // lvgl.h no longer exports lv_image_cache_drop() in 9.5; its declaration
 // is available only in the instance header (see tile_renderer.cpp).
@@ -34,6 +35,8 @@
 #include "src/types/clock/renderer.h"
 #include "src/types/energy/energy_data.h"
 #include "src/ui/screensaver/screensaver_config.h"
+#include "src/ui/screensaver/screensaver_image_url.h"
+#include "src/ui/screensaver/screensaver_url_fetch.h"
 #include "src/ui/tabs/tiles/tab_tiles_unified.h"
 #include "src/tiles/runtime/tile_icon_disc.h"
 #include "src/tiles/runtime/tile_icon_source.h"
@@ -883,20 +886,14 @@ lv_image_dsc_t* make_cover_dsc(const uint16_t* src, uint16_t src_w,
   return dsc;
 }
 
-lv_image_dsc_t* decode_wallpaper_to_size(const String& file_name,
-                                         uint16_t target_w, uint16_t target_h,
-                                         uint16_t focus_x, uint16_t focus_y,
-                                         uint16_t zoom, uint16_t corner_radius) {
-  const uint32_t pipeline_started_ms = millis();
-  size_t len = 0;
-  uint8_t* file = read_wallpaper_file(file_name, len);
-  if (!file) {
-    GuitionS3Diagnostics::logSlideshowDecode(
-        file_name.c_str(), 0, 0, 0, target_w, target_h,
-        static_cast<uint32_t>(target_w) * sizeof(uint16_t), "none", false,
-        millis() - pipeline_started_ms, 0, 0);
-    return nullptr;
-  }
+// Decodes a JPEG buffer (from microSD or the image URL) into a cover of the
+// target size. Takes ownership of file and frees it.
+lv_image_dsc_t* decode_jpeg_buffer_to_size(const String& file_name,
+                                           uint8_t* file, size_t len,
+                                           uint32_t pipeline_started_ms,
+                                           uint16_t target_w, uint16_t target_h,
+                                           uint16_t focus_x, uint16_t focus_y,
+                                           uint16_t zoom, uint16_t corner_radius) {
   const uint32_t read_ms = millis() - pipeline_started_ms;
   if (!is_jpeg(file, len)) {
     Serial.println("[Screensaver] File is not a JPEG");
@@ -968,6 +965,25 @@ lv_image_dsc_t* decode_wallpaper_to_size(const String& file_name,
   }
   return dsc;
 #endif
+}
+
+lv_image_dsc_t* decode_wallpaper_to_size(const String& file_name,
+                                         uint16_t target_w, uint16_t target_h,
+                                         uint16_t focus_x, uint16_t focus_y,
+                                         uint16_t zoom, uint16_t corner_radius) {
+  const uint32_t pipeline_started_ms = millis();
+  size_t len = 0;
+  uint8_t* file = read_wallpaper_file(file_name, len);
+  if (!file) {
+    GuitionS3Diagnostics::logSlideshowDecode(
+        file_name.c_str(), 0, 0, 0, target_w, target_h,
+        static_cast<uint32_t>(target_w) * sizeof(uint16_t), "none", false,
+        millis() - pipeline_started_ms, 0, 0);
+    return nullptr;
+  }
+  return decode_jpeg_buffer_to_size(file_name, file, len, pipeline_started_ms,
+                                    target_w, target_h, focus_x, focus_y, zoom,
+                                    corner_radius);
 }
 
 lv_image_dsc_t* get_or_decode_cached(const ScreensaverWallpaperConfig& wallpaper,
@@ -1160,6 +1176,188 @@ void rebuild_global_clock(ScreensaverState* st) {
   position_global_clock(st);
 }
 
+// Shows a decoded cover from the cache slot and schedules the next slide.
+void present_wallpaper_dsc(ScreensaverState* st, lv_image_dsc_t* dsc,
+                           int index, const String& name, bool cache_hit) {
+  // Change the source internally without triggering a full-screen LVGL
+  // redraw yet. On rotated P4 devices, LVGL first renders the complete
+  // frame off-screen; only that frame is then passed to PPA.
+  set_image_src_without_invalidation(st->image, dsc);
+  lv_obj_remove_flag(st->image, LV_OBJ_FLAG_HIDDEN);
+  st->active_wallpaper = index;
+  st->active_wallpaper_name = name;
+  st->next_wallpaper_ms = millis() +
+      static_cast<uint32_t>(screensaverConfig.get().duration_seconds) * 1000U;
+
+  // On rotated P4 devices, PPA must not initially write just the wallpaper
+  // to the visible buffer: the clock and tiles would disappear until their
+  // LVGL redraw, causing visible blinking. Instead, composite the entire
+  // top layer off-screen and present the completed frame. On B4, write it
+  // directly into the native DSI framebuffer without rotation.
+  const uint32_t started = millis();
+  bool preview_ok = false;
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+  preview_ok = present_composited_screensaver_frame(st);
+#endif
+  Serial.printf("[Screensaver] Hardware-Preview %s (%s) in %u ms\n",
+                preview_ok ? "OK" : "skipped",
+                cache_hit ? "cache" : "decode",
+                static_cast<unsigned>(millis() - started));
+  if (!preview_ok) {
+    // If the device-specific full-frame path is unavailable, LVGL continues
+    // to draw the new image safely through its established path.
+#if defined(DEVICE_ESP32_S3_RGB_480)
+    const bool atomic_redraw =
+        DeviceImpl::displayBeginAtomicFrame("screensaver");
+#endif
+    GuitionS3Diagnostics::beginSlideshowPresentation(
+        name.c_str(), cache_hit, Device::kScreenWidth,
+        Device::kScreenHeight, dsc->header.stride);
+#if defined(DEVICE_ESP32_S3_RGB_480)
+    // The inactive framebuffer deliberately isn't copied first: that large
+    // PSRAM read/write burst can starve RGB EDMA. Invalidate the whole screen
+    // so LVGL fully replaces it before the atomic swap instead.
+    if (atomic_redraw) {
+      lv_obj_invalidate(lv_screen_active());
+    } else {
+      lv_obj_invalidate(st->image);
+    }
+#else
+    lv_obj_invalidate(st->image);
+#endif
+  }
+}
+
+// Image URL source. The worker downloads; this LVGL context decodes into the
+// single cache slot under kUrlCacheName (never a valid file name), so a
+// reopened screensaver shows the last image at once.
+constexpr char kUrlCacheName[] = "\x01url";
+constexpr uint32_t kUrlRetryMaxMs = 30000;
+enum class UrlTake { kNone, kFailed, kReady };
+uint32_t g_url_generation = 0;
+String g_url_generation_template;  // template of the current generation
+String g_url_cache_template;       // template the cached image came from
+
+bool url_source_active() {
+  const ScreensaverConfigData& config = screensaverConfig.get();
+  return config.use_wallpapers && config.image_url.length();
+}
+
+// A changed template discards downloads that are still in flight.
+void sync_url_generation() {
+  const String& url_template = screensaverConfig.get().image_url;
+  if (url_template != g_url_generation_template) {
+    ++g_url_generation;
+    g_url_generation_template = url_template;
+  }
+}
+
+bool url_cache_valid() {
+  return g_cache_dsc && g_cache_name == kUrlCacheName &&
+         g_cache_w == Device::kScreenWidth &&
+         g_cache_h == Device::kScreenHeight &&
+         g_cache_radius == image_radius() &&
+         g_url_cache_template == screensaverConfig.get().image_url;
+}
+
+uint64_t url_timestamp() {
+  const time_t now = time(nullptr);
+  // Before SNTP sync, millis() still changes the URL for every slide.
+  return now > 1600000000 ? static_cast<uint64_t>(now) : millis();
+}
+
+bool request_url_image() {
+  sync_url_generation();
+  const std::string url = screensaver_image_url::expand(
+      std::string(g_url_generation_template.c_str()), Device::kScreenWidth,
+      Device::kScreenHeight, url_timestamp());
+  if (!screensaver_url_fetch::request(String(url.c_str()), g_url_generation)) {
+    return false;
+  }
+  Serial.printf("[ScreensaverURL] Requesting %s\n", url.c_str());
+  return true;
+}
+
+// Decodes a finished download into the cache slot and shows it on an open
+// screensaver.
+UrlTake take_url_image(ScreensaverState* st) {
+  sync_url_generation();
+  screensaver_url_fetch::Result result;
+  if (!screensaver_url_fetch::take(g_url_generation, result)) {
+    return UrlTake::kNone;
+  }
+  if (!result.ok) return UrlTake::kFailed;
+  const uint16_t corner_radius = image_radius();
+  lv_image_dsc_t* dsc = decode_jpeg_buffer_to_size(
+      kUrlCacheName, result.data, result.length, millis(),
+      Device::kScreenWidth, Device::kScreenHeight, 500, 500, 1000,
+      corner_radius);
+  if (!dsc) return UrlTake::kFailed;
+  if (st && st->image && g_cache_dsc) {
+    set_image_src_without_invalidation(st->image, nullptr);
+  }
+  free_screensaver_dsc(g_cache_dsc);
+  g_cache_dsc = dsc;
+  g_cache_name = kUrlCacheName;
+  g_cache_w = Device::kScreenWidth;
+  g_cache_h = Device::kScreenHeight;
+  g_cache_focus_x = 500;
+  g_cache_focus_y = 500;
+  g_cache_zoom = 1000;
+  g_cache_radius = corner_radius;
+  g_url_cache_template = g_url_generation_template;
+  if (st && st->image) {
+    present_wallpaper_dsc(st, dsc, -1, kUrlCacheName, false);
+  }
+  return UrlTake::kReady;
+}
+
+uint32_t url_retry_ms() {
+  const uint32_t duration_ms =
+      static_cast<uint32_t>(screensaverConfig.get().duration_seconds) * 1000U;
+  return duration_ms < kUrlRetryMaxMs ? duration_ms : kUrlRetryMaxMs;
+}
+
+// Opening: a download finished in the meantime, else the cached image of the
+// same template, else start a download and show black with the clock.
+bool show_url_source_on_open(ScreensaverState* st) {
+  const UrlTake taken = take_url_image(st);
+  if (taken == UrlTake::kReady) return true;
+  if (url_cache_valid()) {
+    present_wallpaper_dsc(st, g_cache_dsc, -1, kUrlCacheName, true);
+    return true;
+  }
+  if (!screensaver_url_fetch::busy()) request_url_image();
+  st->active_wallpaper = -1;
+  st->active_wallpaper_name = kUrlCacheName;
+  st->next_wallpaper_ms = millis() + url_retry_ms();
+  return false;
+}
+
+// Timer tick while the URL source is active.
+void service_url_source(ScreensaverState* st, uint32_t now) {
+  const UrlTake taken = take_url_image(st);
+  if (taken == UrlTake::kReady) return;
+  if (taken == UrlTake::kFailed) {
+    st->next_wallpaper_ms = now + url_retry_ms();
+    return;
+  }
+  if (screensaver_url_fetch::busy() ||
+      static_cast<int32_t>(now - st->next_wallpaper_ms) < 0) {
+    return;
+  }
+  const uint32_t since_activity =
+      static_cast<uint32_t>(now - displayManager.getLastActivityTime());
+  if (since_activity < kInteractionSettleBeforeSlideMs) {
+    st->next_wallpaper_ms = now + (kInteractionSettleBeforeSlideMs - since_activity);
+    return;
+  }
+  // The shown image stays until the download is decoded; a failed or
+  // refused request retries after the bounded interval.
+  st->next_wallpaper_ms = now + url_retry_ms();
+  request_url_image();
+}
+
 bool apply_wallpaper(ScreensaverState* st, int index, bool allow_fallback,
                      bool allow_disabled = false) {
   if (!st || !st->image) return false;
@@ -1216,53 +1414,7 @@ bool apply_wallpaper(ScreensaverState* st, int index, bool allow_fallback,
     g_wallpaper_retry_after_ms[index] = 0;
   }
 #endif
-  // Change the source internally without triggering a full-screen LVGL
-  // redraw yet. On rotated P4 devices, LVGL first renders the complete
-  // frame off-screen; only that frame is then passed to PPA.
-  set_image_src_without_invalidation(st->image, dsc);
-  lv_obj_remove_flag(st->image, LV_OBJ_FLAG_HIDDEN);
-  st->active_wallpaper = index;
-  st->active_wallpaper_name = wallpaper.file_name;
-  st->next_wallpaper_ms = millis() +
-      static_cast<uint32_t>(screensaverConfig.get().duration_seconds) * 1000U;
-
-  // On rotated P4 devices, PPA must not initially write just the wallpaper
-  // to the visible buffer: the clock and tiles would disappear until their
-  // LVGL redraw, causing visible blinking. Instead, composite the entire
-  // top layer off-screen and present the completed frame. On B4, write it
-  // directly into the native DSI framebuffer without rotation.
-  const uint32_t started = millis();
-  bool preview_ok = false;
-#if defined(CONFIG_IDF_TARGET_ESP32P4)
-  preview_ok = present_composited_screensaver_frame(st);
-#endif
-  Serial.printf("[Screensaver] Hardware-Preview %s (%s) in %u ms\n",
-                preview_ok ? "OK" : "skipped",
-                cache_hit ? "cache" : "decode",
-                static_cast<unsigned>(millis() - started));
-  if (!preview_ok) {
-    // If the device-specific full-frame path is unavailable, LVGL continues
-    // to draw the new image safely through its established path.
-#if defined(DEVICE_ESP32_S3_RGB_480)
-    const bool atomic_redraw =
-        DeviceImpl::displayBeginAtomicFrame("screensaver");
-#endif
-    GuitionS3Diagnostics::beginSlideshowPresentation(
-        wallpaper.file_name.c_str(), cache_hit, Device::kScreenWidth,
-        Device::kScreenHeight, dsc->header.stride);
-#if defined(DEVICE_ESP32_S3_RGB_480)
-    // The inactive framebuffer deliberately isn't copied first: that large
-    // PSRAM read/write burst can starve RGB EDMA. Invalidate the whole screen
-    // so LVGL fully replaces it before the atomic swap instead.
-    if (atomic_redraw) {
-      lv_obj_invalidate(lv_screen_active());
-    } else {
-      lv_obj_invalidate(st->image);
-    }
-#else
-    lv_obj_invalidate(st->image);
-#endif
-  }
+  present_wallpaper_dsc(st, dsc, index, wallpaper.file_name, cache_hit);
   return true;
 }
 
@@ -1577,6 +1729,26 @@ void refresh_live_background_and_clock(ScreensaverState* st,
     return;
   }
 
+  if (config.image_url.length()) {
+    sync_url_generation();
+    const bool showing_url = st->active_wallpaper_name == kUrlCacheName &&
+                             !lv_obj_has_flag(st->image, LV_OBJ_FLAG_HIDDEN);
+    if (showing_url && url_cache_valid()) {
+      // Clock settings and slide duration change live; the image stays.
+      st->next_wallpaper_ms = millis() +
+          static_cast<uint32_t>(config.duration_seconds) * 1000U;
+    } else if (url_cache_valid()) {
+      present_wallpaper_dsc(st, g_cache_dsc, -1, kUrlCacheName, true);
+    } else {
+      // A new template: keep the current image until its first download.
+      st->active_wallpaper = -1;
+      st->active_wallpaper_name = kUrlCacheName;
+      st->next_wallpaper_ms = millis();
+    }
+    if (st->clock_box) lv_obj_move_foreground(st->clock_box);
+    return;
+  }
+
   bool allow_disabled = false;
   int desired = -1;
   if (preview_wallpaper.length()) {
@@ -1635,6 +1807,10 @@ void global_screensaver_timer_cb(lv_timer_t* timer) {
   if (static_cast<int32_t>(now - st->next_slot_refresh_ms) >= 0) {
     refresh_slot_values(st);
     st->next_slot_refresh_ms = now + 1000U;
+  }
+  if (url_source_active()) {
+    service_url_source(st, now);
+    return;
   }
   const auto& config = screensaverConfig.get();
   if (config.use_wallpapers && st->active_wallpaper >= 0 &&
@@ -1704,6 +1880,15 @@ void global_preload_timer_cb(lv_timer_t*) {
 
 void preload_image_screensaver() {
   if (!screensaverConfig.get().use_wallpapers) return;
+  if (url_source_active()) {
+    // Download the first image in the background so opening shows it at
+    // once; the open screensaver decodes it (show_url_source_on_open).
+    sync_url_generation();
+    if (!url_cache_valid() && !screensaver_url_fetch::busy()) {
+      request_url_image();
+    }
+    return;
+  }
   ScreensaverWallpaperConfig wallpaper;
   const int index = first_enabled_wallpaper();
   if (index >= 0) wallpaper = screensaverConfig.get().wallpapers[index];
@@ -1771,8 +1956,9 @@ void show_image_screensaver() {
   // complete PPA frame. Otherwise that first visible frame contains "--"
   // and is corrected only later.
   refresh_slot_values(st);
-  const int wallpaper = first_enabled_wallpaper();
-  const bool wallpaper_visible = apply_wallpaper(st, wallpaper, true);
+  const bool wallpaper_visible =
+      url_source_active() ? show_url_source_on_open(st)
+                          : apply_wallpaper(st, first_enabled_wallpaper(), true);
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
   // The wallpaper path already presents the complete overlay through the
   // fast full-frame path. Do the same for the black fallback so a missing SD

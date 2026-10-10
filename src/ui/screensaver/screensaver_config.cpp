@@ -6,6 +6,7 @@
 
 #include "src/devices/device.h"
 #include "src/types/clock/clock_format.h"
+#include "src/ui/screensaver/screensaver_image_url.h"
 
 namespace {
 
@@ -61,6 +62,13 @@ String safe_wallpaper_name(const String& raw) {
   lower.toLowerCase();
   if (!lower.endsWith(".jpg") && !lower.endsWith(".jpeg")) return String();
   return name;
+}
+
+// Trimmed template, or empty when it is not a valid http(s) URL.
+String safe_image_url(const String& raw) {
+  String url = raw;
+  url.trim();
+  return screensaver_image_url::valid(std::string(url.c_str())) ? url : String();
 }
 
 uint16_t legacy_duration_from_doc(const JsonDocument& doc) {
@@ -188,6 +196,7 @@ void ScreensaverConfigStore::normalize() {
   data_.clock_x = clamp_u16(data_.clock_x, 0, 1000);
   data_.clock_y = clamp_u16(data_.clock_y, 0, 1000);
   data_.duration_seconds = clamp_u16(data_.duration_seconds, 3, 3600);
+  data_.image_url = safe_image_url(data_.image_url);
 
   if (data_.wallpapers.size() > kMaxScreensaverWallpapers) {
     data_.wallpapers.resize(kMaxScreensaverWallpapers);
@@ -275,6 +284,7 @@ bool ScreensaverConfigStore::loadPath(const char* path) {
   loaded.duration_seconds = doc["duration_seconds"].is<int>()
                                 ? clamp_u16(doc["duration_seconds"].as<int>(), 3, 3600)
                                 : legacy_duration_from_doc(doc);
+  loaded.image_url = String(doc["image_url"] | "");
 
   JsonArrayConst wallpapers = doc["wallpapers"].as<JsonArrayConst>();
   for (JsonObjectConst item : wallpapers) {
@@ -415,6 +425,7 @@ String ScreensaverConfigStore::toJson(bool include_device_meta) const {
   doc["clock_x"] = data_.clock_x;
   doc["clock_y"] = data_.clock_y;
   doc["duration_seconds"] = data_.duration_seconds;
+  doc["image_url"] = data_.image_url;
   if (include_device_meta) {
     doc["screen_width"] = Device::kScreenWidth;
     doc["screen_height"] = Device::kScreenHeight;
@@ -492,6 +503,14 @@ bool ScreensaverConfigStore::replaceFromJson(const String& json, String& error,
   }
   if (preview_wallpaper) {
     *preview_wallpaper = String(doc["preview_wallpaper"] | "");
+  }
+  {
+    String image_url = String(doc["image_url"] | "");
+    image_url.trim();
+    if (image_url.length() && !safe_image_url(image_url).length()) {
+      error = "Invalid image URL";
+      return false;
+    }
   }
   // v1 stored a duration per wallpaper. When importing an old configuration,
   // promote the first enabled image's duration to the global v2 value once.

@@ -9908,7 +9908,32 @@ function syncTileRadiusControls(tabEl) {
     data.wallpapers = Array.isArray(data.wallpapers) ? data.wallpapers : [];
     data.duration_seconds = Math.round(ssClamp(
       data.duration_seconds ?? 15, 3, 3600));
+    data.image_url = typeof data.image_url === 'string' ? data.image_url : '';
     return data;
+  }
+
+  // Same rules as screensaver_image_url::valid() in the firmware.
+  function ssImageUrlValid(url) {
+    return url === '' || (url.length <= 512 && /^https?:\/\/[^/\s]\S*$/.test(url));
+  }
+
+  // The panel fills in its own size and the current time for every slide;
+  // the preview asks for an image of the panel's size once per template.
+  let ssImageUrlPreview = { template: '', src: '' };
+  function ssImageUrlPreviewSrc(d) {
+    const template = String(d.image_url || '');
+    if (ssImageUrlPreview.template !== template) {
+      const values = {
+        width: Number(d.screen_width) || 1280,
+        height: Number(d.screen_height) || 800,
+        timestamp: Math.floor(Date.now() / 1000)
+      };
+      ssImageUrlPreview = {
+        template,
+        src: template.replace(/\$\{(width|height|timestamp)\}/g, (_, key) => String(values[key]))
+      };
+    }
+    return ssImageUrlPreview.src;
   }
 
   // Keep the stored image list in step with the card: entries of deleted
@@ -9996,6 +10021,7 @@ function syncTileRadiusControls(tabEl) {
       clock_x: Math.round(ssClamp(d.clock_x, 0, 1000)),
       clock_y: Math.round(ssClamp(d.clock_y, 0, 1000)),
       duration_seconds: Math.round(ssClamp(d.duration_seconds, 3, 3600)),
+      image_url: String(d.image_url || '').trim(),
       preview_wallpaper: previewName ?? (ssCurrentWallpaper()?.file_name || ''),
       wallpapers: d.wallpapers.map(w => ({
         file_name: w.file_name, enabled: !!w.enabled,
@@ -10155,7 +10181,16 @@ function syncTileRadiusControls(tabEl) {
       '--screensaver-clock-shadow-6',
       (devicePx('--screensaver-shadow-6', 6) * scale) + 'px');
     const wallpaper = ssCurrentWallpaper();
-    if (d.use_wallpapers && wallpaper && wallpaper.file_name) {
+    const imageUrlMode = !!(d.use_wallpapers && d.image_url);
+    if (imageUrlMode) {
+      const wanted = ssImageUrlPreviewSrc(d);
+      if (image.dataset.src !== wanted) { image.src = wanted; image.dataset.src = wanted; }
+      image.hidden = false;
+      image.style.display = 'block';
+      image.style.objectPosition = '50% 50%';
+      image.style.transformOrigin = '50% 50%';
+      image.style.transform = 'none';
+    } else if (d.use_wallpapers && wallpaper && wallpaper.file_name) {
       const wanted = '/api/screensaver/wallpaper?name=' + encodeURIComponent(wallpaper.file_name);
       if (image.dataset.src !== wanted) { image.src = wanted; image.dataset.src = wanted; }
       image.hidden = false;
@@ -10233,10 +10268,17 @@ function syncTileRadiusControls(tabEl) {
     document.getElementById('screensaverDateAlignment').value = String(ssClockAlignment(d.date_alignment));
     document.getElementById('screensaverTimeFormat').value = String(d.time_format || 0);
     document.getElementById('screensaverDateFormat').value = String(d.date_format || 0);
+    const imageUrlInput = document.getElementById('screensaverImageUrl');
+    if (imageUrlInput && document.activeElement !== imageUrlInput) imageUrlInput.value = d.image_url || '';
     const controls = document.getElementById('screensaverWallpaperControls');
-    controls.hidden = !wallpaper;
-    if (wallpaper) {
+    controls.hidden = !wallpaper && !imageUrlMode;
+    const framing = document.getElementById('screensaverWallpaperFraming');
+    // Framing applies to microSD images only; URL images arrive at panel size.
+    if (framing) framing.hidden = imageUrlMode || !wallpaper;
+    if (!controls.hidden) {
       document.getElementById('screensaverWallpaperDuration').value = d.duration_seconds;
+    }
+    if (wallpaper && !imageUrlMode) {
       document.getElementById('screensaverWallpaperZoom').value = wallpaper.zoom;
       document.getElementById('screensaverFocusX').value = wallpaper.focus_x;
       document.getElementById('screensaverFocusY').value = wallpaper.focus_y;
@@ -10361,6 +10403,19 @@ function syncTileRadiusControls(tabEl) {
     };
     bind('screensaverUseWallpapers', 'change', el => { screensaverDraft.use_wallpapers = el.checked; });
     bind('screensaverShuffle', 'change', el => { screensaverDraft.shuffle = el.checked; });
+    // Saved on change (blur or Enter), never per keystroke: a half-typed URL
+    // is not valid and the panel would reject it.
+    const imageUrlInput = document.getElementById('screensaverImageUrl');
+    imageUrlInput?.addEventListener('change', () => {
+      const url = imageUrlInput.value.trim();
+      if (!ssImageUrlValid(url)) {
+        imageUrlInput.reportValidity?.();
+        return;
+      }
+      screensaverDraft.image_url = url;
+      renderScreensaverEditor();
+      scheduleScreensaverSave();
+    });
     bind('screensaverTileShadow', 'change', el => { screensaverDraft.tile_shadow = el.checked; });
     bind('screensaverTileBorder', 'change', el => { screensaverDraft.tile_border = el.checked; });
     bind('screensaverTileOpacity', 'input', el => {

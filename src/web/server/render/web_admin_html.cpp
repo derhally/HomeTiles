@@ -1008,6 +1008,12 @@ static void appendTileTabHTML(
                 <label class="inline-checkbox"><input id="screensaverShuffle" type="checkbox"> )html";
     html += tr.screensaver_shuffle;
     html += R"html(</label>
+                <label for="screensaverImageUrl">)html";
+    html += tr.screensaver_image_url;
+    html += R"html(</label><input id="screensaverImageUrl" type="url" maxlength="512" placeholder="https://" autocomplete="off" spellcheck="false">
+                <div class="screensaver-storage-hint">)html";
+    html += tr.screensaver_image_url_hint;
+    html += R"html(</div>
                 <div class="screensaver-wallpaper-heading">)html";
     html += tr.screensaver_wallpapers_heading;
     html += R"html(</div>
@@ -1019,6 +1025,7 @@ static void appendTileTabHTML(
                   <label>)html";
     html += tr.screensaver_duration_seconds;
     html += R"html(</label><input id="screensaverWallpaperDuration" type="number" min="3" max="3600" value="15">
+                  <div id="screensaverWallpaperFraming">
                   <label>)html";
     html += tr.screensaver_zoom;
     html += R"html(</label><input id="screensaverWallpaperZoom" type="range" min="1000" max="3000" step="25" value="1000">
@@ -1029,6 +1036,7 @@ static void appendTileTabHTML(
                     <label>)html";
     html += tr.screensaver_focus_y;
     html += R"html(<input id="screensaverFocusY" type="range" min="0" max="1000" value="500"></label>
+                  </div>
                   </div>
                 </div>
               </div>
