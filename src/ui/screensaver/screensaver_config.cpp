@@ -159,7 +159,6 @@ bool save_tile_looks(const TileGridConfig& grid) {
     JsonObject item = looks.add<JsonObject>();
     item["i"] = static_cast<unsigned>(i);
     item["opacity"] = tile.ss_opacity;
-    item["fill"] = tile.ss_fill;
     item["icon"] = tile.ss_show_icon;
     const String text = screensaver_tile_look::format_text_color(tile.ss_text_color);
     if (text.length()) item["text"] = text;
@@ -240,6 +239,7 @@ void ScreensaverConfigStore::normalize() {
   data_.date_font_size = normalize_font(data_.date_font_size, 28, 72);
   data_.clock_x = clamp_u16(data_.clock_x, 0, 1000);
   data_.clock_y = clamp_u16(data_.clock_y, 0, 1000);
+  if (data_.clock_fill_mode > kScreensaverClockFillCustom) data_.clock_fill_mode = kScreensaverClockFillNone;
   data_.duration_seconds = clamp_u16(data_.duration_seconds, 3, 3600);
   data_.image_url = safe_image_url(data_.image_url);
 
@@ -319,7 +319,11 @@ bool ScreensaverConfigStore::loadPath(const char* path) {
   loaded.show_date = doc["show_date"] | true;
   loaded.show_weekday = doc["show_weekday"] | false;
   loaded.clock_shadow = doc["clock_shadow"] | true;
-  loaded.clock_fill = doc["clock_fill"] | false;
+  // clock_fill (on = own color) came before the tile color choice.
+  loaded.clock_fill_mode = doc["clock_fill_mode"].is<int>()
+                               ? static_cast<uint8_t>(doc["clock_fill_mode"].as<int>())
+                               : ((doc["clock_fill"] | false) ? kScreensaverClockFillCustom
+                                                              : kScreensaverClockFillNone);
   loaded.clock_fill_color =
       screensaver_tile_look::parse_text_color(String(doc["clock_fill_color"] | "#000000")) & 0xFFFFFFu;
   loaded.clock_fill_opacity = static_cast<uint8_t>(constrain(doc["clock_fill_opacity"] | 128, 0, 255));
@@ -467,7 +471,7 @@ String ScreensaverConfigStore::toJson(bool include_device_meta) const {
   doc["show_date"] = data_.show_date;
   doc["show_weekday"] = data_.show_weekday;
   doc["clock_shadow"] = data_.clock_shadow;
-  doc["clock_fill"] = data_.clock_fill;
+  doc["clock_fill_mode"] = data_.clock_fill_mode;
   doc["clock_fill_color"] = screensaver_tile_look::format_text_color(
       screensaver_tile_look::kTextColorSet | data_.clock_fill_color);
   doc["clock_fill_opacity"] = data_.clock_fill_opacity;
@@ -659,7 +663,8 @@ void ScreensaverConfigStore::applyStoredTileLooks(TileGridConfig& grid) const {
     if (index < 0 || index >= static_cast<int>(TILES_PER_GRID)) continue;
     Tile& tile = grid.tiles[index];
     tile.ss_opacity = static_cast<uint8_t>(constrain(item["opacity"] | 255, 0, 255));
-    tile.ss_fill = item["fill"] | true;
+    // Files from before tile color None stored "Fill background" off here.
+    if (!(item["fill"] | true)) tile.bg_color |= TILE_BG_TRANSPARENT;
     tile.ss_show_icon = item["icon"] | true;
     tile.ss_text_color = screensaver_tile_look::parse_text_color(String(item["text"] | ""));
     tile.ss_text_align = screensaver_tile_look::normalize_text_align(item["align"] | 0);

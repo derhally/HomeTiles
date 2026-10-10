@@ -147,6 +147,7 @@
     const borderToggle = type === '8' ? '_back_tile_border'
       : (type === '9' ? '_clock_tile_border' : (type === '10' ? '_text_tile_border' : ''));
     tileElem.classList.toggle('tile-border-hidden', !!borderToggle && document.getElementById(prefix + borderToggle)?.checked === false);
+    tileElem.classList.remove('tile-bg-none');
 
     if (type === '0') {
       tileElem.classList.add('empty');
@@ -172,13 +173,18 @@
     const colorInput = document.getElementById(prefix + '_tile_color');
     if (colorInput?.dataset.bgColorDefault === '1') colorInput.value = defaultBg;
     syncTileColorMode(tab);
-    const tileBg = tileBackgroundCss(meta, isDefaultBg,
+    // Tile color None: no background and no outline, like the panel
+    // (apply_transparent_tile_card).
+    const bgNone = tileColorInputIsNone(tab);
+    tileElem.classList.toggle('tile-bg-none', bgNone);
+    if (bgNone) tileElem.classList.add('tile-border-hidden');
+    const tileBg = bgNone ? 'transparent' : tileBackgroundCss(meta, isDefaultBg,
       isDefaultBg ? defaultBg : (color || defaultBg));
     if (isScreensaverTileTab(tab)) {
       // One opacity for every screensaver tile (screensaver footer); a tile
-      // without fill draws none.
+      // with color None draws none.
       const look = collectScreensaverLookFields(prefix, type);
-      const opacity = screensaverLookFilled(look) ? screensaverTileOpacity() : 0;
+      const opacity = bgNone ? 0 : screensaverTileOpacity();
       tileElem.style.background = tileBackgroundCss(meta, isDefaultBg,
         isDefaultBg ? defaultBg : (color || defaultBg), opacity);
       tileElem.dataset.bgOpacity = String(opacity);
@@ -187,6 +193,7 @@
       applyScreensaverLookPreview(tileElem, look);
     } else {
       tileElem.style.background = tileBg;
+      if (bgNone) tileElem.dataset.bgOpacity = '0';
     }
 
     let html = '';

@@ -41,9 +41,8 @@ assert.match(html, /String\(screensaverConfig\.get\(\)\.tile_opacity \* 100\.0f 
 for (const file of ['autosave', 'clipboard', 'drafts', 'editor', 'grid-preview', 'live-preview', 'snapshots', 'type-selection']) {
   assert.doesNotMatch(read(`src/web/admin/tiles/${file}.js`), /screensaver_tile_opacity/, file + ' still reads a per-tile opacity');
 }
-for (const file of ['grid-preview', 'live-preview']) {
-  assert.match(read(`src/web/admin/tiles/${file}.js`), /const opacity = screensaverLookFilled\((?:look|tile)\) \? screensaverTileOpacity\(\) : 0;/, file);
-}
+assert.match(read('src/web/admin/tiles/grid-preview.js'), /const opacity = screensaverTileOpacity\(\);/, 'grid-preview');
+assert.match(read('src/web/admin/tiles/live-preview.js'), /const opacity = bgNone \? 0 : screensaverTileOpacity\(\);/, 'live-preview');
 const editor = read('src/web/admin/screensaver/editor.js');
 assert.match(editor, /tile_opacity: Math\.round\(ssClamp\(d\.tile_opacity \?\? SCREENSAVER_TILE_DEFAULT_OPACITY, 0, 255\)\),/);
 assert.match(editor, /bind\('screensaverTileOpacity', 'input', el => \{\n\s*screensaverDraft\.tile_opacity = Number\(el\.value\);\n\s*refreshScreensaverTileOpacity\(\);\n\s*\}, false\);/);

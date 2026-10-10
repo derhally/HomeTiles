@@ -11,14 +11,16 @@
   function makeTileBgValue(rgb) {
     return (Number(rgb) & 0xFFFFFF) | 0x01000000;
   }
+  // Tile color None sets 0x02000000 (TILE_BG_TRANSPARENT): the tile draws no
+  // background.
   function tileBgValueIsSet(value) {
     const num = Number(value);
-    return Number.isFinite(num) && num !== 0;
+    return Number.isFinite(num) && (num & ~0x02000000) !== 0;
   }
   function tileBgToHex(value, fallback) {
     const num = Number(value);
-    if (!Number.isFinite(num) || num === 0) return fallback || '#353535';
-    return rgbToHex(num);
+    if (!Number.isFinite(num) || (num & ~0x02000000) === 0) return fallback || '#353535';
+    return rgbToHex(num & 0xFFFFFF);
   }
   // Tiles without their own color follow the global default tile color. The
   // preview paints them through one root variable, so a change of that color
@@ -276,7 +278,9 @@
   }
   function tileBgFollowsDefault(value) {
     const num = Number(value);
-    return !Number.isFinite(num) || num === 0 || isDefaultTileGrey(num & 0xFFFFFF);
+    if (!Number.isFinite(num)) return true;
+    const color = num & ~0x02000000;
+    return color === 0 || isDefaultTileGrey(color & 0xFFFFFF);
   }
   function tileColorHexIsDefaultGrey(hex) {
     const text = String(hex || '').trim();
@@ -286,8 +290,10 @@
   // follows the global tile color (stored as the default marker), Custom keeps
   // the picked color, From icon color tints the tile with the color the icon
   // shows (the icon colors' hidden "fill" checkbox). Only tiles with icon
-  // colors offer From icon color. Nothing else switches the choice.
+  // colors offer From icon color. None draws no background (the color input's
+  // bgColorNone mark). Nothing else switches the choice.
   function tileColorMode(tab) {
+    if (document.getElementById(tab + '_tile_color')?.dataset.bgColorNone === '1') return 'none';
     if (document.getElementById(tab + '_tile_icon_fill')?.checked) return 'icon';
     if (document.getElementById(tab + '_tile_cover_fill')?.checked) return 'cover';
     return document.getElementById(tab + '_tile_color')?.dataset.bgColorDefault === '0' ? 'custom' : 'global';
@@ -308,6 +314,12 @@
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
       if (button.dataset.tileColorMode === 'icon') button.classList.toggle('hidden', !iconOffered);
       if (button.dataset.tileColorMode === 'cover') button.classList.toggle('hidden', !coverOffered);
+      // The hidden Settings tile stores its color in the settings record,
+      // which has no None.
+      if (button.dataset.tileColorMode === 'none') {
+        button.classList.toggle('hidden', typeof HIDDEN_SETTINGS_TILE_INDEX !== 'undefined' &&
+          typeof currentTileIndex !== 'undefined' && currentTileIndex === HIDDEN_SETTINGS_TILE_INDEX);
+      }
     });
     document.getElementById(tab + '_tile_color_row')?.classList.toggle('color-hidden', mode !== 'custom');
     document.getElementById(tab + '_tile_icon_fill_row')?.classList.toggle('hidden', mode !== 'icon' && mode !== 'cover');
@@ -325,6 +337,7 @@
     if (fill) fill.checked = mode === 'icon';
     const coverFill = document.getElementById(tab + '_tile_cover_fill');
     if (coverFill) coverFill.checked = mode === 'cover';
+    input.dataset.bgColorNone = mode === 'none' ? '1' : '0';
     const remembered = input.dataset.customColor || '';
     if (mode === 'custom') {
       if (before !== 'custom' && remembered) input.value = remembered;
@@ -413,6 +426,12 @@
     if (!tint) return;
     setTileTintBackground(el, tint.color, tint.percent);
   }
+  function snapshotBgColorIsNone(snapshot) {
+    return String(snapshot?.bg_color_none || '0') === '1';
+  }
+  function tileColorInputIsNone(tab) {
+    return document.getElementById(tab + '_tile_color')?.dataset.bgColorNone === '1';
+  }
   function snapshotBgColorIsDefault(snapshot) {
     return String(snapshot?.bg_color_default || '0') === '1' ||
       tileColorHexIsDefaultGrey(snapshot?.color);
@@ -427,6 +446,7 @@
     const follows = tileBgFollowsDefault(value);
     input.value = follows ? (fallback || '#2A2A2A') : tileBgToHex(value, fallback || '#2A2A2A');
     input.dataset.bgColorDefault = follows ? '1' : '0';
+    input.dataset.bgColorNone = (Number(value) & 0x02000000) !== 0 ? '1' : '0';
     delete input.dataset.customColor;
     syncTileColorMode(tab);
   }
@@ -437,6 +457,7 @@
     const isDefault = snapshotBgColorIsDefault(snapshot);
     input.value = isDefault ? (meta.defaultBg || '#2A2A2A') : (snapshot?.color || meta.defaultBg || '#2A2A2A');
     input.dataset.bgColorDefault = isDefault ? '1' : '0';
+    input.dataset.bgColorNone = snapshotBgColorIsNone(snapshot) ? '1' : '0';
     delete input.dataset.customColor;
     syncTileColorMode(tab);
   }
@@ -444,7 +465,10 @@
   // while a rule "Tint tile" applies, it wins (tile_tint::choose).
   function markTileColorInputExplicit(tab) {
     const input = document.getElementById(tab + '_tile_color');
-    if (input) input.dataset.bgColorDefault = '0';
+    if (input) {
+      input.dataset.bgColorDefault = '0';
+      input.dataset.bgColorNone = '0';
+    }
     const fill = document.getElementById(tab + '_tile_icon_fill');
     const followed = !!fill?.checked;
     if (fill) fill.checked = false;
@@ -458,6 +482,7 @@
     const meta = getTileTypeMeta(typeValue);
     input.value = meta.defaultBg || '#2A2A2A';
     input.dataset.bgColorDefault = '1';
+    input.dataset.bgColorNone = '0';
     const fill = document.getElementById(tab + '_tile_icon_fill');
     if (fill) fill.checked = false;
     syncTileColorMode(tab);
@@ -501,15 +526,22 @@
       delete el.dataset.folderPinEnabled;
     }
     delete el.dataset.bgOpacity;
+    const bgNone = typeValue !== '0' && (Number(tile.bg_color) & 0x02000000) !== 0;
+    el.classList.toggle('tile-bg-none', bgNone);
+    if (bgNone) el.classList.add('tile-border-hidden');
     if (typeValue === '0') el.style.background = 'transparent';
-    else {
+    else if (bgNone) {
+      // Tile color None: no background (apply_transparent_tile_card).
+      el.style.background = 'transparent';
+      el.dataset.bgOpacity = '0';
+      if (isScreensaverTileTab(tab)) el.classList.add('screensaver-bg-clear');
+    } else {
       const isDefaultBg = tileBgFollowsDefault(tile.bg_color);
       const bg = tileBackgroundCss(meta, isDefaultBg,
         tileBgToHex(tile.bg_color, meta.defaultBg || '#353535'));
       if (isScreensaverTileTab(tab)) {
-        // One opacity for every screensaver tile (screensaver footer); a
-        // tile without fill draws none.
-        const opacity = screensaverLookFilled(tile) ? screensaverTileOpacity() : 0;
+        // One opacity for every screensaver tile (screensaver footer).
+        const opacity = screensaverTileOpacity();
         el.style.background = tileBackgroundCss(meta, isDefaultBg,
           tileBgToHex(tile.bg_color, meta.defaultBg || '#353535'), opacity);
         el.dataset.bgOpacity = String(opacity);

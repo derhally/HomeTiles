@@ -19,6 +19,7 @@
       icon: document.getElementById(prefix + '_tile_icon')?.value || '',
       color: colorEl?.value || '#2A2A2A',
       bg_color_default: tileColorInputIsDefault(tab) ? '1' : '0',
+      bg_color_none: tileColorInputIsNone(tab) ? '1' : '0',
       span_w: document.getElementById(prefix + '_tile_span_w')?.value || '1',
       span_h: document.getElementById(prefix + '_tile_span_h')?.value || '1'
     };

@@ -212,8 +212,7 @@
     bindLive(document.getElementById(prefix + '_tile_icon_disc'), 'change', 'tileIconDisc', () => { updateTilePreview(tab); updateDraft(tab); scheduleAutoSave(tab); });
     bindLive(document.getElementById(prefix + '_tile_icon_glow'), 'change', 'tileIconGlow', () => { updateTilePreview(tab); updateDraft(tab); scheduleAutoSave(tab); });
     // Per-tile screensaver look (screensaver tile editor only).
-    for (const [suffix, event, key] of [['_tile_ss_fill', 'change', 'tileSsFill'],
-                                        ['_tile_ss_icon', 'change', 'tileSsIcon'],
+    for (const [suffix, event, key] of [['_tile_ss_icon', 'change', 'tileSsIcon'],
                                         ['_tile_ss_opacity', 'input', 'tileSsOpacity'],
                                         ['_tile_ss_text_color_on', 'change', 'tileSsTextColorOn'],
                                         ['_tile_ss_text_color', 'input', 'tileSsTextColor'],

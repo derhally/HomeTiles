@@ -7,7 +7,7 @@ const helpers = [
   'escapeHtml', 'normalizeTileTitle', 'tileTitleHtml', 'getTileTypeMeta',
   'isEditablePreview', 'normalizeSensorValueFont', 'getSensorValueFontClass',
   'resolveIconName', 'normalizeMdiIconName', 'isExplicitlyDisabledValue',
-  'tileColorInputIsDefault', 'tileBgToHex', 'tileBgValueIsSet', 'tileBackgroundCss',
+  'tileColorInputIsDefault', 'tileColorInputIsNone', 'tileBgToHex', 'tileBgValueIsSet', 'tileBackgroundCss',
   'applyIconDiscTint', 'iconDiscTinted', 'cssColorMatch', 'cssColorChannels', 'cssColorAlpha', 'toneToLinear', 'toneToSrgb', 'toneOklch',
   'toneLinear', 'toneRgb', 'toneBlend', 'toneFill', 'toneReadableIcon', 'toneHex',
   'tileBgFollowsDefault', 'tileColorHexIsDefaultGrey',

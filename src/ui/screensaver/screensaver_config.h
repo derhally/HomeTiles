@@ -19,6 +19,11 @@ struct ScreensaverWallpaperConfig {
 // config_v2.json contains only screensaver-specific data. Tiles are
 // stored separately as a normal TileGridConfig through TileConfig's
 // packed LittleFS format.
+// ScreensaverConfigData::clock_fill_mode.
+inline constexpr uint8_t kScreensaverClockFillNone = 0;
+inline constexpr uint8_t kScreensaverClockFillGlobal = 1;
+inline constexpr uint8_t kScreensaverClockFillCustom = 2;
+
 struct ScreensaverConfigData {
   bool use_wallpapers = true;
   bool shuffle = false;
@@ -32,8 +37,9 @@ struct ScreensaverConfigData {
   bool show_weekday = false;
   bool clock_shadow = true;
   // Optional card behind the clock so it stays readable on bright or busy
-  // images: fill color (RGB) and its opacity.
-  bool clock_fill = false;
+  // images, chosen like a tile color: None, the global tile color or an own
+  // color (RGB), with its opacity.
+  uint8_t clock_fill_mode = kScreensaverClockFillNone;
   uint32_t clock_fill_color = 0x000000;
   uint8_t clock_fill_opacity = 128;
   uint8_t time_format = 0;

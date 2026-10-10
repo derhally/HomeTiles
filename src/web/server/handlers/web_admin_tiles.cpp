@@ -426,8 +426,6 @@ void WebAdminServer::handleGetTiles() {
       // Screensaver look (screensaver_tile_look.h).
       out += ",\"ss_opacity\":";
       out += String(tile.ss_opacity);
-      out += ",\"ss_fill\":";
-      out += tile.ss_fill ? "1" : "0";
       out += ",\"ss_icon\":";
       out += tile.ss_show_icon ? "1" : "0";
       out += ",\"ss_text_color\":\"";
@@ -669,6 +667,11 @@ void WebAdminServer::handleSaveTiles() {
   } else if (server.hasArg("bg_color")) {
     tile.bg_color = makeTileBgColor(static_cast<uint32_t>(server.arg("bg_color").toInt()));
   }
+  // Tile color None: no background over the color chosen above. A request
+  // with a color but without this field (older clients) clears it.
+  if (server.hasArg("bg_color_none") && server.arg("bg_color_none").toInt() != 0) {
+    tile.bg_color |= TILE_BG_TRANSPARENT;
+  }
   if (server.hasArg("background_opacity")) {
     tile.background_opacity = static_cast<uint8_t>(constrain(
         server.arg("background_opacity").toInt(), 0, 255));
@@ -681,7 +684,10 @@ void WebAdminServer::handleSaveTiles() {
     if (server.hasArg("ss_opacity")) {
       tile.ss_opacity = static_cast<uint8_t>(constrain(server.arg("ss_opacity").toInt(), 0, 255));
     }
-    if (server.hasArg("ss_fill")) tile.ss_fill = server.arg("ss_fill").toInt() != 0;
+    // Exports from before tile color None carry "Fill background" off.
+    if (server.hasArg("ss_fill") && server.arg("ss_fill").toInt() == 0) {
+      tile.bg_color |= TILE_BG_TRANSPARENT;
+    }
     if (server.hasArg("ss_icon")) tile.ss_show_icon = server.arg("ss_icon").toInt() != 0;
     if (server.hasArg("ss_text_color")) {
       tile.ss_text_color = screensaver_tile_look::parse_text_color(server.arg("ss_text_color"));

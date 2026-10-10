@@ -2717,14 +2717,14 @@ function syncTileRadiusControls(tabEl) {
   }
 
   // Per-tile screensaver look (screensaver_tile_look.h): whole-card opacity,
-  // background fill, icon visibility and an own text color. Only the
-  // screensaver tile editor has these fields.
+  // icon visibility, an own text color and the text position. Only the
+  // screensaver tile editor has these fields; the background is the tile
+  // color (None = no fill).
   function collectScreensaverLookFields(tab, typeValue) {
-    const fill = document.getElementById(tab + '_tile_ss_fill');
-    if (!fill || String(typeValue ?? '0') === '0') return {};
+    const icon = document.getElementById(tab + '_tile_ss_icon');
+    if (!icon || String(typeValue ?? '0') === '0') return {};
     const textOn = document.getElementById(tab + '_tile_ss_text_color_on')?.checked === true;
     return {
-      ss_fill: fill.checked ? '1' : '0',
       ss_icon: document.getElementById(tab + '_tile_ss_icon')?.checked === false ? '0' : '1',
       ss_opacity: String(clampInt(document.getElementById(tab + '_tile_ss_opacity')?.value, 0, 255, 255)),
       ss_text_color: textOn
@@ -2734,11 +2734,9 @@ function syncTileRadiusControls(tabEl) {
     };
   }
   function loadScreensaverLookFields(tab, data) {
-    const fill = document.getElementById(tab + '_tile_ss_fill');
-    if (!fill) return;
-    fill.checked = !['0', 'false'].includes(String(data?.ss_fill));
     const icon = document.getElementById(tab + '_tile_ss_icon');
-    if (icon) icon.checked = !['0', 'false'].includes(String(data?.ss_icon));
+    if (!icon) return;
+    icon.checked = !['0', 'false'].includes(String(data?.ss_icon));
     const opacity = document.getElementById(tab + '_tile_ss_opacity');
     if (opacity) opacity.value = String(clampInt(data?.ss_opacity, 0, 255, 255));
     const text = /^#[0-9a-f]{6}$/i.test(String(data?.ss_text_color || '')) ? String(data.ss_text_color) : '';
@@ -2762,24 +2760,16 @@ function syncTileRadiusControls(tabEl) {
     const color = document.getElementById(tab + '_tile_ss_text_color');
     if (color) color.disabled = document.getElementById(tab + '_tile_ss_text_color_on')?.checked !== true;
   }
-  // A tile without fill draws its background at opacity 0, like the panel
-  // (apply_slot_look); tints keep that through data-bg-opacity.
-  function screensaverLookFilled(look) {
-    return !['0', 'false'].includes(String(look?.ss_fill));
-  }
   // The rest of the look as the screensaver tile previews show it (live and
-  // cached grid): no outline without fill, hidden icon, whole-card opacity,
-  // own text color, text position.
+  // cached grid): hidden icon, whole-card opacity, own text color, text
+  // position. Tile color None is drawn by the background code.
   function applyScreensaverLookPreview(tileElem, look) {
     if (!tileElem) return;
     const empty = String(tileElem.dataset.type || '0') === '0';
-    const fill = empty || screensaverLookFilled(look);
     const icon = empty || !['0', 'false'].includes(String(look?.ss_icon));
     const opacity = empty ? 255 : clampInt(look?.ss_opacity, 0, 255, 255);
     const text = !empty && /^#[0-9a-f]{6}$/i.test(String(look?.ss_text_color || ''))
       ? String(look.ss_text_color) : '';
-    tileElem.classList.toggle('ss-no-fill', !fill);
-    if (!fill) tileElem.classList.add('tile-border-hidden');
     tileElem.classList.toggle('ss-icon-hidden', !icon);
     tileElem.style.opacity = opacity < 255 ? (opacity / 255).toFixed(3) : '';
     tileElem.classList.toggle('ss-text-colored', !!text);
@@ -2828,6 +2818,7 @@ function syncTileRadiusControls(tabEl) {
       icon: document.getElementById(prefix + '_tile_icon')?.value || '',
       color: colorEl?.value || '#2A2A2A',
       bg_color_default: tileColorInputIsDefault(tab) ? '1' : '0',
+      bg_color_none: tileColorInputIsNone(tab) ? '1' : '0',
       col: document.getElementById(prefix + '_tile_col')?.value || '1',
       row: document.getElementById(prefix + '_tile_row')?.value || '1',
       span_w: document.getElementById(prefix + '_tile_span_w')?.value || '1',
@@ -2853,21 +2844,22 @@ function syncTileRadiusControls(tabEl) {
     // data, its entity and options returned with the next tile in the slot.
     const tile = Number(snapshot?.type) === 0 ? {} : Object.assign({}, prev);
     const layout = normalizeSnapshotLayout(snapshot, index, tab);
-    const numericFields = ['type', 'sensor_decimals', 'sensor_value_font', 'sensor_display_mode', 'sensor_gauge_min', 'sensor_gauge_max', 'switch_style', 'navigate_target', 'popup_open_mode', 'key_code', 'key_modifier', 'background_opacity', 'icon_disc', 'icon_glow', 'ss_opacity', 'ss_fill', 'ss_icon', 'ss_text_align'];
+    const numericFields = ['type', 'sensor_decimals', 'sensor_value_font', 'sensor_display_mode', 'sensor_gauge_min', 'sensor_gauge_max', 'switch_style', 'navigate_target', 'popup_open_mode', 'key_code', 'key_modifier', 'background_opacity', 'icon_disc', 'icon_glow', 'ss_opacity', 'ss_icon', 'ss_text_align'];
 
     tile.type = clampInt(snapshot?.type, 0, 255, Number(prev.type) || 0);
     tile.title = snapshot?.title || '';
     tile.icon_name = snapshot?.icon || '';
-    tile.bg_color = snapshotBgColorIsDefault(snapshot)
+    tile.bg_color = (snapshotBgColorIsDefault(snapshot)
                         ? 0
-                        : makeTileBgValue(hexToRgb(snapshot?.color || '#2A2A2A'));
+                        : makeTileBgValue(hexToRgb(snapshot?.color || '#2A2A2A'))) +
+                    (String(snapshot?.bg_color_none || '0') === '1' ? 0x02000000 : 0);
     tile.col = layout.col;
     tile.row = layout.row;
     tile.span_w = layout.span_w;
     tile.span_h = layout.span_h;
 
     for (const [key, value] of Object.entries(snapshot || {})) {
-      if (key === '_dirty' || key === '_rev' || key === 'icon' || key === 'color' || key === 'bg_color_default' || key === 'col' || key === 'row' || key === 'span_w' || key === 'span_h' || key === 'type' || key === 'title') continue;
+      if (key === '_dirty' || key === '_rev' || key === 'icon' || key === 'color' || key === 'bg_color_default' || key === 'bg_color_none' || key === 'col' || key === 'row' || key === 'span_w' || key === 'span_h' || key === 'type' || key === 'title') continue;
       if (numericFields.includes(key)) {
         const num = Number(value);
         tile[key] = Number.isFinite(num) ? num : value;
@@ -5389,6 +5381,7 @@ function syncTileRadiusControls(tabEl) {
       icon: document.getElementById(prefix + '_tile_icon')?.value || '',
       color: colorEl?.value || '#2A2A2A',
       bg_color_default: tileColorInputIsDefault(tab) ? '1' : '0',
+      bg_color_none: tileColorInputIsNone(tab) ? '1' : '0',
       col: document.getElementById(prefix + '_tile_col')?.value || '1',
       row: document.getElementById(prefix + '_tile_row')?.value || '1',
       span_w: document.getElementById(prefix + '_tile_span_w')?.value || '1',
@@ -5451,6 +5444,7 @@ function syncTileRadiusControls(tabEl) {
       icon: document.getElementById(prefix + '_tile_icon')?.value || '',
       color: colorEl?.value || '#2A2A2A',
       bg_color_default: tileColorInputIsDefault(tab) ? '1' : '0',
+      bg_color_none: tileColorInputIsNone(tab) ? '1' : '0',
       span_w: document.getElementById(prefix + '_tile_span_w')?.value || '1',
       span_h: document.getElementById(prefix + '_tile_span_h')?.value || '1'
     };
@@ -5745,8 +5739,7 @@ function syncTileRadiusControls(tabEl) {
     bindLive(document.getElementById(prefix + '_tile_icon_disc'), 'change', 'tileIconDisc', () => { updateTilePreview(tab); updateDraft(tab); scheduleAutoSave(tab); });
     bindLive(document.getElementById(prefix + '_tile_icon_glow'), 'change', 'tileIconGlow', () => { updateTilePreview(tab); updateDraft(tab); scheduleAutoSave(tab); });
     // Per-tile screensaver look (screensaver tile editor only).
-    for (const [suffix, event, key] of [['_tile_ss_fill', 'change', 'tileSsFill'],
-                                        ['_tile_ss_icon', 'change', 'tileSsIcon'],
+    for (const [suffix, event, key] of [['_tile_ss_icon', 'change', 'tileSsIcon'],
                                         ['_tile_ss_opacity', 'input', 'tileSsOpacity'],
                                         ['_tile_ss_text_color_on', 'change', 'tileSsTextColorOn'],
                                         ['_tile_ss_text_color', 'input', 'tileSsTextColor'],
@@ -6267,6 +6260,7 @@ function syncTileRadiusControls(tabEl) {
     const borderToggle = type === '8' ? '_back_tile_border'
       : (type === '9' ? '_clock_tile_border' : (type === '10' ? '_text_tile_border' : ''));
     tileElem.classList.toggle('tile-border-hidden', !!borderToggle && document.getElementById(prefix + borderToggle)?.checked === false);
+    tileElem.classList.remove('tile-bg-none');
 
     if (type === '0') {
       tileElem.classList.add('empty');
@@ -6292,13 +6286,18 @@ function syncTileRadiusControls(tabEl) {
     const colorInput = document.getElementById(prefix + '_tile_color');
     if (colorInput?.dataset.bgColorDefault === '1') colorInput.value = defaultBg;
     syncTileColorMode(tab);
-    const tileBg = tileBackgroundCss(meta, isDefaultBg,
+    // Tile color None: no background and no outline, like the panel
+    // (apply_transparent_tile_card).
+    const bgNone = tileColorInputIsNone(tab);
+    tileElem.classList.toggle('tile-bg-none', bgNone);
+    if (bgNone) tileElem.classList.add('tile-border-hidden');
+    const tileBg = bgNone ? 'transparent' : tileBackgroundCss(meta, isDefaultBg,
       isDefaultBg ? defaultBg : (color || defaultBg));
     if (isScreensaverTileTab(tab)) {
       // One opacity for every screensaver tile (screensaver footer); a tile
-      // without fill draws none.
+      // with color None draws none.
       const look = collectScreensaverLookFields(prefix, type);
-      const opacity = screensaverLookFilled(look) ? screensaverTileOpacity() : 0;
+      const opacity = bgNone ? 0 : screensaverTileOpacity();
       tileElem.style.background = tileBackgroundCss(meta, isDefaultBg,
         isDefaultBg ? defaultBg : (color || defaultBg), opacity);
       tileElem.dataset.bgOpacity = String(opacity);
@@ -6307,6 +6306,7 @@ function syncTileRadiusControls(tabEl) {
       applyScreensaverLookPreview(tileElem, look);
     } else {
       tileElem.style.background = tileBg;
+      if (bgNone) tileElem.dataset.bgOpacity = '0';
     }
 
     let html = '';
@@ -6915,7 +6915,8 @@ function syncTileRadiusControls(tabEl) {
       show_date: !!data?.show_date,
       show_weekday: !!data?.show_weekday,
       clock_shadow: !!data?.clock_shadow,
-      clock_fill: !!data?.clock_fill,
+      clock_fill_mode: [0, 1, 2].includes(Number(data?.clock_fill_mode))
+        ? Number(data.clock_fill_mode) : (data?.clock_fill ? 2 : 0),
       clock_fill_color: /^#[0-9a-f]{6}$/i.test(String(data?.clock_fill_color || ''))
         ? String(data.clock_fill_color).toUpperCase() : '#000000',
       clock_fill_opacity: Math.round(ssClamp(data?.clock_fill_opacity ?? 128, 0, 255)),
@@ -7561,12 +7562,16 @@ function syncTileRadiusControls(tabEl) {
     if (tile.icon_glow !== undefined && tile.icon_glow !== null) {
       fd.append('icon_glow', ['0', 'false'].includes(String(tile.icon_glow)) ? '0' : '1');
     }
-    const parsedBgColor = parseBgColorValue(tile.bg_color);
+    // Tile color None travels as its own field over the color below it.
+    const rawBgColor = parseBgColorValue(tile.bg_color);
+    const bgNone = (rawBgColor & 0x02000000) !== 0;
+    const parsedBgColor = rawBgColor & ~0x02000000;
     if (parsedBgColor !== 0 || (typeof tile.bg_color === 'string' && tile.bg_color.trim().startsWith('#'))) {
       fd.append('bg_color', parsedBgColor);
     } else {
       fd.append('bg_color_default', '1');
     }
+    fd.append('bg_color_none', bgNone ? '1' : '0');
     const layout = normalizeTileLayout({ ...tile, type: safeType }, index, tabByFolder[folderId] || '');
     fd.append('col', layout.col);
     fd.append('row', layout.row);
@@ -7761,14 +7766,16 @@ function syncTileRadiusControls(tabEl) {
   function makeTileBgValue(rgb) {
     return (Number(rgb) & 0xFFFFFF) | 0x01000000;
   }
+  // Tile color None sets 0x02000000 (TILE_BG_TRANSPARENT): the tile draws no
+  // background.
   function tileBgValueIsSet(value) {
     const num = Number(value);
-    return Number.isFinite(num) && num !== 0;
+    return Number.isFinite(num) && (num & ~0x02000000) !== 0;
   }
   function tileBgToHex(value, fallback) {
     const num = Number(value);
-    if (!Number.isFinite(num) || num === 0) return fallback || '#353535';
-    return rgbToHex(num);
+    if (!Number.isFinite(num) || (num & ~0x02000000) === 0) return fallback || '#353535';
+    return rgbToHex(num & 0xFFFFFF);
   }
   // Tiles without their own color follow the global default tile color. The
   // preview paints them through one root variable, so a change of that color
@@ -8026,7 +8033,9 @@ function syncTileRadiusControls(tabEl) {
   }
   function tileBgFollowsDefault(value) {
     const num = Number(value);
-    return !Number.isFinite(num) || num === 0 || isDefaultTileGrey(num & 0xFFFFFF);
+    if (!Number.isFinite(num)) return true;
+    const color = num & ~0x02000000;
+    return color === 0 || isDefaultTileGrey(color & 0xFFFFFF);
   }
   function tileColorHexIsDefaultGrey(hex) {
     const text = String(hex || '').trim();
@@ -8036,8 +8045,10 @@ function syncTileRadiusControls(tabEl) {
   // follows the global tile color (stored as the default marker), Custom keeps
   // the picked color, From icon color tints the tile with the color the icon
   // shows (the icon colors' hidden "fill" checkbox). Only tiles with icon
-  // colors offer From icon color. Nothing else switches the choice.
+  // colors offer From icon color. None draws no background (the color input's
+  // bgColorNone mark). Nothing else switches the choice.
   function tileColorMode(tab) {
+    if (document.getElementById(tab + '_tile_color')?.dataset.bgColorNone === '1') return 'none';
     if (document.getElementById(tab + '_tile_icon_fill')?.checked) return 'icon';
     if (document.getElementById(tab + '_tile_cover_fill')?.checked) return 'cover';
     return document.getElementById(tab + '_tile_color')?.dataset.bgColorDefault === '0' ? 'custom' : 'global';
@@ -8058,6 +8069,12 @@ function syncTileRadiusControls(tabEl) {
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
       if (button.dataset.tileColorMode === 'icon') button.classList.toggle('hidden', !iconOffered);
       if (button.dataset.tileColorMode === 'cover') button.classList.toggle('hidden', !coverOffered);
+      // The hidden Settings tile stores its color in the settings record,
+      // which has no None.
+      if (button.dataset.tileColorMode === 'none') {
+        button.classList.toggle('hidden', typeof HIDDEN_SETTINGS_TILE_INDEX !== 'undefined' &&
+          typeof currentTileIndex !== 'undefined' && currentTileIndex === HIDDEN_SETTINGS_TILE_INDEX);
+      }
     });
     document.getElementById(tab + '_tile_color_row')?.classList.toggle('color-hidden', mode !== 'custom');
     document.getElementById(tab + '_tile_icon_fill_row')?.classList.toggle('hidden', mode !== 'icon' && mode !== 'cover');
@@ -8075,6 +8092,7 @@ function syncTileRadiusControls(tabEl) {
     if (fill) fill.checked = mode === 'icon';
     const coverFill = document.getElementById(tab + '_tile_cover_fill');
     if (coverFill) coverFill.checked = mode === 'cover';
+    input.dataset.bgColorNone = mode === 'none' ? '1' : '0';
     const remembered = input.dataset.customColor || '';
     if (mode === 'custom') {
       if (before !== 'custom' && remembered) input.value = remembered;
@@ -8163,6 +8181,12 @@ function syncTileRadiusControls(tabEl) {
     if (!tint) return;
     setTileTintBackground(el, tint.color, tint.percent);
   }
+  function snapshotBgColorIsNone(snapshot) {
+    return String(snapshot?.bg_color_none || '0') === '1';
+  }
+  function tileColorInputIsNone(tab) {
+    return document.getElementById(tab + '_tile_color')?.dataset.bgColorNone === '1';
+  }
   function snapshotBgColorIsDefault(snapshot) {
     return String(snapshot?.bg_color_default || '0') === '1' ||
       tileColorHexIsDefaultGrey(snapshot?.color);
@@ -8177,6 +8201,7 @@ function syncTileRadiusControls(tabEl) {
     const follows = tileBgFollowsDefault(value);
     input.value = follows ? (fallback || '#2A2A2A') : tileBgToHex(value, fallback || '#2A2A2A');
     input.dataset.bgColorDefault = follows ? '1' : '0';
+    input.dataset.bgColorNone = (Number(value) & 0x02000000) !== 0 ? '1' : '0';
     delete input.dataset.customColor;
     syncTileColorMode(tab);
   }
@@ -8187,6 +8212,7 @@ function syncTileRadiusControls(tabEl) {
     const isDefault = snapshotBgColorIsDefault(snapshot);
     input.value = isDefault ? (meta.defaultBg || '#2A2A2A') : (snapshot?.color || meta.defaultBg || '#2A2A2A');
     input.dataset.bgColorDefault = isDefault ? '1' : '0';
+    input.dataset.bgColorNone = snapshotBgColorIsNone(snapshot) ? '1' : '0';
     delete input.dataset.customColor;
     syncTileColorMode(tab);
   }
@@ -8194,7 +8220,10 @@ function syncTileRadiusControls(tabEl) {
   // while a rule "Tint tile" applies, it wins (tile_tint::choose).
   function markTileColorInputExplicit(tab) {
     const input = document.getElementById(tab + '_tile_color');
-    if (input) input.dataset.bgColorDefault = '0';
+    if (input) {
+      input.dataset.bgColorDefault = '0';
+      input.dataset.bgColorNone = '0';
+    }
     const fill = document.getElementById(tab + '_tile_icon_fill');
     const followed = !!fill?.checked;
     if (fill) fill.checked = false;
@@ -8208,6 +8237,7 @@ function syncTileRadiusControls(tabEl) {
     const meta = getTileTypeMeta(typeValue);
     input.value = meta.defaultBg || '#2A2A2A';
     input.dataset.bgColorDefault = '1';
+    input.dataset.bgColorNone = '0';
     const fill = document.getElementById(tab + '_tile_icon_fill');
     if (fill) fill.checked = false;
     syncTileColorMode(tab);
@@ -8251,15 +8281,22 @@ function syncTileRadiusControls(tabEl) {
       delete el.dataset.folderPinEnabled;
     }
     delete el.dataset.bgOpacity;
+    const bgNone = typeValue !== '0' && (Number(tile.bg_color) & 0x02000000) !== 0;
+    el.classList.toggle('tile-bg-none', bgNone);
+    if (bgNone) el.classList.add('tile-border-hidden');
     if (typeValue === '0') el.style.background = 'transparent';
-    else {
+    else if (bgNone) {
+      // Tile color None: no background (apply_transparent_tile_card).
+      el.style.background = 'transparent';
+      el.dataset.bgOpacity = '0';
+      if (isScreensaverTileTab(tab)) el.classList.add('screensaver-bg-clear');
+    } else {
       const isDefaultBg = tileBgFollowsDefault(tile.bg_color);
       const bg = tileBackgroundCss(meta, isDefaultBg,
         tileBgToHex(tile.bg_color, meta.defaultBg || '#353535'));
       if (isScreensaverTileTab(tab)) {
-        // One opacity for every screensaver tile (screensaver footer); a
-        // tile without fill draws none.
-        const opacity = screensaverLookFilled(tile) ? screensaverTileOpacity() : 0;
+        // One opacity for every screensaver tile (screensaver footer).
+        const opacity = screensaverTileOpacity();
         el.style.background = tileBackgroundCss(meta, isDefaultBg,
           tileBgToHex(tile.bg_color, meta.defaultBg || '#353535'), opacity);
         el.dataset.bgOpacity = String(opacity);
@@ -9988,7 +10025,14 @@ function syncTileRadiusControls(tabEl) {
     return ['left', 'center', 'right'][ssClockAlignment(value)];
   }
 
-  // Card behind the clock (ScreensaverConfigData::clock_fill).
+  // Card behind the clock (ScreensaverConfigData::clock_fill_mode): 0 None,
+  // 1 global tile color, 2 own color. clock_fill (on = own color) is older.
+  function ssClockFillMode(data) {
+    const mode = Number(data?.clock_fill_mode);
+    if ([0, 1, 2].includes(mode)) return mode;
+    return data?.clock_fill ? 2 : 0;
+  }
+
   function ssClockFillColor(value) {
     return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value).toUpperCase() : '#000000';
   }
@@ -10014,7 +10058,8 @@ function syncTileRadiusControls(tabEl) {
     data.date_font_size = ssNearestClockFont(data.date_font_size || 28, true);
     data.time_alignment = ssClockAlignment(data.time_alignment);
     data.date_alignment = ssClockAlignment(data.date_alignment);
-    data.clock_fill = !!data.clock_fill;
+    data.clock_fill_mode = ssClockFillMode(data);
+    delete data.clock_fill;
     data.clock_fill_color = ssClockFillColor(data.clock_fill_color);
     data.clock_fill_opacity = ssClockFillOpacity(data.clock_fill_opacity);
     data.tile_border = data.tile_border !== false;
@@ -10126,7 +10171,7 @@ function syncTileRadiusControls(tabEl) {
       show_date: !!d.show_date,
       show_weekday: !!d.show_weekday,
       clock_shadow: !!d.clock_shadow,
-      clock_fill: !!d.clock_fill,
+      clock_fill_mode: ssClockFillMode(d),
       clock_fill_color: ssClockFillColor(d.clock_fill_color),
       clock_fill_opacity: ssClockFillOpacity(d.clock_fill_opacity),
       time_format: Number(d.time_format || 0),
@@ -10380,8 +10425,11 @@ function syncTileRadiusControls(tabEl) {
     clock.classList.toggle('clock-disabled', !d.show_time && !d.show_date && !d.show_weekday);
     clock.classList.toggle('clock-shadowed', !!d.clock_shadow);
     // The panel's card behind the lines (screensaver_clock_fill.h).
-    if (d.clock_fill) {
-      const hex = ssClockFillColor(d.clock_fill_color);
+    const clockFillMode = ssClockFillMode(d);
+    if (clockFillMode !== 0) {
+      const hex = clockFillMode === 1
+        ? (String(getComputedStyle(document.documentElement).getPropertyValue('--tile-default-bg') || '').trim() || '#1A1A1A')
+        : ssClockFillColor(d.clock_fill_color);
       const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
       clock.style.background = 'rgba(' + rgb.join(',') + ',' +
         (ssClockFillOpacity(d.clock_fill_opacity) / 255).toFixed(3) + ')';
@@ -10405,19 +10453,21 @@ function syncTileRadiusControls(tabEl) {
     document.getElementById('screensaverShowDate').checked = !!d.show_date;
     document.getElementById('screensaverShowWeekday').checked = !!d.show_weekday;
     document.getElementById('screensaverClockShadow').checked = !!d.clock_shadow;
-    const clockFill = document.getElementById('screensaverClockFill');
+    document.getElementById('screensaverClockFillModes')?.querySelectorAll('[data-clock-fill-mode]').forEach(button => {
+      const active = Number(button.dataset.clockFillMode) === clockFillMode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
     const clockFillColor = document.getElementById('screensaverClockFillColor');
     const clockFillOpacity = document.getElementById('screensaverClockFillOpacity');
     const clockFillOutput = document.getElementById('screensaverClockFillOpacityValue');
-    if (clockFill) clockFill.checked = !!d.clock_fill;
     if (clockFillColor) {
       clockFillColor.value = ssClockFillColor(d.clock_fill_color).toLowerCase();
-      clockFillColor.disabled = !d.clock_fill;
+      clockFillColor.hidden = clockFillMode !== 2;
     }
-    if (clockFillOpacity) {
-      clockFillOpacity.value = String(ssClockFillOpacity(d.clock_fill_opacity));
-      clockFillOpacity.disabled = !d.clock_fill;
-    }
+    const clockFillOpacityRow = document.getElementById('screensaverClockFillOpacityRow');
+    if (clockFillOpacityRow) clockFillOpacityRow.hidden = clockFillMode === 0;
+    if (clockFillOpacity) clockFillOpacity.value = String(ssClockFillOpacity(d.clock_fill_opacity));
     if (clockFillOutput) {
       clockFillOutput.textContent = Math.round(ssClockFillOpacity(d.clock_fill_opacity) * 100 / 255) + ' %';
     }
@@ -10586,7 +10636,13 @@ function syncTileRadiusControls(tabEl) {
     bind('screensaverShowDate', 'change', el => { screensaverDraft.show_date = el.checked; });
     bind('screensaverShowWeekday', 'change', el => { screensaverDraft.show_weekday = el.checked; });
     bind('screensaverClockShadow', 'change', el => { screensaverDraft.clock_shadow = el.checked; });
-    bind('screensaverClockFill', 'change', el => { screensaverDraft.clock_fill = el.checked; });
+    document.getElementById('screensaverClockFillModes')?.querySelectorAll('[data-clock-fill-mode]').forEach(button => {
+      button.addEventListener('click', () => {
+        screensaverDraft.clock_fill_mode = Number(button.dataset.clockFillMode);
+        renderScreensaverEditor();
+        scheduleScreensaverSave();
+      });
+    });
     bind('screensaverClockFillColor', 'input', el => {
       screensaverDraft.clock_fill_color = ssClockFillColor(el.value);
     }, false);

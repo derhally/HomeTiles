@@ -4919,6 +4919,16 @@ void render_tile_grid(lv_obj_t* parent, const TileGridConfig& config, GridType g
   Serial.printf("[TileRenderer] Minimum free heap since boot: %u KB\n", ESP.getMinFreeHeap() / 1024);
 }
 
+void apply_transparent_tile_card(lv_obj_t* card) {
+  if (!card) return;
+  lv_obj_set_style_bg_opa(card, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_opa(card, LV_OPA_20, LV_PART_MAIN | LV_STATE_PRESSED);
+  lv_obj_set_style_shadow_width(card, 0, 0);
+  ui_surface_style::disable_tile_border(card);
+  tile_icon_disc::refresh_fills(card);
+  tile_icon_source::refresh_controls(card);
+}
+
 lv_obj_t* render_tile(lv_obj_t* parent, int col, int row, const Tile& tile, uint8_t index, GridType grid_type, scene_publish_cb_t scene_cb) {
   // Serial.printf("[render_tile] Index=%d, Type=%d, Title='%s'\n", index, tile.type, tile.title.c_str());
 
@@ -4938,6 +4948,10 @@ lv_obj_t* render_tile(lv_obj_t* parent, int col, int row, const Tile& tile, uint
     if (tile_obj && grid_type != GridType::SCREENSAVER &&
         tile.type != TILE_EMPTY) {
       ui_surface_style::apply_global_tile_border(tile_obj);
+    }
+    if (tile_obj && grid_type != GridType::SCREENSAVER && tile.type != TILE_EMPTY &&
+        tileBgTransparent(tile)) {
+      apply_transparent_tile_card(tile_obj);
     }
     return tile_obj;
   }

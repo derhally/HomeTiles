@@ -1111,8 +1111,7 @@
     }
     .screensaver-tile-look { display:grid; gap:6px; margin-top:8px; }
     .screensaver-clock-fill { display:grid; gap:6px; margin:8px 0; }
-    .screensaver-clock-fill input[type="color"]:disabled,
-    .screensaver-clock-fill input[type="range"]:disabled { opacity:.4; }
+    .screensaver-clock-fill [hidden] { display:none !important; }
     .screensaver-tile-look-opacity,
     .screensaver-tile-look-text,
     .screensaver-tile-look-align { display:flex; align-items:center; gap:8px; }

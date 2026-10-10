@@ -1,6 +1,7 @@
 // Screensaver readability (user 2026-10-10): the clock was unreadable on a
 // light image and a sensor without a title showed its value one line below
-// the icon. The clock gets an optional card (fill color and opacity) and every
+// the icon. The clock gets an optional card chosen like a tile color (None,
+// Global, Custom) with an opacity, and every
 // screensaver tile a Text position: "Centered on icon" centers a value
 // without a title on the icon row. Panel, Web Admin preview, storage,
 // endpoint and translations must agree.
@@ -36,14 +37,15 @@ assert.match(tiles, /normalize_text_align\(server\.arg\("ss_text_align"\)\.toInt
 // Clock fill: stored with the clock settings, off by default, drawn as a card
 // with the shared padding and radius.
 const header = read('src/ui/screensaver/screensaver_config.h');
-assert.match(header, /bool clock_fill = false;\n\s*uint32_t clock_fill_color = 0x000000;\n\s*uint8_t clock_fill_opacity = 128;/);
-assert.match(fn(config, 'ScreensaverConfigStore::loadPath'), /loaded\.clock_fill = doc\["clock_fill"\] \| false;/);
+assert.match(header, /uint8_t clock_fill_mode = kScreensaverClockFillNone;\n\s*uint32_t clock_fill_color = 0x000000;\n\s*uint8_t clock_fill_opacity = 128;/);
+// The first version stored clock_fill (on = own color).
+assert.match(fn(config, 'ScreensaverConfigStore::loadPath'), /\(doc\["clock_fill"\] \| false\) \? kScreensaverClockFillCustom\s*: kScreensaverClockFillNone/);
 assert.match(fn(config, 'ScreensaverConfigStore::loadPath'), /constrain\(doc\["clock_fill_opacity"\] \| 128, 0, 255\)/);
 const toJson = config.slice(config.indexOf('String ScreensaverConfigStore::toJson('),
                             config.indexOf('bool ScreensaverConfigStore::save()'));
-for (const key of ['clock_fill', 'clock_fill_color', 'clock_fill_opacity']) assert.ok(toJson.includes(`doc["${key}"]`), key);
+for (const key of ['clock_fill_mode', 'clock_fill_color', 'clock_fill_opacity']) assert.ok(toJson.includes(`doc["${key}"]`), key);
 const clock = fn(read('src/ui/screensaver/image_screensaver.cpp'), 'rebuild_global_clock');
-assert.match(clock, /if \(config\.clock_fill\) \{[\s\S]*lv_obj_set_style_bg_opa\(st->clock_box, config\.clock_fill_opacity, 0\);[\s\S]*screensaver_clock_fill::pad_x\(\)/);
+assert.match(clock, /if \(config\.clock_fill_mode != kScreensaverClockFillNone\) \{[\s\S]*\? tileDefaultBgColor\(\)[\s\S]*lv_obj_set_style_bg_opa\(st->clock_box, config\.clock_fill_opacity, 0\);[\s\S]*screensaver_clock_fill::pad_x\(\)/);
 const styles = read('src/web/server/render/web_admin_styles.cpp');
 for (const name of ['screensaver-clock-fill-pad-x', 'screensaver-clock-fill-pad-y', 'screensaver-clock-fill-radius',
                     'compact-value-only-top', 'compact-value-only-top-24', 'compact-value-only-top-28']) {
@@ -62,7 +64,7 @@ for (const label of ['"Text position",', '"Centered on icon",', '"Textposition",
 }
 const html = read('src/web/server/render/web_admin_html.cpp');
 for (const needle of ['tr.screensaver_tile_text_position', 'tr.screensaver_text_position_centered', '_tile_ss_text_align',
-                      'id="screensaverClockFill"', 'id="screensaverClockFillColor"', 'id="screensaverClockFillOpacity"',
+                      'id="screensaverClockFillModes"', 'id="screensaverClockFillColor"', 'id="screensaverClockFillOpacity"',
                       'cssClass += " ss-text-centered";']) {
   assert.ok(html.includes(needle), needle);
 }
@@ -71,12 +73,13 @@ assert.match(read('src/web/admin/tiles/import-export.js'), /clock_fill_opacity: 
 // Browser: the real editor draws the clock card and the CSS centers a lone
 // value only on a centered tile.
 const inputs = ['screensaverUseWallpapers', 'screensaverShuffle', 'screensaverTileShadow', 'screensaverTileBorder',
-  'screensaverShowTime', 'screensaverShowDate', 'screensaverShowWeekday', 'screensaverClockShadow', 'screensaverClockFill']
+  'screensaverShowTime', 'screensaverShowDate', 'screensaverShowWeekday', 'screensaverClockShadow']
   .map(id => `<input type="checkbox" id="${id}">`).join('') +
   ['screensaverTimeFont', 'screensaverDateFont', 'screensaverTimeAlignment', 'screensaverDateAlignment',
    'screensaverTimeFormat', 'screensaverDateFormat', 'screensaverWallpaperDuration', 'screensaverWallpaperZoom',
    'screensaverFocusX', 'screensaverFocusY'].map(id => `<input id="${id}">`).join('') +
-  '<input type="color" id="screensaverClockFillColor"><input type="range" min="0" max="255" id="screensaverClockFillOpacity"><output id="screensaverClockFillOpacityValue"></output>';
+  '<div id="screensaverClockFillModes"><button data-clock-fill-mode="0"></button><button data-clock-fill-mode="1"></button><button data-clock-fill-mode="2"></button></div>' +
+  '<input type="color" id="screensaverClockFillColor"><label id="screensaverClockFillOpacityRow"><input type="range" min="0" max="255" id="screensaverClockFillOpacity"><output id="screensaverClockFillOpacityValue"></output></label>';
 
 const page = `<!doctype html><html lang="en"><head><style>:root {--grid-cols:7;--grid-rows:5;--preview-cell-w:85px;--preview-cell-h:73px;--preview-gap:10px;--preview-pad:12px;--screensaver-image-inset:10px;--tile-radius:16px;--screensaver-fs48:48px;--screensaver-lh48:58px;--screensaver-ldy48:0px;--screensaver-fs28:28px;--screensaver-lh28:34px;--screensaver-ldy28:0px;--screensaver-clock-gap:6px;--screensaver-clock-fill-pad-x:16px;--screensaver-clock-fill-pad-y:8px;--screensaver-clock-fill-radius:16px;--compact-h:40px;--compact-inset:6px;--compact-title-line:24px;--compact-value-line:24px;--compact-value-dy:0px;--compact-title-top:4px;--compact-value-top:28px;--compact-value-only-top:8px;--compact-value-only-top-24:7px;--compact-value-top-24:29px;--compact-title-top-24:3px;--compact-value-line-step-24:29px;} ${readRepoFile('src/web/assets/admin.css')}</style></head><body>
 <div id="tab-tiles-screensaver" class="tile-tab tab-content active"><div id="screensaverGrid" class="tile-grid screensaver-tile-grid"><div class="screensaver-grid-image-frame"><img id="screensaverPreviewImage" hidden></div>
@@ -104,23 +107,30 @@ ${inlineScriptSafe(readAdminDeliverySource())}
  screensaverDraft=ssNormalizeLoaded({screen_width:1280,screen_height:800,clock_x:500,clock_y:500,show_time:true,show_date:true,show_weekday:false,
    time_font_size:48,date_font_size:28,time_alignment:1,date_alignment:1,time_format:1,date_format:0,
    clock_shadow:true,tile_shadow:false,tile_border:true,use_wallpapers:false,shuffle:false,duration_seconds:60,wallpapers:[]});
- check(screensaverDraft.clock_fill===false&&screensaverDraft.clock_fill_color==='#000000'&&screensaverDraft.clock_fill_opacity===128,'Defaults: no fill, black, 50 %');
+ check(screensaverDraft.clock_fill_mode===0&&screensaverDraft.clock_fill_color==='#000000'&&screensaverDraft.clock_fill_opacity===128,'Defaults: None, black, 50 %');
+ check(ssNormalizeLoaded({clock_fill:true}).clock_fill_mode===2,'The first clock fill (own color) loads as Custom');
  renderScreensaverEditor();
  check(getComputedStyle(clock).backgroundColor==='rgba(0, 0, 0, 0)','No card without fill');
- check(document.getElementById('screensaverClockFillColor').disabled,'Color waits for the fill');
+ check(document.getElementById('screensaverClockFillColor').hidden&&document.getElementById('screensaverClockFillOpacityRow').hidden,'None shows neither color nor opacity');
+ check(document.querySelector('[data-clock-fill-mode="0"]').classList.contains('active'),'None is selected');
  const before=center();
- screensaverDraft.clock_fill=true;screensaverDraft.clock_fill_color='#336699';screensaverDraft.clock_fill_opacity=255;
+ screensaverDraft.clock_fill_mode=2;screensaverDraft.clock_fill_color='#336699';screensaverDraft.clock_fill_opacity=255;
  renderScreensaverEditor();
  const cs=getComputedStyle(clock);
  check(cs.backgroundColor==='rgb(51, 102, 153)','Fill color: '+cs.backgroundColor);
  check(Math.abs(parseFloat(cs.paddingLeft)-16*scale)<0.01&&Math.abs(parseFloat(cs.paddingTop)-8*scale)<0.01,'Card padding scales with the frame: '+cs.paddingLeft+' '+cs.paddingTop);
  const after=center();
  check(Math.abs(after.x-before.x)<0.6&&Math.abs(after.y-before.y)<0.6,'The card grows around the same center');
- check(!document.getElementById('screensaverClockFillOpacity').disabled,'Opacity editable with the fill');
+ check(!document.getElementById('screensaverClockFillColor').hidden&&!document.getElementById('screensaverClockFillOpacityRow').hidden,'Custom shows color and opacity');
+ document.documentElement.style.setProperty('--tile-default-bg','#204060');
+ screensaverDraft.clock_fill_mode=1;renderScreensaverEditor();
+ check(getComputedStyle(clock).backgroundColor==='rgb(32, 64, 96)','Global uses the global tile color: '+getComputedStyle(clock).backgroundColor);
+ check(document.getElementById('screensaverClockFillColor').hidden,'Global hides the own color');
+ screensaverDraft.clock_fill_mode=2;
  screensaverDraft.clock_fill_opacity=128;renderScreensaverEditor();
  check(document.getElementById('screensaverClockFillOpacityValue').textContent==='50 %','Opacity label');
- check(ssPayload(screensaverDraft).clock_fill===true&&ssPayload(screensaverDraft).clock_fill_color==='#336699','Saved with the clock settings');
- screensaverDraft.clock_fill=false;renderScreensaverEditor();
+ check(ssPayload(screensaverDraft).clock_fill_mode===2&&ssPayload(screensaverDraft).clock_fill_color==='#336699','Saved with the clock settings');
+ screensaverDraft.clock_fill_mode=0;renderScreensaverEditor();
  check(clock.style.background===''&&clock.style.padding==='','Turning the fill off removes the card');
  const top=id=>document.querySelector('#'+id+' > .tile-value').offsetTop;
  check(top('centered')===8,'Lone value centered on the icon row: '+top('centered'));

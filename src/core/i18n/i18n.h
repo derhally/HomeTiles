@@ -310,6 +310,8 @@ struct Strings {
   // Media tiles: "From cover", the color of the album cover, offered as tile
   // color and as icon color.
   const char* tile_color_mode_from_cover;
+  // Tile color None: the tile draws no background.
+  const char* tile_color_mode_none;
   // Web Admin tile editor: per-tile icon disc override.
   const char* icon_disc_label;
   const char* icon_disc_global;
@@ -360,7 +362,6 @@ struct Strings {
   const char* tile_group_tile;
   const char* screensaver_background_opacity;
   // Per-tile screensaver look (screensaver_tile_look.h).
-  const char* screensaver_tile_fill;
   const char* screensaver_tile_show_icon;
   const char* screensaver_tile_look_opacity;
   const char* screensaver_tile_text_color;

@@ -1174,10 +1174,13 @@ void rebuild_global_clock(ScreensaverState* st) {
       configManager.getConfig().language);
   st->clock_box = create_clock_widget(st->overlay, widget_config);
   if (!st->clock_box) return;
-  if (config.clock_fill) {
+  if (config.clock_fill_mode != kScreensaverClockFillNone) {
     // A card behind the lines keeps the clock readable on bright or busy
     // images; it grows the box, which stays centered on its position.
-    lv_obj_set_style_bg_color(st->clock_box, lv_color_hex(config.clock_fill_color), 0);
+    const uint32_t fill = config.clock_fill_mode == kScreensaverClockFillGlobal
+                              ? tileDefaultBgColor()
+                              : config.clock_fill_color;
+    lv_obj_set_style_bg_color(st->clock_box, lv_color_hex(fill), 0);
     lv_obj_set_style_bg_opa(st->clock_box, config.clock_fill_opacity, 0);
     lv_obj_set_style_radius(st->clock_box, screensaver_clock_fill::radius(), 0);
     lv_obj_set_style_pad_hor(st->clock_box, screensaver_clock_fill::pad_x(), 0);
@@ -1597,10 +1600,7 @@ void apply_slot_look(lv_obj_t* card, const Tile& tile) {
     set_opa_if_changed(card, LV_STYLE_OPA, tile.ss_opacity, LV_PART_MAIN | LV_STATE_DEFAULT);
     set_opa_if_changed(card, LV_STYLE_OPA, tile.ss_opacity, LV_PART_MAIN | LV_STATE_PRESSED);
   }
-  if (!tile.ss_fill) {
-    lv_obj_set_style_bg_opa(card, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(card, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_PRESSED);
-  }
+  if (tileBgTransparent(tile)) apply_transparent_tile_card(card);
   apply_look_to_children(card, tile, 0);
 }
 
@@ -1652,7 +1652,7 @@ void apply_slot_tile_borders(ScreensaverState* st) {
     lv_obj_t* card = st->slot_objs[i];
     if (!card) continue;
     // A tile without fill draws only its content: no outline either.
-    ui_surface_style::apply_tile_border(card, enabled && grid.tiles[i].ss_fill);
+    ui_surface_style::apply_tile_border(card, enabled && !tileBgTransparent(grid.tiles[i]));
   }
 }
 
@@ -1674,7 +1674,7 @@ lv_obj_t* build_slot_tile(ScreensaverState* st, size_t i, const Tile& tile) {
   apply_slot_look(tile_obj, tile);
   // Circles and controls of a see-through tile stay a veil over the
   // wallpaper (tone_color.h); the tile was built opaque.
-  if (opacity < LV_OPA_COVER || !tile.ss_fill) {
+  if (opacity < LV_OPA_COVER || tileBgTransparent(tile)) {
     tile_icon_disc::refresh_fills(tile_obj);
     tile_icon_source::refresh_controls(tile_obj);
   }
@@ -1801,7 +1801,7 @@ bool update_slot_grid(ScreensaverState* st) {
     lv_obj_t* card = build_slot_tile(st, i, after);
     if (!card) continue;
     apply_slot_card_shadow(card, shadows);
-    ui_surface_style::apply_tile_border(card, borders && after.ss_fill);
+    ui_surface_style::apply_tile_border(card, borders && !tileBgTransparent(after));
     // Slot order, as after a full rebuild: a later card's shadow lies over
     // its neighbours. lv_obj_move_to_index invalidates the parent, here the
     // full-screen grid: one edit redrew the whole screen with the wallpaper,

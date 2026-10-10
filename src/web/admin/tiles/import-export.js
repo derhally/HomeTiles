@@ -34,7 +34,8 @@
       show_date: !!data?.show_date,
       show_weekday: !!data?.show_weekday,
       clock_shadow: !!data?.clock_shadow,
-      clock_fill: !!data?.clock_fill,
+      clock_fill_mode: [0, 1, 2].includes(Number(data?.clock_fill_mode))
+        ? Number(data.clock_fill_mode) : (data?.clock_fill ? 2 : 0),
       clock_fill_color: /^#[0-9a-f]{6}$/i.test(String(data?.clock_fill_color || ''))
         ? String(data.clock_fill_color).toUpperCase() : '#000000',
       clock_fill_opacity: Math.round(ssClamp(data?.clock_fill_opacity ?? 128, 0, 255)),
@@ -680,12 +681,16 @@
     if (tile.icon_glow !== undefined && tile.icon_glow !== null) {
       fd.append('icon_glow', ['0', 'false'].includes(String(tile.icon_glow)) ? '0' : '1');
     }
-    const parsedBgColor = parseBgColorValue(tile.bg_color);
+    // Tile color None travels as its own field over the color below it.
+    const rawBgColor = parseBgColorValue(tile.bg_color);
+    const bgNone = (rawBgColor & 0x02000000) !== 0;
+    const parsedBgColor = rawBgColor & ~0x02000000;
     if (parsedBgColor !== 0 || (typeof tile.bg_color === 'string' && tile.bg_color.trim().startsWith('#'))) {
       fd.append('bg_color', parsedBgColor);
     } else {
       fd.append('bg_color_default', '1');
     }
+    fd.append('bg_color_none', bgNone ? '1' : '0');
     const layout = normalizeTileLayout({ ...tile, type: safeType }, index, tabByFolder[folderId] || '');
     fd.append('col', layout.col);
     fd.append('row', layout.row);

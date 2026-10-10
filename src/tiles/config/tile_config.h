@@ -146,12 +146,12 @@ struct Tile {
   String weather_humidity_sensor;
 
   // Screensaver-only look (screensaver_tile_look.h), kept in
-  // /_screensaver/tile_looks.json: whole-card opacity, background fill, icon
-  // visibility, an own text color (0 = the type's colors) and the text
-  // position beside the icon (0 = standard, 1 = centered on the icon row).
-  // Normal grids keep these defaults.
+  // /_screensaver/tile_looks.json: whole-card opacity, icon visibility, an own
+  // text color (0 = the type's colors) and the text position beside the icon
+  // (0 = standard, 1 = centered on the icon row). A tile without background
+  // uses tile color None (TILE_BG_TRANSPARENT) like on every grid. Normal
+  // grids keep these defaults.
   uint8_t ss_opacity = 255;
-  bool ss_fill = true;
   bool ss_show_icon = true;
   uint32_t ss_text_color = 0;
   uint8_t ss_text_align = 0;
@@ -207,7 +207,7 @@ static inline bool tileContentEquals(const Tile& a, const Tile& b) {
          a.weather_temperature_sensor == b.weather_temperature_sensor &&
          a.weather_humidity_sensor == b.weather_humidity_sensor &&
          a.ss_opacity == b.ss_opacity &&
-         a.ss_fill == b.ss_fill && a.ss_show_icon == b.ss_show_icon &&
+         a.ss_show_icon == b.ss_show_icon &&
          a.ss_text_color == b.ss_text_color && a.ss_text_align == b.ss_text_align;
 }
 
@@ -333,9 +333,20 @@ static inline void applyWeatherSensorsRecord(Tile& tile, const String& record) {
   normalizeWeatherSensors(tile);
 }
 
+// Tile color "None": the card draws no background, only its content. The
+// RGB bits keep the color the tile falls back to (pressed state, popups).
+// Older files never set this bit.
+static constexpr uint32_t TILE_BG_TRANSPARENT = 0x02000000u;
+
+static inline bool tileBgTransparent(const Tile& tile) {
+  return (tile.bg_color & TILE_BG_TRANSPARENT) != 0;
+}
+
 // Clock/Text/Back use the otherwise unused display mode byte: 0 inherits
 // borders, 1 hides them.
 static inline bool tileBorderEnabled(const Tile& tile) {
+  // A tile without background (tile color None) draws no outline either.
+  if (tileBgTransparent(tile)) return false;
   return (tile.type != TILE_CLOCK && tile.type != TILE_TEXT && tile.type != TILE_BACK) ||
          tile.sensor_display_mode != 1;
 }
@@ -684,7 +695,7 @@ static inline uint32_t makeTileBgColor(uint32_t rgb) {
 }
 
 static inline bool tileBgColorIsSet(const Tile& tile) {
-  return tile.bg_color != 0;
+  return (tile.bg_color & ~TILE_BG_TRANSPARENT) != 0;
 }
 
 static inline uint32_t tileBgColorRgb(const Tile& tile) {
@@ -699,6 +710,7 @@ uint32_t tileDefaultBgColor();
 // as "no own color" and follows the global default tile color like an unset
 // color. Every other stored color is kept.
 static inline bool tileBgColorFollowsDefault(uint32_t stored) {
+  stored &= ~TILE_BG_TRANSPARENT;
   return stored == 0 || tile_color::isDefaultGrey(stored);
 }
 

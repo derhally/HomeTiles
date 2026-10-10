@@ -49,6 +49,12 @@ void render_tile_grid(lv_obj_t* parent, const TileGridConfig& config, GridType g
 // Renders one tile according to its type and returns the created object.
 lv_obj_t* render_tile(lv_obj_t* parent, int col, int row, const Tile& tile, uint8_t index, GridType grid_type, scene_publish_cb_t scene_cb);
 
+// Tile color "None" (tileBgTransparent): the card draws no background, only a
+// faint fill while pressed, no outline; circles and controls become the veil
+// of a see-through tile. Normal grids apply it in render_tile, the
+// screensaver after its own opacity (image_screensaver.cpp).
+void apply_transparent_tile_card(lv_obj_t* card);
+
 // Type-specific render functions
 lv_obj_t* render_sensor_tile(lv_obj_t* parent, int col, int row, const Tile& tile, uint8_t index, GridType grid_type);
 lv_obj_t* render_scene_tile(lv_obj_t* parent, int col, int row, const Tile& tile, uint8_t index, scene_publish_cb_t scene_cb);
