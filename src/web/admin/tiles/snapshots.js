@@ -72,6 +72,7 @@
       ss_text_color: textOn
         ? String(document.getElementById(tab + '_tile_ss_text_color')?.value || '#FFFFFF').toUpperCase()
         : '',
+      ss_text_align: document.getElementById(tab + '_tile_ss_text_align')?.value === '1' ? '1' : '0',
     };
   }
   function loadScreensaverLookFields(tab, data) {
@@ -87,6 +88,8 @@
     if (textOn) textOn.checked = !!text;
     const color = document.getElementById(tab + '_tile_ss_text_color');
     if (color && text) color.value = text.toLowerCase();
+    const align = document.getElementById(tab + '_tile_ss_text_align');
+    if (align) align.value = String(data?.ss_text_align) === '1' ? '1' : '0';
     syncScreensaverLookFields(tab);
   }
   function resetScreensaverLookFields(tab) {
@@ -108,7 +111,7 @@
   }
   // The rest of the look as the screensaver tile previews show it (live and
   // cached grid): no outline without fill, hidden icon, whole-card opacity,
-  // own text color.
+  // own text color, text position.
   function applyScreensaverLookPreview(tileElem, look) {
     if (!tileElem) return;
     const empty = String(tileElem.dataset.type || '0') === '0';
@@ -124,6 +127,7 @@
     tileElem.classList.toggle('ss-text-colored', !!text);
     if (text) tileElem.style.setProperty('--ss-text-color', text);
     else tileElem.style.removeProperty('--ss-text-color');
+    tileElem.classList.toggle('ss-text-centered', !empty && String(look?.ss_text_align) === '1');
   }
 
   function collectTypeFieldValues(tab) {
@@ -191,7 +195,7 @@
     // data, its entity and options returned with the next tile in the slot.
     const tile = Number(snapshot?.type) === 0 ? {} : Object.assign({}, prev);
     const layout = normalizeSnapshotLayout(snapshot, index, tab);
-    const numericFields = ['type', 'sensor_decimals', 'sensor_value_font', 'sensor_display_mode', 'sensor_gauge_min', 'sensor_gauge_max', 'switch_style', 'navigate_target', 'popup_open_mode', 'key_code', 'key_modifier', 'background_opacity', 'icon_disc', 'icon_glow', 'ss_opacity', 'ss_fill', 'ss_icon'];
+    const numericFields = ['type', 'sensor_decimals', 'sensor_value_font', 'sensor_display_mode', 'sensor_gauge_min', 'sensor_gauge_max', 'switch_style', 'navigate_target', 'popup_open_mode', 'key_code', 'key_modifier', 'background_opacity', 'icon_disc', 'icon_glow', 'ss_opacity', 'ss_fill', 'ss_icon', 'ss_text_align'];
 
     tile.type = clampInt(snapshot?.type, 0, 255, Number(prev.type) || 0);
     tile.title = snapshot?.title || '';

@@ -1,5 +1,6 @@
 #include "src/ui/screensaver/image_screensaver.h"
 #include "src/ui/screensaver/screensaver_tile_shadow.h"
+#include "src/ui/screensaver/screensaver_clock_fill.h"
 #include "src/ui/popups/pin/pin_popup.h"
 #include "src/ui/ui_manager.h"
 
@@ -1173,6 +1174,15 @@ void rebuild_global_clock(ScreensaverState* st) {
       configManager.getConfig().language);
   st->clock_box = create_clock_widget(st->overlay, widget_config);
   if (!st->clock_box) return;
+  if (config.clock_fill) {
+    // A card behind the lines keeps the clock readable on bright or busy
+    // images; it grows the box, which stays centered on its position.
+    lv_obj_set_style_bg_color(st->clock_box, lv_color_hex(config.clock_fill_color), 0);
+    lv_obj_set_style_bg_opa(st->clock_box, config.clock_fill_opacity, 0);
+    lv_obj_set_style_radius(st->clock_box, screensaver_clock_fill::radius(), 0);
+    lv_obj_set_style_pad_hor(st->clock_box, screensaver_clock_fill::pad_x(), 0);
+    lv_obj_set_style_pad_ver(st->clock_box, screensaver_clock_fill::pad_y(), 0);
+  }
   lv_obj_add_event_cb(st->clock_box, on_global_clock_size_changed,
                       LV_EVENT_SIZE_CHANGED, st);
   lv_obj_update_layout(st->clock_box);

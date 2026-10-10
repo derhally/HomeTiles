@@ -2730,6 +2730,7 @@ function syncTileRadiusControls(tabEl) {
       ss_text_color: textOn
         ? String(document.getElementById(tab + '_tile_ss_text_color')?.value || '#FFFFFF').toUpperCase()
         : '',
+      ss_text_align: document.getElementById(tab + '_tile_ss_text_align')?.value === '1' ? '1' : '0',
     };
   }
   function loadScreensaverLookFields(tab, data) {
@@ -2745,6 +2746,8 @@ function syncTileRadiusControls(tabEl) {
     if (textOn) textOn.checked = !!text;
     const color = document.getElementById(tab + '_tile_ss_text_color');
     if (color && text) color.value = text.toLowerCase();
+    const align = document.getElementById(tab + '_tile_ss_text_align');
+    if (align) align.value = String(data?.ss_text_align) === '1' ? '1' : '0';
     syncScreensaverLookFields(tab);
   }
   function resetScreensaverLookFields(tab) {
@@ -2766,7 +2769,7 @@ function syncTileRadiusControls(tabEl) {
   }
   // The rest of the look as the screensaver tile previews show it (live and
   // cached grid): no outline without fill, hidden icon, whole-card opacity,
-  // own text color.
+  // own text color, text position.
   function applyScreensaverLookPreview(tileElem, look) {
     if (!tileElem) return;
     const empty = String(tileElem.dataset.type || '0') === '0';
@@ -2782,6 +2785,7 @@ function syncTileRadiusControls(tabEl) {
     tileElem.classList.toggle('ss-text-colored', !!text);
     if (text) tileElem.style.setProperty('--ss-text-color', text);
     else tileElem.style.removeProperty('--ss-text-color');
+    tileElem.classList.toggle('ss-text-centered', !empty && String(look?.ss_text_align) === '1');
   }
 
   function collectTypeFieldValues(tab) {
@@ -2849,7 +2853,7 @@ function syncTileRadiusControls(tabEl) {
     // data, its entity and options returned with the next tile in the slot.
     const tile = Number(snapshot?.type) === 0 ? {} : Object.assign({}, prev);
     const layout = normalizeSnapshotLayout(snapshot, index, tab);
-    const numericFields = ['type', 'sensor_decimals', 'sensor_value_font', 'sensor_display_mode', 'sensor_gauge_min', 'sensor_gauge_max', 'switch_style', 'navigate_target', 'popup_open_mode', 'key_code', 'key_modifier', 'background_opacity', 'icon_disc', 'icon_glow', 'ss_opacity', 'ss_fill', 'ss_icon'];
+    const numericFields = ['type', 'sensor_decimals', 'sensor_value_font', 'sensor_display_mode', 'sensor_gauge_min', 'sensor_gauge_max', 'switch_style', 'navigate_target', 'popup_open_mode', 'key_code', 'key_modifier', 'background_opacity', 'icon_disc', 'icon_glow', 'ss_opacity', 'ss_fill', 'ss_icon', 'ss_text_align'];
 
     tile.type = clampInt(snapshot?.type, 0, 255, Number(prev.type) || 0);
     tile.title = snapshot?.title || '';
@@ -5745,7 +5749,8 @@ function syncTileRadiusControls(tabEl) {
                                         ['_tile_ss_icon', 'change', 'tileSsIcon'],
                                         ['_tile_ss_opacity', 'input', 'tileSsOpacity'],
                                         ['_tile_ss_text_color_on', 'change', 'tileSsTextColorOn'],
-                                        ['_tile_ss_text_color', 'input', 'tileSsTextColor']]) {
+                                        ['_tile_ss_text_color', 'input', 'tileSsTextColor'],
+                                        ['_tile_ss_text_align', 'change', 'tileSsTextAlign']]) {
       bindLive(document.getElementById(prefix + suffix), event, key, () => {
         syncScreensaverLookFields(tab); updateTilePreview(tab); updateDraft(tab); scheduleAutoSave(tab);
       });
@@ -6910,6 +6915,10 @@ function syncTileRadiusControls(tabEl) {
       show_date: !!data?.show_date,
       show_weekday: !!data?.show_weekday,
       clock_shadow: !!data?.clock_shadow,
+      clock_fill: !!data?.clock_fill,
+      clock_fill_color: /^#[0-9a-f]{6}$/i.test(String(data?.clock_fill_color || ''))
+        ? String(data.clock_fill_color).toUpperCase() : '#000000',
+      clock_fill_opacity: Math.round(ssClamp(data?.clock_fill_opacity ?? 128, 0, 255)),
       time_format: Number(data?.time_format || 0),
       date_format: Number(data?.date_format || 0),
       time_alignment: Math.round(ssClamp(data?.time_alignment ?? 1, 0, 2)),
@@ -7571,7 +7580,7 @@ function syncTileRadiusControls(tabEl) {
     if (typeof tile.icon_colors === 'string') fd.append('icon_colors', tile.icon_colors);
     // Per-tile screensaver look; the server reads it on the screensaver grid
     // only, and older exports without it import the defaults.
-    for (const key of ['ss_opacity', 'ss_fill', 'ss_icon', 'ss_text_color']) {
+    for (const key of ['ss_opacity', 'ss_fill', 'ss_icon', 'ss_text_color', 'ss_text_align']) {
       if (tile[key] !== undefined && tile[key] !== null) fd.append(key, tile[key]);
     }
 
@@ -9979,6 +9988,15 @@ function syncTileRadiusControls(tabEl) {
     return ['left', 'center', 'right'][ssClockAlignment(value)];
   }
 
+  // Card behind the clock (ScreensaverConfigData::clock_fill).
+  function ssClockFillColor(value) {
+    return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value).toUpperCase() : '#000000';
+  }
+
+  function ssClockFillOpacity(value) {
+    return Math.round(ssClamp(value ?? 128, 0, 255));
+  }
+
   function getScreensaverClockPreviewDate(d) {
     if (!d) return '';
     const weekdayNames = getClockPreviewLanguage().toLowerCase().startsWith('de')
@@ -9996,6 +10014,9 @@ function syncTileRadiusControls(tabEl) {
     data.date_font_size = ssNearestClockFont(data.date_font_size || 28, true);
     data.time_alignment = ssClockAlignment(data.time_alignment);
     data.date_alignment = ssClockAlignment(data.date_alignment);
+    data.clock_fill = !!data.clock_fill;
+    data.clock_fill_color = ssClockFillColor(data.clock_fill_color);
+    data.clock_fill_opacity = ssClockFillOpacity(data.clock_fill_opacity);
     data.tile_border = data.tile_border !== false;
     data.wallpapers = Array.isArray(data.wallpapers) ? data.wallpapers : [];
     data.duration_seconds = Math.round(ssClamp(
@@ -10105,6 +10126,9 @@ function syncTileRadiusControls(tabEl) {
       show_date: !!d.show_date,
       show_weekday: !!d.show_weekday,
       clock_shadow: !!d.clock_shadow,
+      clock_fill: !!d.clock_fill,
+      clock_fill_color: ssClockFillColor(d.clock_fill_color),
+      clock_fill_opacity: ssClockFillOpacity(d.clock_fill_opacity),
       time_format: Number(d.time_format || 0),
       date_format: Number(d.date_format || 0),
       time_alignment: ssClockAlignment(d.time_alignment),
@@ -10355,6 +10379,20 @@ function syncTileRadiusControls(tabEl) {
     clock.hidden = false;
     clock.classList.toggle('clock-disabled', !d.show_time && !d.show_date && !d.show_weekday);
     clock.classList.toggle('clock-shadowed', !!d.clock_shadow);
+    // The panel's card behind the lines (screensaver_clock_fill.h).
+    if (d.clock_fill) {
+      const hex = ssClockFillColor(d.clock_fill_color);
+      const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+      clock.style.background = 'rgba(' + rgb.join(',') + ',' +
+        (ssClockFillOpacity(d.clock_fill_opacity) / 255).toFixed(3) + ')';
+      clock.style.padding = (devicePx('--screensaver-clock-fill-pad-y', 8) * scale) + 'px ' +
+        (devicePx('--screensaver-clock-fill-pad-x', 16) * scale) + 'px';
+      clock.style.borderRadius = (devicePx('--screensaver-clock-fill-radius', 16) * scale) + 'px';
+    } else {
+      clock.style.background = '';
+      clock.style.padding = '';
+      clock.style.borderRadius = '';
+    }
     preview.classList.toggle('tiles-shadowed', !!d.tile_shadow);
     preview.classList.toggle('tiles-bordered', d.tile_border !== false);
     document.getElementById('screensaverUseWallpapers').checked = !!d.use_wallpapers;
@@ -10367,6 +10405,22 @@ function syncTileRadiusControls(tabEl) {
     document.getElementById('screensaverShowDate').checked = !!d.show_date;
     document.getElementById('screensaverShowWeekday').checked = !!d.show_weekday;
     document.getElementById('screensaverClockShadow').checked = !!d.clock_shadow;
+    const clockFill = document.getElementById('screensaverClockFill');
+    const clockFillColor = document.getElementById('screensaverClockFillColor');
+    const clockFillOpacity = document.getElementById('screensaverClockFillOpacity');
+    const clockFillOutput = document.getElementById('screensaverClockFillOpacityValue');
+    if (clockFill) clockFill.checked = !!d.clock_fill;
+    if (clockFillColor) {
+      clockFillColor.value = ssClockFillColor(d.clock_fill_color).toLowerCase();
+      clockFillColor.disabled = !d.clock_fill;
+    }
+    if (clockFillOpacity) {
+      clockFillOpacity.value = String(ssClockFillOpacity(d.clock_fill_opacity));
+      clockFillOpacity.disabled = !d.clock_fill;
+    }
+    if (clockFillOutput) {
+      clockFillOutput.textContent = Math.round(ssClockFillOpacity(d.clock_fill_opacity) * 100 / 255) + ' %';
+    }
     document.getElementById('screensaverTimeFont').value = String(d.time_font_size || 48);
     document.getElementById('screensaverDateFont').value = String(d.date_font_size || 28);
     document.getElementById('screensaverTimeAlignment').value = String(ssClockAlignment(d.time_alignment));
@@ -10532,6 +10586,19 @@ function syncTileRadiusControls(tabEl) {
     bind('screensaverShowDate', 'change', el => { screensaverDraft.show_date = el.checked; });
     bind('screensaverShowWeekday', 'change', el => { screensaverDraft.show_weekday = el.checked; });
     bind('screensaverClockShadow', 'change', el => { screensaverDraft.clock_shadow = el.checked; });
+    bind('screensaverClockFill', 'change', el => { screensaverDraft.clock_fill = el.checked; });
+    bind('screensaverClockFillColor', 'input', el => {
+      screensaverDraft.clock_fill_color = ssClockFillColor(el.value);
+    }, false);
+    bind('screensaverClockFillColor', 'change', el => {
+      screensaverDraft.clock_fill_color = ssClockFillColor(el.value);
+    });
+    bind('screensaverClockFillOpacity', 'input', el => {
+      screensaverDraft.clock_fill_opacity = ssClockFillOpacity(el.value);
+    }, false);
+    bind('screensaverClockFillOpacity', 'change', el => {
+      screensaverDraft.clock_fill_opacity = ssClockFillOpacity(el.value);
+    });
     bind('screensaverTimeFont', 'change', el => {
       screensaverDraft.time_font_size = ssNearestClockFont(el.value, false);
     });

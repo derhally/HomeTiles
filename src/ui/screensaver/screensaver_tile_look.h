@@ -5,8 +5,8 @@
 #include "src/tiles/config/tile_config.h"
 
 // Per-tile look of a screensaver tile (Tile::ss_*): the whole card's opacity,
-// whether its background is filled, whether its icon shows and an own text
-// color. Stored in /_screensaver/tile_looks.json by ScreensaverConfigStore;
+// whether its background is filled, whether its icon shows, an own text
+// color and the text position beside the icon. Stored in /_screensaver/tile_looks.json by ScreensaverConfigStore;
 // normal grids keep the defaults.
 namespace screensaver_tile_look {
 
@@ -44,8 +44,19 @@ inline String format_text_color(uint32_t stored) {
   return String(hex);
 }
 
+// Tile::ss_text_align. Standard keeps the title line even without a title, so
+// a lone value sits on the second line; centered puts the shown lines in the
+// middle of the icon row (compact_sensor_layout.h).
+inline constexpr uint8_t kTextAlignStandard = 0;
+inline constexpr uint8_t kTextAlignCentered = 1;
+
+inline uint8_t normalize_text_align(long raw) {
+  return raw == kTextAlignCentered ? kTextAlignCentered : kTextAlignStandard;
+}
+
 inline bool is_default(const Tile& tile) {
-  return tile.ss_opacity == 255 && tile.ss_fill && tile.ss_show_icon && !has_text_color(tile);
+  return tile.ss_opacity == 255 && tile.ss_fill && tile.ss_show_icon && !has_text_color(tile) &&
+         tile.ss_text_align == kTextAlignStandard;
 }
 
 inline void reset(Tile& tile) {
@@ -53,6 +64,7 @@ inline void reset(Tile& tile) {
   tile.ss_fill = true;
   tile.ss_show_icon = true;
   tile.ss_text_color = 0;
+  tile.ss_text_align = kTextAlignStandard;
 }
 
 }  // namespace screensaver_tile_look

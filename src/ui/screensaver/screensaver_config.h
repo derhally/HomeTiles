@@ -31,6 +31,11 @@ struct ScreensaverConfigData {
   bool show_date = true;
   bool show_weekday = false;
   bool clock_shadow = true;
+  // Optional card behind the clock so it stays readable on bright or busy
+  // images: fill color (RGB) and its opacity.
+  bool clock_fill = false;
+  uint32_t clock_fill_color = 0x000000;
+  uint8_t clock_fill_opacity = 128;
   uint8_t time_format = 0;
   uint8_t date_format = 0;
   uint8_t time_alignment = 1;  // 0=left, 1=center, 2=right

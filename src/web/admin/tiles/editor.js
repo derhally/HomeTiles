@@ -216,7 +216,8 @@
                                         ['_tile_ss_icon', 'change', 'tileSsIcon'],
                                         ['_tile_ss_opacity', 'input', 'tileSsOpacity'],
                                         ['_tile_ss_text_color_on', 'change', 'tileSsTextColorOn'],
-                                        ['_tile_ss_text_color', 'input', 'tileSsTextColor']]) {
+                                        ['_tile_ss_text_color', 'input', 'tileSsTextColor'],
+                                        ['_tile_ss_text_align', 'change', 'tileSsTextAlign']]) {
       bindLive(document.getElementById(prefix + suffix), event, key, () => {
         syncScreensaverLookFields(tab); updateTilePreview(tab); updateDraft(tab); scheduleAutoSave(tab);
       });

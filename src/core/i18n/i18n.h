@@ -364,6 +364,10 @@ struct Strings {
   const char* screensaver_tile_show_icon;
   const char* screensaver_tile_look_opacity;
   const char* screensaver_tile_text_color;
+  // Text position beside the icon (Tile::ss_text_align).
+  const char* screensaver_tile_text_position;
+  const char* screensaver_text_position_standard;
+  const char* screensaver_text_position_centered;
   const char* screensaver_hint;
   const char* screensaver_storage_hint;
   // Optional screensaver image URL template and its explanation.

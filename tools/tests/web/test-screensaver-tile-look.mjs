@@ -19,10 +19,10 @@ const fn = (source, name) => {
 // change rebuilds the card.
 const tileHeader = read('src/tiles/config/tile_config.h');
 for (const field of [/uint8_t ss_opacity = 255;/, /bool ss_fill = true;/, /bool ss_show_icon = true;/,
-                     /uint32_t ss_text_color = 0;/]) {
+                     /uint32_t ss_text_color = 0;/, /uint8_t ss_text_align = 0;/]) {
   assert.match(tileHeader, field);
 }
-assert.match(tileHeader, /a\.ss_opacity == b\.ss_opacity &&\s*a\.ss_fill == b\.ss_fill && a\.ss_show_icon == b\.ss_show_icon &&\s*a\.ss_text_color == b\.ss_text_color;/);
+assert.match(tileHeader, /a\.ss_opacity == b\.ss_opacity &&\s*a\.ss_fill == b\.ss_fill && a\.ss_show_icon == b\.ss_show_icon &&\s*a\.ss_text_color == b\.ss_text_color && a\.ss_text_align == b\.ss_text_align;/);
 
 // Persistence: written with the grid, read back on load and when a failed
 // save restores the stored grid; empty tiles drop their look.
@@ -41,7 +41,7 @@ assert.match(tiles, /tileConfig\.loadScreensaverGrid\(\*stored\)\) \{\n\s*screen
 
 // Endpoint: GET and POST use the same names, on the screensaver grid only;
 // partial requests keep the stored look.
-for (const key of ['ss_opacity', 'ss_fill', 'ss_icon', 'ss_text_color']) {
+for (const key of ['ss_opacity', 'ss_fill', 'ss_icon', 'ss_text_color', 'ss_text_align']) {
   assert.ok(tiles.includes(`\\"${key}\\":`), 'GET ' + key);
   assert.ok(tiles.includes(`server.hasArg("${key}")`), 'POST ' + key);
 }
@@ -119,6 +119,7 @@ const dom = {
   screensaver_tile_ss_opacity_value: element(),
   screensaver_tile_ss_text_color_on: element({checked: false}),
   screensaver_tile_ss_text_color: element({value: '#ffffff'}),
+  screensaver_tile_ss_text_align: element({value: '0'}),
 };
 const context = {document: {getElementById: id => dom[id] || null}};
 vm.createContext(context);
@@ -131,17 +132,17 @@ vm.runInContext([pick(layout, 'clampInt'), pick(snapshots, 'collectScreensaverLo
 const api = context.api;
 
 assert.deepEqual({...api.collectScreensaverLookFields('screensaver', '1')},
-  {ss_fill: '1', ss_icon: '1', ss_opacity: '255', ss_text_color: ''}, 'defaults');
+  {ss_fill: '1', ss_icon: '1', ss_opacity: '255', ss_text_color: '', ss_text_align: '0'}, 'defaults');
 assert.deepEqual({...api.collectScreensaverLookFields('screensaver', '0')}, {}, 'an empty tile has no look');
 assert.deepEqual({...api.collectScreensaverLookFields('folder0', '1')}, {}, 'normal grids have no look');
 
-api.loadScreensaverLookFields('screensaver', {ss_fill: 0, ss_icon: 0, ss_opacity: 128, ss_text_color: '#00FF00'});
+api.loadScreensaverLookFields('screensaver', {ss_fill: 0, ss_icon: 0, ss_opacity: 128, ss_text_color: '#00FF00', ss_text_align: 1});
 assert.equal(dom.screensaver_tile_ss_fill.checked, false);
 assert.equal(dom.screensaver_tile_ss_icon.checked, false);
 assert.equal(dom.screensaver_tile_ss_opacity_value.textContent, '50 %');
 assert.equal(dom.screensaver_tile_ss_text_color.disabled, false);
 const saved = {...api.collectScreensaverLookFields('screensaver', '1')};
-assert.deepEqual(saved, {ss_fill: '0', ss_icon: '0', ss_opacity: '128', ss_text_color: '#00FF00'}, 'round trip');
+assert.deepEqual(saved, {ss_fill: '0', ss_icon: '0', ss_opacity: '128', ss_text_color: '#00FF00', ss_text_align: '1'}, 'round trip');
 
 const tile = element({dataset: {type: '1'}});
 api.applyScreensaverLookPreview(tile, saved);
@@ -150,10 +151,11 @@ assert.ok(tile.classList.contains('ss-no-fill') && tile.classList.contains('tile
 assert.ok(tile.classList.contains('ss-icon-hidden') && tile.classList.contains('ss-text-colored'));
 assert.equal(tile.style.opacity, '0.502');
 assert.equal(tile.style.props['--ss-text-color'], '#00FF00');
+assert.ok(tile.classList.contains('ss-text-centered'), 'centered text position');
 
 api.resetScreensaverLookFields('screensaver');
 assert.deepEqual({...api.collectScreensaverLookFields('screensaver', '1')},
-  {ss_fill: '1', ss_icon: '1', ss_opacity: '255', ss_text_color: ''}, 'reset');
+  {ss_fill: '1', ss_icon: '1', ss_opacity: '255', ss_text_color: '', ss_text_align: '0'}, 'reset');
 assert.equal(dom.screensaver_tile_ss_text_color.disabled, true);
 const empty = element({dataset: {type: '0'}});
 empty.style.opacity = '0.5';
@@ -162,12 +164,12 @@ assert.equal(empty.style.opacity, '', 'an emptied slot drops the old opacity');
 
 // Every path carries the look: editor bindings, drafts, snapshots, both
 // previews and the import.
-assert.match(snapshots, /'icon_disc', 'icon_glow', 'ss_opacity', 'ss_fill', 'ss_icon'\];/);
+assert.match(snapshots, /'icon_disc', 'icon_glow', 'ss_opacity', 'ss_fill', 'ss_icon', 'ss_text_align'\];/);
 assert.match(snapshots, /syncIconDiscFields\(tab\);\n\s*loadScreensaverLookFields\(tab, data\);/);
 assert.match(snapshots, /collectScreensaverLookFields\(prefix, typeValue\)\);/);
 assert.match(read('src/web/admin/tiles/editor.js'), /\['_tile_ss_text_color', 'input', 'tileSsTextColor'\]/);
 assert.match(read('src/web/admin/tiles/live-preview.js'), /const opacity = screensaverLookFilled\(look\) \? screensaverTileOpacity\(\) : 0;/);
 assert.match(read('src/web/admin/tiles/grid-preview.js'), /const opacity = screensaverLookFilled\(tile\) \? screensaverTileOpacity\(\) : 0;/);
-assert.match(read('src/web/admin/tiles/import-export.js'), /for \(const key of \['ss_opacity', 'ss_fill', 'ss_icon', 'ss_text_color'\]\)/);
+assert.match(read('src/web/admin/tiles/import-export.js'), /for \(const key of \['ss_opacity', 'ss_fill', 'ss_icon', 'ss_text_color', 'ss_text_align'\]\)/);
 assert.match(read('src/web/assets/admin.css'), /\.screensaver-tile-grid > \.tile\.ss-icon-hidden \.tile-icon \{ visibility:hidden; \}/);
 console.log('Screensaver tile look: per-tile opacity, fill, icon and text color stored, served, drawn and previewed');

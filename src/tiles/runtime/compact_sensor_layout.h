@@ -55,10 +55,17 @@ inline int text_top(bool with_value, uint8_t value_choice = 0) {
                     (with_value ? value_font(value_choice)->line_height + text_gap() : 0);
   return std::max<int>(0, (header_height() - block) / 2);
 }
+// Top of a value line without a title, centered on the disc row. Used by
+// screensaver tiles whose text is centered on the icon (Tile::ss_text_align).
+inline int value_only_top(uint8_t value_choice = 0) {
+  return std::max<int>(0, (header_height() - value_font(value_choice)->line_height) / 2);
+}
 // Half-height tile content (icon disc, title and value lines) on a card of the
 // given width. Overlays that look like a half-height tile use it directly.
+// Without `center_text` a value keeps the title line above it even when there
+// is no title; with it a lone value is centered on the disc row.
 inline void apply_content(lv_obj_t* card, lv_obj_t* icon, lv_obj_t* title, lv_obj_t* value, int width,
-                          uint8_t value_choice = 0) {
+                          uint8_t value_choice = 0, bool center_text = false) {
   lv_obj_set_style_pad_all(card, 0, 0);
   const int margin = inset();
   const int height = header_height();
@@ -79,6 +86,10 @@ inline void apply_content(lv_obj_t* card, lv_obj_t* icon, lv_obj_t* title, lv_ob
   if (title) {
     if (auto* state = hometiles_title::state_for(title)) state->single_line = true;
   }
+  if (center_text && !title && value) {
+    text(value, value_font(value_choice), value_only_top(value_choice));
+    return;
+  }
   const int text_y = text_top(value != nullptr, value_choice);
   text(title, title_font(), text_y);
   text(value, value_font(value_choice), text_y + title_font()->line_height + text_gap());
@@ -87,6 +98,6 @@ inline void apply(lv_obj_t* card, lv_obj_t* icon, lv_obj_t* title, lv_obj_t* val
   apply_fractional_tile_geometry(card, tile);
   apply_content(card, icon, title, value,
                 tile_geometry::extent(tile.col, tile.span_w, GRID_CELL_W, GRID_GAP),
-                tile.sensor_value_font);
+                tile.sensor_value_font, tile.ss_text_align == 1);
 }
 }  // namespace compact_sensor_layout

@@ -566,6 +566,9 @@ static void appendTileTabHTML(
         tileStyle += screensaver_tile_look::format_text_color(tile.ss_text_color);
         tileStyle += ";";
       }
+      if (tile.ss_text_align == screensaver_tile_look::kTextAlignCentered) {
+        cssClass += " ss-text-centered";
+      }
     }
 
     if (tile_geometry::fraction_bits(col, row, span_w, span_h)) {
@@ -1086,6 +1089,17 @@ static void appendTileTabHTML(
     html += tr.screensaver_clock_shadow;
     html += R"html(</label>
                   </div>
+                  <div class="screensaver-clock-fill">
+                    <div class="screensaver-tile-look-text">
+                      <label class="inline-checkbox"><input id="screensaverClockFill" type="checkbox"> )html";
+    appendHtmlEscaped(html, tr.screensaver_tile_fill);
+    html += R"html(</label>
+                      <input type="color" id="screensaverClockFillColor" value="#000000">
+                    </div>
+                    <label class="screensaver-tile-look-opacity"><span>)html";
+    appendHtmlEscaped(html, tr.screensaver_tile_look_opacity);
+    html += R"html(</span><input type="range" id="screensaverClockFillOpacity" min="0" max="255" step="1" value="128"><output id="screensaverClockFillOpacityValue">50 %</output></label>
+                  </div>
                   <div class="screensaver-two-fields">
                     <label>)html";
     html += tr.time_font_size;
@@ -1285,7 +1299,7 @@ static void appendTileTabHTML(
   append_tile_color_from_icon_html(html, tab_id);
   if (screensaver_mode) {
     // Per-tile screensaver look (screensaver_tile_look.h): fill, icon,
-    // whole-card opacity and an own text color.
+    // whole-card opacity, an own text color and the text position.
     html += R"html(            <div class="screensaver-tile-look">
               <label class="inline-checkbox"><input type="checkbox" id=")html";
     html += tab_id;
@@ -1314,6 +1328,15 @@ static void appendTileTabHTML(
     html += tab_id;
     html += R"html(_tile_ss_text_color" value="#FFFFFF">
               </div>
+              <label class="screensaver-tile-look-align"><span>)html";
+    appendHtmlEscaped(html, tr.screensaver_tile_text_position);
+    html += R"html(</span><select id=")html";
+    html += tab_id;
+    html += R"html(_tile_ss_text_align"><option value="0">)html";
+    appendHtmlEscaped(html, tr.screensaver_text_position_standard);
+    html += R"html(</option><option value="1">)html";
+    appendHtmlEscaped(html, tr.screensaver_text_position_centered);
+    html += R"html(</option></select></label>
             </div>
 )html";
   }

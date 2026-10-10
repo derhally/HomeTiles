@@ -8,6 +8,7 @@
 #include "src/tiles/icons/mdi_icons.h"
 #include "src/ui/shared/tone_color.h"
 #include "src/ui/screensaver/screensaver_tile_shadow.h"
+#include "src/ui/screensaver/screensaver_clock_fill.h"
 
 namespace {
 
@@ -201,6 +202,10 @@ void appendPreviewScaleVars(String& html) {
   emit_compact_tops("compact-title-top-24", "compact-value-top-24", 2);
   emit_compact_tops("compact-title-top-28", "compact-value-top-28", 5);
   emit_scaled("compact-title-only-top", compact_sensor_layout::text_top(false));
+  // A lone value centered on the disc row (screensaver Text position).
+  emit_scaled("compact-value-only-top", compact_sensor_layout::value_only_top(0));
+  emit_scaled("compact-value-only-top-24", compact_sensor_layout::value_only_top(2));
+  emit_scaled("compact-value-only-top-28", compact_sensor_layout::value_only_top(5));
   emit_scaled("compact-row", compact_sensor_layout::header_height());
 
   for (const PreviewFontSize& size : kPreviewFontSizes) {
@@ -216,6 +221,9 @@ void appendPreviewScaleVars(String& html) {
     emit_device_px(name, size.rendered);
   }
   emit_device_px("screensaver-clock-gap", tile_layout::scale(6));
+  emit_device_px("screensaver-clock-fill-pad-x", screensaver_clock_fill::pad_x());
+  emit_device_px("screensaver-clock-fill-pad-y", screensaver_clock_fill::pad_y());
+  emit_device_px("screensaver-clock-fill-radius", screensaver_clock_fill::radius());
   // The screensaver tile shadow: LVGL blurs over the shadow width, CSS over
   // twice its blur radius.
   emit_scaled("screensaver-tile-shadow-blur", screensaver_tile_shadow::kWidth / 2.0f);

@@ -1110,8 +1110,13 @@
       color:var(--ss-text-color) !important;
     }
     .screensaver-tile-look { display:grid; gap:6px; margin-top:8px; }
+    .screensaver-clock-fill { display:grid; gap:6px; margin:8px 0; }
+    .screensaver-clock-fill input[type="color"]:disabled,
+    .screensaver-clock-fill input[type="range"]:disabled { opacity:.4; }
     .screensaver-tile-look-opacity,
-    .screensaver-tile-look-text { display:flex; align-items:center; gap:8px; }
+    .screensaver-tile-look-text,
+    .screensaver-tile-look-align { display:flex; align-items:center; gap:8px; }
+    .screensaver-tile-look-align select { flex:1; min-width:0; }
     .screensaver-tile-look-opacity input[type="range"] { flex:1; min-width:0; }
     .screensaver-tile-look-text input[type="color"]:disabled { opacity:.4; }
     /* The hairline sits on the outer card edge. A child overlay would be
@@ -2866,6 +2871,13 @@
 .tile.sensor-compact.compact-title-only > .tile-title {
   top:calc(var(--compact-title-only-top, max(0px, (var(--compact-h) - var(--compact-title-line)) / 2)) + var(--compact-title-dy, 0px));
 }
+/* Screensaver Text position "Centered on icon": a value without a title is
+   centered on the disc row (compact_sensor_layout::value_only_top). */
+.tile.sensor-compact.ss-text-centered:not(:has(> .tile-title)) > .tile-value {
+  top:calc(var(--compact-value-only-top, max(0px, (var(--compact-h) - var(--compact-value-line)) / 2)) + var(--compact-value-dy, 0px));
+}
+.tile.sensor-compact.compact-value-24 { --compact-value-only-top:var(--compact-value-only-top-24); }
+.tile.sensor-compact.compact-value-28 { --compact-value-only-top:var(--compact-value-only-top-28); }
 .tile.sensor-half .tile-gauge, .tile.sensor-half .tile-graph { display:none; }
 
 .tile.sensor-compact .tile-title-lines { display:block; top:0; transform:none; white-space:nowrap; }

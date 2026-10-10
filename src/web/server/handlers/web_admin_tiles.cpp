@@ -432,7 +432,8 @@ void WebAdminServer::handleGetTiles() {
       out += tile.ss_show_icon ? "1" : "0";
       out += ",\"ss_text_color\":\"";
       out += screensaver_tile_look::format_text_color(tile.ss_text_color);
-      out += "\"";
+      out += "\",\"ss_text_align\":";
+      out += String(tile.ss_text_align);
     }
     out += ",\"col\":";
     out += String(tile.col);
@@ -684,6 +685,9 @@ void WebAdminServer::handleSaveTiles() {
     if (server.hasArg("ss_icon")) tile.ss_show_icon = server.arg("ss_icon").toInt() != 0;
     if (server.hasArg("ss_text_color")) {
       tile.ss_text_color = screensaver_tile_look::parse_text_color(server.arg("ss_text_color"));
+    }
+    if (server.hasArg("ss_text_align")) {
+      tile.ss_text_align = screensaver_tile_look::normalize_text_align(server.arg("ss_text_align").toInt());
     }
   }
 

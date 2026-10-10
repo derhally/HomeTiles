@@ -163,6 +163,7 @@ bool save_tile_looks(const TileGridConfig& grid) {
     item["icon"] = tile.ss_show_icon;
     const String text = screensaver_tile_look::format_text_color(tile.ss_text_color);
     if (text.length()) item["text"] = text;
+    if (tile.ss_text_align != screensaver_tile_look::kTextAlignStandard) item["align"] = tile.ss_text_align;
   }
   fs::FS& fs = Device::storageFS();
   if (looks.size() == 0) {
@@ -318,6 +319,10 @@ bool ScreensaverConfigStore::loadPath(const char* path) {
   loaded.show_date = doc["show_date"] | true;
   loaded.show_weekday = doc["show_weekday"] | false;
   loaded.clock_shadow = doc["clock_shadow"] | true;
+  loaded.clock_fill = doc["clock_fill"] | false;
+  loaded.clock_fill_color =
+      screensaver_tile_look::parse_text_color(String(doc["clock_fill_color"] | "#000000")) & 0xFFFFFFu;
+  loaded.clock_fill_opacity = static_cast<uint8_t>(constrain(doc["clock_fill_opacity"] | 128, 0, 255));
   loaded.time_format = doc["time_format"] | 0;
   loaded.date_format = doc["date_format"] | 0;
   loaded.time_alignment = doc["time_alignment"] | 1;
@@ -462,6 +467,10 @@ String ScreensaverConfigStore::toJson(bool include_device_meta) const {
   doc["show_date"] = data_.show_date;
   doc["show_weekday"] = data_.show_weekday;
   doc["clock_shadow"] = data_.clock_shadow;
+  doc["clock_fill"] = data_.clock_fill;
+  doc["clock_fill_color"] = screensaver_tile_look::format_text_color(
+      screensaver_tile_look::kTextColorSet | data_.clock_fill_color);
+  doc["clock_fill_opacity"] = data_.clock_fill_opacity;
   doc["time_format"] = data_.time_format;
   doc["date_format"] = data_.date_format;
   doc["time_alignment"] = data_.time_alignment;
@@ -653,6 +662,7 @@ void ScreensaverConfigStore::applyStoredTileLooks(TileGridConfig& grid) const {
     tile.ss_fill = item["fill"] | true;
     tile.ss_show_icon = item["icon"] | true;
     tile.ss_text_color = screensaver_tile_look::parse_text_color(String(item["text"] | ""));
+    tile.ss_text_align = screensaver_tile_look::normalize_text_align(item["align"] | 0);
   }
 }
 
