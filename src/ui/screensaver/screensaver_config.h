@@ -40,6 +40,9 @@ struct ScreensaverConfigData {
   uint16_t clock_x = 500;  // Center relative to the screen, 0..1000
   uint16_t clock_y = 350;
   uint16_t duration_seconds = 15;  // Global slide duration, 3..3600 s
+  // Optional http(s) template; when set it replaces the microSD images.
+  // ${width}, ${height} and ${timestamp} are filled in for every slide.
+  String image_url;
   std::vector<ScreensaverWallpaperConfig> wallpapers;
 };
 

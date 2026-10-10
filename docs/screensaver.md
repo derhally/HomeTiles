@@ -39,6 +39,20 @@ A slideshow needs microSD support. The Waveshare S3 LCD-4 Rev 4.0 and S3 LCD-4B 
 
 If an image stays black, re-export it at the display's native size with these settings. A large camera photo or progressive JPEG may fail even if the filename ends in `.jpg`.
 
+## Load Images from a URL { data-toc-label="Image URL" }
+
+Instead of the microSD card, the slideshow can load every image from a web address. Enter it under **Image URL** in the slideshow settings and keep **Use images** enabled; the URL replaces the card's images while it is set and works without a card.
+
+HomeTiles fills in these placeholders before every download:
+
+| Placeholder | Value |
+| --- | --- |
+| `${width}` | Display width in pixels |
+| `${height}` | Display height in pixels |
+| `${timestamp}` | Current Unix time, so every slide asks for a new image |
+
+For example, `https://images.example.net/${width}/${height}?random=${timestamp}` becomes `https://images.example.net/1024/600?random=1791638329` on a 1024×600 display. The service must return a baseline JPEG (see [Image Requirements](#image-requirements)) of at most 4 MB. The image is shown centered and cropped to the screen, so return it at the display's size. A new image is requested after each **Duration**; while it downloads, the previous image stays visible. If a download fails, the next attempt follows after the duration, at most 30 seconds later.
+
 ## Configure the Slideshow { data-toc-label="Slideshow settings" }
 
 In the Web Admin's **Screensaver** tab, click the background.
@@ -52,6 +66,7 @@ In the Web Admin's **Screensaver** tab, click the background.
 | --- | --- |
 | **Use images** | Enable the slideshow instead of a black background |
 | **Shuffle** | Choose images randomly |
+| **Image URL** | Load every image from a web address instead of the card ([details](#load-images-from-a-url)) |
 | **Tile shadows / Tile borders** | Style the overlay tiles |
 | **Image checkboxes** | Include or exclude files |
 | **Arrow buttons** | Change the image order |

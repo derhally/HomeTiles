@@ -361,6 +361,9 @@ struct Strings {
   const char* screensaver_background_opacity;
   const char* screensaver_hint;
   const char* screensaver_storage_hint;
+  // Optional screensaver image URL template and its explanation.
+  const char* screensaver_image_url;
+  const char* screensaver_image_url_hint;
   const char* screensaver_no_wallpapers;
   const char* js_screensaver_saved;
   const char* js_screensaver_save_failed;
