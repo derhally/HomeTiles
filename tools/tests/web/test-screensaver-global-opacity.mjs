@@ -42,7 +42,7 @@ for (const file of ['autosave', 'clipboard', 'drafts', 'editor', 'grid-preview',
   assert.doesNotMatch(read(`src/web/admin/tiles/${file}.js`), /screensaver_tile_opacity/, file + ' still reads a per-tile opacity');
 }
 for (const file of ['grid-preview', 'live-preview']) {
-  assert.match(read(`src/web/admin/tiles/${file}.js`), /const opacity = screensaverTileOpacity\(\);/, file);
+  assert.match(read(`src/web/admin/tiles/${file}.js`), /const opacity = screensaverLookFilled\((?:look|tile)\) \? screensaverTileOpacity\(\) : 0;/, file);
 }
 const editor = read('src/web/admin/screensaver/editor.js');
 assert.match(editor, /tile_opacity: Math\.round\(ssClamp\(d\.tile_opacity \?\? SCREENSAVER_TILE_DEFAULT_OPACITY, 0, 255\)\),/);
@@ -51,7 +51,7 @@ assert.match(editor, /bind\('screensaverTileOpacity', 'change', el => \{ screens
 
 // Its label in every language.
 const i18n = read('src/core/i18n/i18n.cpp');
-for (const label of ['"Kachel-Deckkraft",', '"Tile opacity",', '"Opacité des tuiles",']) assert.ok(i18n.includes(label), label);
+for (const label of ['"Füll-Deckkraft",', '"Fill opacity",', '"Opacité du fond",', '"Krycie wypełnienia",']) assert.ok(i18n.includes(label), label);
 console.log('Screensaver tile opacity: one global value, taken over from the tiles, used by panel and previews');
 
 // The footer (user 2026-10-02): checkboxes in one column, the sliders with

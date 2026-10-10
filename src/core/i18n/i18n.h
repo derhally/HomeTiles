@@ -359,6 +359,11 @@ struct Strings {
   const char* tile_group_icon;
   const char* tile_group_tile;
   const char* screensaver_background_opacity;
+  // Per-tile screensaver look (screensaver_tile_look.h).
+  const char* screensaver_tile_fill;
+  const char* screensaver_tile_show_icon;
+  const char* screensaver_tile_look_opacity;
+  const char* screensaver_tile_text_color;
   const char* screensaver_hint;
   const char* screensaver_storage_hint;
   // Optional screensaver image URL template and its explanation.

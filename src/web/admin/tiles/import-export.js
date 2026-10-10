@@ -693,6 +693,11 @@
     // Per-tile icon colors (Sensor family, Binary sensor, Energy); older
     // exports without the field import without icon colors.
     if (typeof tile.icon_colors === 'string') fd.append('icon_colors', tile.icon_colors);
+    // Per-tile screensaver look; the server reads it on the screensaver grid
+    // only, and older exports without it import the defaults.
+    for (const key of ['ss_opacity', 'ss_fill', 'ss_icon', 'ss_text_color']) {
+      if (tile[key] !== undefined && tile[key] !== null) fd.append(key, tile[key]);
+    }
 
     if ([21, 22, 23].includes(safeType)) fd.append('sensor_value_font', tile.sensor_value_font ?? 2);
     if (safeType === 1) {

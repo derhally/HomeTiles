@@ -37,12 +37,14 @@
     const glow = document.getElementById(tab + '_tile_icon_glow');
     if (glow) glow.checked = !['0', 'false'].includes(String(data?.icon_glow));
     syncIconDiscFields(tab);
+    loadScreensaverLookFields(tab, data);
   }
   function resetIconDiscFields(tab) {
     const box = document.getElementById(tab + '_tile_icon_disc');
     if (box) box.checked = true;
     const glow = document.getElementById(tab + '_tile_icon_glow');
     if (glow) glow.checked = true;
+    resetScreensaverLookFields(tab);
   }
   function syncIconDiscFields(tab) {
     const typeValue = document.getElementById(tab + '_tile_type')?.value || '0';
@@ -56,11 +58,80 @@
     document.getElementById(tab + '_weather_colored_icons_row')?.classList.toggle('hidden', !weather);
   }
 
+  // Per-tile screensaver look (screensaver_tile_look.h): whole-card opacity,
+  // background fill, icon visibility and an own text color. Only the
+  // screensaver tile editor has these fields.
+  function collectScreensaverLookFields(tab, typeValue) {
+    const fill = document.getElementById(tab + '_tile_ss_fill');
+    if (!fill || String(typeValue ?? '0') === '0') return {};
+    const textOn = document.getElementById(tab + '_tile_ss_text_color_on')?.checked === true;
+    return {
+      ss_fill: fill.checked ? '1' : '0',
+      ss_icon: document.getElementById(tab + '_tile_ss_icon')?.checked === false ? '0' : '1',
+      ss_opacity: String(clampInt(document.getElementById(tab + '_tile_ss_opacity')?.value, 0, 255, 255)),
+      ss_text_color: textOn
+        ? String(document.getElementById(tab + '_tile_ss_text_color')?.value || '#FFFFFF').toUpperCase()
+        : '',
+    };
+  }
+  function loadScreensaverLookFields(tab, data) {
+    const fill = document.getElementById(tab + '_tile_ss_fill');
+    if (!fill) return;
+    fill.checked = !['0', 'false'].includes(String(data?.ss_fill));
+    const icon = document.getElementById(tab + '_tile_ss_icon');
+    if (icon) icon.checked = !['0', 'false'].includes(String(data?.ss_icon));
+    const opacity = document.getElementById(tab + '_tile_ss_opacity');
+    if (opacity) opacity.value = String(clampInt(data?.ss_opacity, 0, 255, 255));
+    const text = /^#[0-9a-f]{6}$/i.test(String(data?.ss_text_color || '')) ? String(data.ss_text_color) : '';
+    const textOn = document.getElementById(tab + '_tile_ss_text_color_on');
+    if (textOn) textOn.checked = !!text;
+    const color = document.getElementById(tab + '_tile_ss_text_color');
+    if (color && text) color.value = text.toLowerCase();
+    syncScreensaverLookFields(tab);
+  }
+  function resetScreensaverLookFields(tab) {
+    loadScreensaverLookFields(tab, {});
+    const color = document.getElementById(tab + '_tile_ss_text_color');
+    if (color) color.value = '#ffffff';
+  }
+  function syncScreensaverLookFields(tab) {
+    const opacity = document.getElementById(tab + '_tile_ss_opacity');
+    const output = document.getElementById(tab + '_tile_ss_opacity_value');
+    if (opacity && output) output.textContent = Math.round(Number(opacity.value) * 100 / 255) + ' %';
+    const color = document.getElementById(tab + '_tile_ss_text_color');
+    if (color) color.disabled = document.getElementById(tab + '_tile_ss_text_color_on')?.checked !== true;
+  }
+  // A tile without fill draws its background at opacity 0, like the panel
+  // (apply_slot_look); tints keep that through data-bg-opacity.
+  function screensaverLookFilled(look) {
+    return !['0', 'false'].includes(String(look?.ss_fill));
+  }
+  // The rest of the look as the screensaver tile previews show it (live and
+  // cached grid): no outline without fill, hidden icon, whole-card opacity,
+  // own text color.
+  function applyScreensaverLookPreview(tileElem, look) {
+    if (!tileElem) return;
+    const empty = String(tileElem.dataset.type || '0') === '0';
+    const fill = empty || screensaverLookFilled(look);
+    const icon = empty || !['0', 'false'].includes(String(look?.ss_icon));
+    const opacity = empty ? 255 : clampInt(look?.ss_opacity, 0, 255, 255);
+    const text = !empty && /^#[0-9a-f]{6}$/i.test(String(look?.ss_text_color || ''))
+      ? String(look.ss_text_color) : '';
+    tileElem.classList.toggle('ss-no-fill', !fill);
+    if (!fill) tileElem.classList.add('tile-border-hidden');
+    tileElem.classList.toggle('ss-icon-hidden', !icon);
+    tileElem.style.opacity = opacity < 255 ? (opacity / 255).toFixed(3) : '';
+    tileElem.classList.toggle('ss-text-colored', !!text);
+    if (text) tileElem.style.setProperty('--ss-text-color', text);
+    else tileElem.style.removeProperty('--ss-text-color');
+  }
+
   function collectTypeFieldValues(tab) {
     const prefix = tab;
     const typeValue = document.getElementById(prefix + '_tile_type')?.value || '0';
     const meta = getTileTypeMeta(typeValue);
-    const out = collectIconDiscFields(prefix, typeValue);
+    const out = Object.assign(collectIconDiscFields(prefix, typeValue),
+                              collectScreensaverLookFields(prefix, typeValue));
     if (!meta.save) return out;
     const fd = new FormData();
     callTypeHandler(meta, 'save', prefix, fd);
@@ -120,7 +191,7 @@
     // data, its entity and options returned with the next tile in the slot.
     const tile = Number(snapshot?.type) === 0 ? {} : Object.assign({}, prev);
     const layout = normalizeSnapshotLayout(snapshot, index, tab);
-    const numericFields = ['type', 'sensor_decimals', 'sensor_value_font', 'sensor_display_mode', 'sensor_gauge_min', 'sensor_gauge_max', 'switch_style', 'navigate_target', 'popup_open_mode', 'key_code', 'key_modifier', 'background_opacity', 'icon_disc', 'icon_glow'];
+    const numericFields = ['type', 'sensor_decimals', 'sensor_value_font', 'sensor_display_mode', 'sensor_gauge_min', 'sensor_gauge_max', 'switch_style', 'navigate_target', 'popup_open_mode', 'key_code', 'key_modifier', 'background_opacity', 'icon_disc', 'icon_glow', 'ss_opacity', 'ss_fill', 'ss_icon'];
 
     tile.type = clampInt(snapshot?.type, 0, 255, Number(prev.type) || 0);
     tile.title = snapshot?.title || '';

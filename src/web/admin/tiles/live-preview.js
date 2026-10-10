@@ -151,6 +151,7 @@
     if (type === '0') {
       tileElem.classList.add('empty');
       tileElem.style.background = 'transparent';
+      if (isScreensaverTileTab(tab)) applyScreensaverLookPreview(tileElem, {});
       tileElem.innerHTML = '';
       applyTileAriaLabel(tileElem, '', type);
       if (wasActive) tileElem.classList.add('active');
@@ -174,13 +175,16 @@
     const tileBg = tileBackgroundCss(meta, isDefaultBg,
       isDefaultBg ? defaultBg : (color || defaultBg));
     if (isScreensaverTileTab(tab)) {
-      // One opacity for every screensaver tile (screensaver footer).
-      const opacity = screensaverTileOpacity();
+      // One opacity for every screensaver tile (screensaver footer); a tile
+      // without fill draws none.
+      const look = collectScreensaverLookFields(prefix, type);
+      const opacity = screensaverLookFilled(look) ? screensaverTileOpacity() : 0;
       tileElem.style.background = tileBackgroundCss(meta, isDefaultBg,
         isDefaultBg ? defaultBg : (color || defaultBg), opacity);
       tileElem.dataset.bgOpacity = String(opacity);
       // A fully transparent card casts no shadow (apply_slot_tile_shadows).
       tileElem.classList.toggle('screensaver-bg-clear', opacity === 0);
+      applyScreensaverLookPreview(tileElem, look);
     } else {
       tileElem.style.background = tileBg;
     }

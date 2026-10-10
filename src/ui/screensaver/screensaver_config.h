@@ -65,6 +65,9 @@ class ScreensaverConfigStore {
   // Sets only the RAM grid, normalized like a save, so an open screensaver
   // shows an edit before its flash write (replaceTileGrid follows).
   void previewTileGrid(const TileGridConfig& grid);
+  // Sets every tile's screensaver look (Tile::ss_*) from tile_looks.json;
+  // tiles without a stored look get the defaults.
+  void applyStoredTileLooks(TileGridConfig& grid) const;
   const Tile* tile(size_t index) const;
 
  private:

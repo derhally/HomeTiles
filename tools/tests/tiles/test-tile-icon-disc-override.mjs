@@ -53,9 +53,9 @@ for (const marker of ['tr.icon_disc_label', '_tile_icon_glow_row',
   assert.ok(html.includes(marker), `admin HTML: ${marker}`);
 }
 const snapshots = read('src/web/admin/tiles/snapshots.js');
-assert.match(snapshots, /const out = collectIconDiscFields\(prefix, typeValue\);\s*if \(!meta\.save\) return out;/,
+assert.match(snapshots, /const out = Object\.assign\(collectIconDiscFields\(prefix, typeValue\),\s*collectScreensaverLookFields\(prefix, typeValue\)\);\s*if \(!meta\.save\) return out;/,
   'Draft snapshots, copy/paste and autosave carry the mode for every type, including Back/Settings');
-assert.match(snapshots, /'background_opacity', 'icon_disc', 'icon_glow'\];/);
+assert.match(snapshots, /'background_opacity', 'icon_disc', 'icon_glow'(?:, 'ss_[a-z_]+')*\];/);
 assert.match(snapshots, /return !\['0', '16'\]\.includes\(String\(typeValue \?\? '0'\)\);/);
 for (const file of ['type-selection.js', 'drafts.js', 'clipboard.js']) {
   assert.ok(read(`src/web/admin/tiles/${file}`).includes('loadIconDiscFields(prefix, '), `${file} loads the mode`);

@@ -36,6 +36,7 @@
 #include "src/types/energy/energy_data.h"
 #include "src/ui/screensaver/screensaver_config.h"
 #include "src/ui/screensaver/screensaver_image_url.h"
+#include "src/ui/screensaver/screensaver_tile_look.h"
 #include "src/ui/screensaver/screensaver_url_fetch.h"
 #include "src/ui/tabs/tiles/tab_tiles_unified.h"
 #include "src/tiles/runtime/tile_icon_disc.h"
@@ -1418,6 +1419,8 @@ bool apply_wallpaper(ScreensaverState* st, int index, bool allow_fallback,
   return true;
 }
 
+void reapply_slot_looks(ScreensaverState* st);
+
 void refresh_slot_values(ScreensaverState* st) {
   if (!st) return;
   const TileGridConfig& grid = screensaverConfig.tileGrid();
@@ -1480,6 +1483,94 @@ void refresh_slot_values(ScreensaverState* st) {
   process_cover_update_queue();
   process_binary_sensor_update_queue();
   process_media_update_queue();
+  reapply_slot_looks(st);
+}
+
+// Per-tile look (screensaver_tile_look.h). The own text color lives in a
+// state selector the tile types never write: their state updates keep
+// setting the default color, and this one still wins on the marked labels.
+constexpr lv_style_selector_t kLookTextColor = LV_PART_MAIN | LV_STATE_USER_4;
+
+// MDI glyphs are 4-byte UTF-8 (U+F0000 and up, lead byte 0xF3): such a label
+// is an icon, even where a type drew it without a disc.
+bool is_icon_label(lv_obj_t* label) {
+  if (tile_icon_disc::disc_of(label)) return true;
+  const char* text = lv_label_get_text(label);
+  return text && static_cast<uint8_t>(text[0]) == 0xF3;
+}
+
+void set_opa_if_changed(lv_obj_t* obj, lv_style_prop_t prop, lv_opa_t opa,
+                        lv_style_selector_t selector) {
+  lv_style_value_t current;
+  if (lv_obj_get_local_style_prop(obj, prop, &current, selector) == LV_STYLE_RES_FOUND &&
+      current.num == opa) {
+    return;
+  }
+  lv_style_value_t value;
+  value.num = opa;
+  lv_obj_set_local_style_prop(obj, prop, value, selector);
+}
+
+// Walks the card once: hidden icons (and their discs) draw nothing, other
+// labels take the own text color. Controls keep their glyph colors, which
+// sit on their own fill. Only changes touch the styles, so the per-second
+// pass after state updates redraws nothing.
+void apply_look_to_children(lv_obj_t* obj, const Tile& tile, int depth) {
+  if (!obj || depth > 6) return;
+  const bool text_color = screensaver_tile_look::has_text_color(tile);
+  const lv_color_t color = lv_color_hex(screensaver_tile_look::text_rgb(tile));
+  const uint32_t count = lv_obj_get_child_count(obj);
+  for (uint32_t i = 0; i < count; ++i) {
+    lv_obj_t* child = lv_obj_get_child(obj, static_cast<int32_t>(i));
+    if (!child || tile_icon_disc::is_control(child)) continue;
+    if (tile_icon_disc::is_disc(child)) {
+      if (!tile.ss_show_icon) set_opa_if_changed(child, LV_STYLE_OPA, LV_OPA_TRANSP, 0);
+      continue;
+    }
+    if (lv_obj_check_type(child, &lv_label_class)) {
+      if (is_icon_label(child)) {
+        if (!tile.ss_show_icon) set_opa_if_changed(child, LV_STYLE_TEXT_OPA, LV_OPA_TRANSP, 0);
+      } else if (text_color) {
+        lv_style_value_t current;
+        if (lv_obj_get_local_style_prop(child, LV_STYLE_TEXT_COLOR, &current, kLookTextColor) !=
+                LV_STYLE_RES_FOUND ||
+            !lv_color_eq(current.color, color)) {
+          lv_obj_set_style_text_color(child, color, kLookTextColor);
+        }
+        if (!lv_obj_has_state(child, LV_STATE_USER_4)) lv_obj_add_state(child, LV_STATE_USER_4);
+      }
+    }
+    apply_look_to_children(child, tile, depth + 1);
+  }
+}
+
+// Whole-card opacity and the fill; the caller refreshes circles and controls
+// of a see-through card.
+void apply_slot_look(lv_obj_t* card, const Tile& tile) {
+  if (!card) return;
+  if (tile.ss_opacity < LV_OPA_COVER) {
+    // PRESSED too: Scene cards set a full pressed opacity.
+    set_opa_if_changed(card, LV_STYLE_OPA, tile.ss_opacity, LV_PART_MAIN | LV_STATE_DEFAULT);
+    set_opa_if_changed(card, LV_STYLE_OPA, tile.ss_opacity, LV_PART_MAIN | LV_STATE_PRESSED);
+  }
+  if (!tile.ss_fill) {
+    lv_obj_set_style_bg_opa(card, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(card, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_PRESSED);
+  }
+  apply_look_to_children(card, tile, 0);
+}
+
+// Hidden icons and the own text color again after state updates: a type may
+// create a label or show an icon label anew.
+void reapply_slot_looks(ScreensaverState* st) {
+  if (!st) return;
+  const TileGridConfig& grid = screensaverConfig.tileGrid();
+  for (size_t i = 0; i < TILES_PER_GRID; ++i) {
+    const Tile& tile = grid.tiles[i];
+    if (!st->slot_objs[i] || tile.type == TILE_EMPTY) continue;
+    if (tile.ss_show_icon && !screensaver_tile_look::has_text_color(tile)) continue;
+    apply_look_to_children(st->slot_objs[i], tile, 0);
+  }
 }
 
 // Apply the global shadow option to existing screensaver tiles so a
@@ -1512,11 +1603,12 @@ void apply_slot_tile_shadows(ScreensaverState* st) {
 void apply_slot_tile_borders(ScreensaverState* st) {
   if (!st || !st->slot_grid) return;
   const bool enabled = screensaverConfig.get().tile_border;
-  const uint32_t count = lv_obj_get_child_count(st->slot_grid);
-  for (uint32_t i = 0; i < count; ++i) {
-    lv_obj_t* card = lv_obj_get_child(st->slot_grid, i);
+  const TileGridConfig& grid = screensaverConfig.tileGrid();
+  for (size_t i = 0; i < TILES_PER_GRID; ++i) {
+    lv_obj_t* card = st->slot_objs[i];
     if (!card) continue;
-    ui_surface_style::apply_tile_border(card, enabled);
+    // A tile without fill draws only its content: no outline either.
+    ui_surface_style::apply_tile_border(card, enabled && grid.tiles[i].ss_fill);
   }
 }
 
@@ -1534,9 +1626,11 @@ lv_obj_t* build_slot_tile(ScreensaverState* st, size_t i, const Tile& tile) {
                           LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(tile_obj, opacity,
                           LV_PART_MAIN | LV_STATE_PRESSED);
+  // The tile's own look: whole-card opacity, fill, icon and text color.
+  apply_slot_look(tile_obj, tile);
   // Circles and controls of a see-through tile stay a veil over the
   // wallpaper (tone_color.h); the tile was built opaque.
-  if (opacity < LV_OPA_COVER) {
+  if (opacity < LV_OPA_COVER || !tile.ss_fill) {
     tile_icon_disc::refresh_fills(tile_obj);
     tile_icon_source::refresh_controls(tile_obj);
   }
@@ -1663,7 +1757,7 @@ bool update_slot_grid(ScreensaverState* st) {
     lv_obj_t* card = build_slot_tile(st, i, after);
     if (!card) continue;
     apply_slot_card_shadow(card, shadows);
-    ui_surface_style::apply_tile_border(card, borders);
+    ui_surface_style::apply_tile_border(card, borders && after.ss_fill);
     // Slot order, as after a full rebuild: a later card's shadow lies over
     // its neighbours. lv_obj_move_to_index invalidates the parent, here the
     // full-screen grid: one edit redrew the whole screen with the wallpaper,

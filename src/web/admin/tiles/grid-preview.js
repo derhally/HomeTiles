@@ -507,8 +507,9 @@
       const bg = tileBackgroundCss(meta, isDefaultBg,
         tileBgToHex(tile.bg_color, meta.defaultBg || '#353535'));
       if (isScreensaverTileTab(tab)) {
-        // One opacity for every screensaver tile (screensaver footer).
-        const opacity = screensaverTileOpacity();
+        // One opacity for every screensaver tile (screensaver footer); a
+        // tile without fill draws none.
+        const opacity = screensaverLookFilled(tile) ? screensaverTileOpacity() : 0;
         el.style.background = tileBackgroundCss(meta, isDefaultBg,
           tileBgToHex(tile.bg_color, meta.defaultBg || '#353535'), opacity);
         el.dataset.bgOpacity = String(opacity);
@@ -518,6 +519,7 @@
         el.style.background = bg;
       }
     }
+    if (isScreensaverTileTab(tab)) applyScreensaverLookPreview(el, typeValue === '0' ? {} : tile);
     const sensorValueClass = getSensorValueFontClass(tile.sensor_value_font);
     if (typeValue === '0') {
       el.innerHTML = '';

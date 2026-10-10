@@ -1101,6 +1101,19 @@
     .screensaver-tile-grid.tiles-shadowed > .tile:not(.empty):not(.screensaver-bg-clear):is(.active, [data-selected="1"]) {
       box-shadow:0 0 12px rgba(38,166,154,0.55), var(--screensaver-card-shadow);
     }
+    /* Per-tile screensaver look (image_screensaver.cpp apply_slot_look): a
+       hidden icon keeps its place like on the panel (text opacity 0), and an
+       own text color wins over the type's colors except the icon's. */
+    .screensaver-tile-grid > .tile.ss-icon-hidden .tile-icon { visibility:hidden; }
+    .screensaver-tile-grid > .tile.ss-text-colored,
+    .screensaver-tile-grid > .tile.ss-text-colored :not(.tile-icon):not(.tile-icon *) {
+      color:var(--ss-text-color) !important;
+    }
+    .screensaver-tile-look { display:grid; gap:6px; margin-top:8px; }
+    .screensaver-tile-look-opacity,
+    .screensaver-tile-look-text { display:flex; align-items:center; gap:8px; }
+    .screensaver-tile-look-opacity input[type="range"] { flex:1; min-width:0; }
+    .screensaver-tile-look-text input[type="color"]:disabled { opacity:.4; }
     /* The hairline sits on the outer card edge. A child overlay would be
        visibly indented by the transparent 3px editor border. */
     .tile-grid.tiles-bordered > .tile:not(.empty):not(.tile-border-hidden) {

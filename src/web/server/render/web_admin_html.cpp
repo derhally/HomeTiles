@@ -28,6 +28,7 @@
 #include "src/types/binary_sensor/renderer.h"
 #include "src/tiles/icons/mdi_icons.h"
 #include "src/tiles/runtime/tile_icon_disc.h"
+#include "src/ui/screensaver/screensaver_tile_look.h"
 #include "src/types/energy/energy_data.h"
 #include "src/ui/screensaver/screensaver_config.h"
 #include "src/video/local_camera/local_camera.h"
@@ -543,8 +544,28 @@ static void appendTileTabHTML(
     }
     // A fully transparent screensaver card casts no shadow
     // (apply_slot_tile_shadows).
-    if (screensaver_mode && tile.type != TILE_EMPTY && screensaverConfig.get().tile_opacity == 0) {
+    if (screensaver_mode && tile.type != TILE_EMPTY &&
+        (screensaverConfig.get().tile_opacity == 0 || !tile.ss_fill)) {
       cssClass += " screensaver-bg-clear";
+    }
+    // Per-tile screensaver look (image_screensaver.cpp apply_slot_look).
+    if (screensaver_mode && tile.type != TILE_EMPTY) {
+      if (!tile.ss_fill) {
+        cssClass += " ss-no-fill tile-border-hidden";
+        tileStyle += "background:transparent;";
+      }
+      if (!tile.ss_show_icon) cssClass += " ss-icon-hidden";
+      if (tile.ss_opacity < 255) {
+        tileStyle += "opacity:";
+        tileStyle += String(tile.ss_opacity / 255.0f, 3);
+        tileStyle += ";";
+      }
+      if (screensaver_tile_look::has_text_color(tile)) {
+        cssClass += " ss-text-colored";
+        tileStyle += "--ss-text-color:";
+        tileStyle += screensaver_tile_look::format_text_color(tile.ss_text_color);
+        tileStyle += ";";
+      }
     }
 
     if (tile_geometry::fraction_bits(col, row, span_w, span_h)) {
@@ -1262,6 +1283,40 @@ static void appendTileTabHTML(
   html += R"html(            </div>
 )html";
   append_tile_color_from_icon_html(html, tab_id);
+  if (screensaver_mode) {
+    // Per-tile screensaver look (screensaver_tile_look.h): fill, icon,
+    // whole-card opacity and an own text color.
+    html += R"html(            <div class="screensaver-tile-look">
+              <label class="inline-checkbox"><input type="checkbox" id=")html";
+    html += tab_id;
+    html += R"html(_tile_ss_fill" checked> )html";
+    appendHtmlEscaped(html, tr.screensaver_tile_fill);
+    html += R"html(</label>
+              <label class="inline-checkbox"><input type="checkbox" id=")html";
+    html += tab_id;
+    html += R"html(_tile_ss_icon" checked> )html";
+    appendHtmlEscaped(html, tr.screensaver_tile_show_icon);
+    html += R"html(</label>
+              <label class="screensaver-tile-look-opacity"><span>)html";
+    appendHtmlEscaped(html, tr.screensaver_tile_look_opacity);
+    html += R"html(</span><input type="range" id=")html";
+    html += tab_id;
+    html += R"html(_tile_ss_opacity" min="0" max="255" step="1" value="255"><output id=")html";
+    html += tab_id;
+    html += R"html(_tile_ss_opacity_value">100 %</output></label>
+              <div class="screensaver-tile-look-text">
+                <label class="inline-checkbox"><input type="checkbox" id=")html";
+    html += tab_id;
+    html += R"html(_tile_ss_text_color_on"> )html";
+    appendHtmlEscaped(html, tr.screensaver_tile_text_color);
+    html += R"html(</label>
+                <input type="color" id=")html";
+    html += tab_id;
+    html += R"html(_tile_ss_text_color" value="#FFFFFF">
+              </div>
+            </div>
+)html";
+  }
   html += R"html(
 
             <div class="tile-layout">
