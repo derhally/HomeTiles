@@ -13,6 +13,7 @@
 #include "src/network/network_manager.h"
 #include "src/ui/popups/camera/camera_popup.h"
 #include "src/video/local_camera/local_camera.h"
+#include "src/audio/speaker.h"
 
 namespace command_channel {
 
@@ -370,6 +371,8 @@ void handleData(const Header& header, const uint8_t* body, size_t length) {
     heap_caps_free(text);
   } else if (strcmp(header.name, "local_camera") == 0) {
     local_camera::handleCommandPayload(body, length);
+  } else if (strcmp(header.name, "audio") == 0) {
+    speaker::handleCommandPayload(body, length);
   }
 }
 
@@ -864,7 +867,8 @@ bool blocksPlaintext(const char* topic) {
   if (!topic || !g_state || g_state->pairing != PairingState::Active) return false;
   const char* camera_status = mqttTopics.topic(TopicKey::CAMERA_STAT);
   const bool blocked = (camera_status && strcmp(topic, camera_status) == 0) ||
-                       local_camera::isCommandTopic(topic);
+                       local_camera::isCommandTopic(topic) ||
+                       speaker::isCommandTopic(topic);
   if (blocked && logDue(&g_state->last_log_ms)) {
     Serial.printf("[SecureCmd] Unencrypted %s ignored while pairing is active\n", topic);
   }
