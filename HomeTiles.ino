@@ -47,6 +47,7 @@
 #include "src/ui/screensaver/screensaver_config.h"
 #include "src/io/hardware_io.h"
 #include "src/video/local_camera/local_camera.h"
+#include "src/audio/speaker.h"
 #include "src/network/secure/command_channel.h"
 #include "src/tiles/config/tile_config.h"
 #include "src/tiles/runtime/tile_renderer.h"
@@ -920,6 +921,9 @@ void setup() {
   local_camera::begin();
   // Optional encrypted Bridge commands; loads the stored pairing, if any.
   command_channel::begin();
+  // Speaker playback (exact speaker profiles); the codec probe also needs
+  // the touch-owned I2C bus.
+  speaker::begin();
   Serial.flush();
 
   if (has_config) {
@@ -1207,6 +1211,7 @@ void loop() {
     viewNavigationService();
       mqtt_process_inbound_queue();
       local_camera::service();
+      speaker::service();
       command_channel::service();
       loop_stall::enter(loop_stall::Step::SleepTiles);
       // Keep live tile state current during sleep. The paused refresh timer
@@ -1382,6 +1387,7 @@ void loop() {
     loop_stall::enter(loop_stall::Step::Services);
     viewNavigationService();
     local_camera::service();
+    speaker::service();
     command_channel::service();
     loop_stall::enter(loop_stall::Step::MqttInbound);
     // Keep S3 input service bounded when Home Assistant echoes a live slider
