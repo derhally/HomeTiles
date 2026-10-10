@@ -10,6 +10,7 @@
 #include <freertos/task.h>
 #include <string.h>
 
+#include "src/network/transport/network_transport.h"
 #include "src/web/server/web_admin.h"
 
 namespace screensaver_url_fetch {
@@ -39,6 +40,24 @@ QueueHandle_t g_results = nullptr;
 TaskHandle_t g_task = nullptr;
 volatile bool g_busy = false;
 
+// DNS and sockets go through the lwIP tcpip thread, which exists only once
+// the network is up: a lookup before that asserts (tcpip_send_msg_wait_sem
+// "Invalid mbox") and reboots the panel. A screensaver shown at boot with an
+// image URL hit this on every start. Only a connected transport with an
+// address may download; the slideshow retries later.
+bool network_ready() {
+  return networkTransport.isConnected() &&
+         static_cast<uint32_t>(networkTransport.localIP()) != 0;
+}
+
+void log_network_not_ready() {
+  static uint32_t last_log_ms = 0;
+  const uint32_t now = millis();
+  if (last_log_ms != 0 && now - last_log_ms < 30000) return;
+  last_log_ms = now | 1;
+  Serial.println("[ScreensaverURL] Skipped: network not connected yet");
+}
+
 bool network_budget_ok() {
   // TLS needs internal RAM for its record buffers; mirror media covers.
   constexpr size_t kMinInternalFree = 96U * 1024U;
@@ -52,6 +71,10 @@ bool network_budget_ok() {
 
 uint8_t* download(const char* url, size_t& out_length) {
   out_length = 0;
+  if (!network_ready()) {
+    log_network_not_ready();
+    return nullptr;
+  }
   if (!network_budget_ok()) {
     Serial.println("[ScreensaverURL] Skipped: low internal memory");
     return nullptr;
@@ -207,6 +230,10 @@ bool ensure_worker() {
 
 bool request(const String& url, uint32_t generation) {
   if (g_busy || !url.length() || url.length() >= kMaxUrlBytes) return false;
+  if (!network_ready()) {
+    log_network_not_ready();
+    return false;
+  }
   if (!ensure_worker()) {
     static uint32_t last_log_ms = 0;
     if (last_log_ms == 0 || millis() - last_log_ms > 30000) {
