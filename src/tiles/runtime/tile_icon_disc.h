@@ -147,10 +147,13 @@ inline bool see_through(lv_obj_t* card) {
   return !card || lv_obj_get_style_bg_opa(card, LV_PART_MAIN) < LV_OPA_COVER;
 }
 
-// The nearest opaque background behind `obj` (the tile card).
+// The nearest opaque background behind `obj` (the tile card). Tile cards are
+// buttons: a see-through screensaver card (low fill opacity, color None)
+// still gives its circle its own color; walking past it took the screen's
+// black and drew a dark circle (user 2026-10-10).
 inline lv_obj_t* card_of(lv_obj_t* obj) {
   lv_obj_t* host = obj ? lv_obj_get_parent(obj) : nullptr;
-  for (int depth = 0; host && depth < 3 &&
+  for (int depth = 0; host && depth < 3 && !lv_obj_check_type(host, &lv_button_class) &&
        lv_obj_get_style_bg_opa(host, LV_PART_MAIN) < LV_OPA_50; ++depth) {
     host = lv_obj_get_parent(host);
   }
