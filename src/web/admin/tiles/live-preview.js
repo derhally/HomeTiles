@@ -181,10 +181,10 @@
     const tileBg = bgNone ? 'transparent' : tileBackgroundCss(meta, isDefaultBg,
       isDefaultBg ? defaultBg : (color || defaultBg));
     if (isScreensaverTileTab(tab)) {
-      // One opacity for every screensaver tile (screensaver footer); a tile
-      // with color None draws none.
+      // The global fill opacity scaled by the tile's own Opacity; a tile with
+      // color None draws none.
       const look = collectScreensaverLookFields(prefix, type);
-      const opacity = bgNone ? 0 : screensaverTileOpacity();
+      const opacity = bgNone ? 0 : screensaverTileFillOpacity(look.ss_opacity);
       tileElem.style.background = tileBackgroundCss(meta, isDefaultBg,
         isDefaultBg ? defaultBg : (color || defaultBg), opacity);
       tileElem.dataset.bgOpacity = String(opacity);

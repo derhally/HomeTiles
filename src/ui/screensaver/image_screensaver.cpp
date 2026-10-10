@@ -1591,15 +1591,11 @@ void apply_look_to_children(lv_obj_t* obj, const Tile& tile, int depth) {
   }
 }
 
-// Whole-card opacity and the fill; the caller refreshes circles and controls
-// of a see-through card.
+// Tile color None, icon and text color; the fill opacity is set by
+// build_slot_tile. The caller refreshes circles and controls of a see-through
+// card.
 void apply_slot_look(lv_obj_t* card, const Tile& tile) {
   if (!card) return;
-  if (tile.ss_opacity < LV_OPA_COVER) {
-    // PRESSED too: Scene cards set a full pressed opacity.
-    set_opa_if_changed(card, LV_STYLE_OPA, tile.ss_opacity, LV_PART_MAIN | LV_STATE_DEFAULT);
-    set_opa_if_changed(card, LV_STYLE_OPA, tile.ss_opacity, LV_PART_MAIN | LV_STATE_PRESSED);
-  }
   if (tileBgTransparent(tile)) apply_transparent_tile_card(card);
   apply_look_to_children(card, tile, 0);
 }
@@ -1664,13 +1660,15 @@ lv_obj_t* build_slot_tile(ScreensaverState* st, size_t i, const Tile& tile) {
                                    GridType::SCREENSAVER, g_scene_callback);
   if (!tile_obj) return nullptr;
   st->slot_objs[i] = tile_obj;
-  // One opacity for all screensaver tiles (ScreensaverConfigData).
-  const lv_opa_t opacity = screensaverConfig.get().tile_opacity;
+  // The global fill opacity (ScreensaverConfigData), scaled by the tile's own
+  // Opacity; text and icon stay fully visible, like on the clock card.
+  const lv_opa_t opacity =
+      screensaver_tile_look::fill_opacity(screensaverConfig.get().tile_opacity, tile);
   lv_obj_set_style_bg_opa(tile_obj, opacity,
                           LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(tile_obj, opacity,
                           LV_PART_MAIN | LV_STATE_PRESSED);
-  // The tile's own look: whole-card opacity, fill, icon and text color.
+  // The tile's own look: None, icon and text color.
   apply_slot_look(tile_obj, tile);
   // Circles and controls of a see-through tile stay a veil over the
   // wallpaper (tone_color.h); the tile was built opaque.

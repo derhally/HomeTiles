@@ -27,7 +27,7 @@ assert.ok(load.indexOf('if (!tile_opacity_stored_)') > load.indexOf('tileConfig.
 
 // Panel: every card takes the global value; a new value rebuilds the cards.
 const screensaver = read('src/ui/screensaver/image_screensaver.cpp');
-assert.match(fn(screensaver, 'build_slot_tile'), /const lv_opa_t opacity = screensaverConfig\.get\(\)\.tile_opacity;/);
+assert.match(fn(screensaver, 'build_slot_tile'), /const lv_opa_t opacity =\s*screensaver_tile_look::fill_opacity\(screensaverConfig\.get\(\)\.tile_opacity, tile\);/);
 assert.doesNotMatch(screensaver, /tile\.background_opacity/);
 assert.match(fn(screensaver, 'refresh_live_background_and_clock'),
   /if \(st->built_opacity != screensaverConfig\.get\(\)\.tile_opacity\) \{\n\s*rebuild_slot_grid\(st\);\n\s*refresh_slot_values\(st\);/);
@@ -37,12 +37,12 @@ assert.match(fn(screensaver, 'remember_shown_grid'), /st->built_opacity = screen
 const html = read('src/web/server/render/web_admin_html.cpp');
 assert.match(html, /<input id=\\"screensaverTileOpacity\\" type=\\"range\\" min=\\"0\\" max=\\"255\\" step=\\"1\\" value=\\""/);
 assert.doesNotMatch(html, /screensaver_tile_opacity|has-opacity/);
-assert.match(html, /String\(screensaverConfig\.get\(\)\.tile_opacity \* 100\.0f \/ 255\.0f, 2\)/);
+assert.match(html, /String\(screensaver_tile_look::fill_opacity\(\s*screensaverConfig\.get\(\)\.tile_opacity, tile\) \* 100\.0f \/ 255\.0f, 2\)/);
 for (const file of ['autosave', 'clipboard', 'drafts', 'editor', 'grid-preview', 'live-preview', 'snapshots', 'type-selection']) {
   assert.doesNotMatch(read(`src/web/admin/tiles/${file}.js`), /screensaver_tile_opacity/, file + ' still reads a per-tile opacity');
 }
-assert.match(read('src/web/admin/tiles/grid-preview.js'), /const opacity = screensaverTileOpacity\(\);/, 'grid-preview');
-assert.match(read('src/web/admin/tiles/live-preview.js'), /const opacity = bgNone \? 0 : screensaverTileOpacity\(\);/, 'live-preview');
+assert.match(read('src/web/admin/tiles/grid-preview.js'), /const opacity = screensaverTileFillOpacity\(tile\.ss_opacity\);/, 'grid-preview');
+assert.match(read('src/web/admin/tiles/live-preview.js'), /const opacity = bgNone \? 0 : screensaverTileFillOpacity\(look\.ss_opacity\);/, 'live-preview');
 const editor = read('src/web/admin/screensaver/editor.js');
 assert.match(editor, /tile_opacity: Math\.round\(ssClamp\(d\.tile_opacity \?\? SCREENSAVER_TILE_DEFAULT_OPACITY, 0, 255\)\),/);
 assert.match(editor, /bind\('screensaverTileOpacity', 'input', el => \{\n\s*screensaverDraft\.tile_opacity = Number\(el\.value\);\n\s*refreshScreensaverTileOpacity\(\);\n\s*\}, false\);/);

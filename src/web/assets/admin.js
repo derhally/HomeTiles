@@ -2761,17 +2761,16 @@ function syncTileRadiusControls(tabEl) {
     if (color) color.disabled = document.getElementById(tab + '_tile_ss_text_color_on')?.checked !== true;
   }
   // The rest of the look as the screensaver tile previews show it (live and
-  // cached grid): hidden icon, whole-card opacity, own text color, text
-  // position. Tile color None is drawn by the background code.
+  // cached grid): hidden icon, own text color, text position. The tile's
+  // Opacity and color None are drawn by the background code.
   function applyScreensaverLookPreview(tileElem, look) {
     if (!tileElem) return;
     const empty = String(tileElem.dataset.type || '0') === '0';
     const icon = empty || !['0', 'false'].includes(String(look?.ss_icon));
-    const opacity = empty ? 255 : clampInt(look?.ss_opacity, 0, 255, 255);
     const text = !empty && /^#[0-9a-f]{6}$/i.test(String(look?.ss_text_color || ''))
       ? String(look.ss_text_color) : '';
     tileElem.classList.toggle('ss-icon-hidden', !icon);
-    tileElem.style.opacity = opacity < 255 ? (opacity / 255).toFixed(3) : '';
+    tileElem.style.opacity = '';
     tileElem.classList.toggle('ss-text-colored', !!text);
     if (text) tileElem.style.setProperty('--ss-text-color', text);
     else tileElem.style.removeProperty('--ss-text-color');
@@ -6294,10 +6293,10 @@ function syncTileRadiusControls(tabEl) {
     const tileBg = bgNone ? 'transparent' : tileBackgroundCss(meta, isDefaultBg,
       isDefaultBg ? defaultBg : (color || defaultBg));
     if (isScreensaverTileTab(tab)) {
-      // One opacity for every screensaver tile (screensaver footer); a tile
-      // with color None draws none.
+      // The global fill opacity scaled by the tile's own Opacity; a tile with
+      // color None draws none.
       const look = collectScreensaverLookFields(prefix, type);
-      const opacity = bgNone ? 0 : screensaverTileOpacity();
+      const opacity = bgNone ? 0 : screensaverTileFillOpacity(look.ss_opacity);
       tileElem.style.background = tileBackgroundCss(meta, isDefaultBg,
         isDefaultBg ? defaultBg : (color || defaultBg), opacity);
       tileElem.dataset.bgOpacity = String(opacity);
@@ -8295,8 +8294,8 @@ function syncTileRadiusControls(tabEl) {
       const bg = tileBackgroundCss(meta, isDefaultBg,
         tileBgToHex(tile.bg_color, meta.defaultBg || '#353535'));
       if (isScreensaverTileTab(tab)) {
-        // One opacity for every screensaver tile (screensaver footer).
-        const opacity = screensaverTileOpacity();
+        // The global fill opacity scaled by the tile's own Opacity.
+        const opacity = screensaverTileFillOpacity(tile.ss_opacity);
         el.style.background = tileBackgroundCss(meta, isDefaultBg,
           tileBgToHex(tile.bg_color, meta.defaultBg || '#353535'), opacity);
         el.dataset.bgOpacity = String(opacity);
@@ -9983,6 +9982,13 @@ function syncTileRadiusControls(tabEl) {
     const value = screensaverDraft?.tile_opacity ??
       document.getElementById('screensaverTileOpacity')?.value;
     return Math.round(ssClamp(value ?? SCREENSAVER_TILE_DEFAULT_OPACITY, 0, 255));
+  }
+
+  // Background opacity of one screensaver tile: its own Opacity scales the
+  // global fill opacity; text and icon stay (screensaver_tile_look::fill_opacity).
+  function screensaverTileFillOpacity(tileOpacity) {
+    const own = Math.round(ssClamp(tileOpacity ?? 255, 0, 255));
+    return Math.floor((screensaverTileOpacity() * own + 127) / 255);
   }
 
   // The new opacity on every screensaver tile preview and in the footer.

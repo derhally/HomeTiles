@@ -540,8 +540,8 @@
       const bg = tileBackgroundCss(meta, isDefaultBg,
         tileBgToHex(tile.bg_color, meta.defaultBg || '#353535'));
       if (isScreensaverTileTab(tab)) {
-        // One opacity for every screensaver tile (screensaver footer).
-        const opacity = screensaverTileOpacity();
+        // The global fill opacity scaled by the tile's own Opacity.
+        const opacity = screensaverTileFillOpacity(tile.ss_opacity);
         el.style.background = tileBackgroundCss(meta, isDefaultBg,
           tileBgToHex(tile.bg_color, meta.defaultBg || '#353535'), opacity);
         el.dataset.bgOpacity = String(opacity);

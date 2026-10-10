@@ -103,17 +103,16 @@
     if (color) color.disabled = document.getElementById(tab + '_tile_ss_text_color_on')?.checked !== true;
   }
   // The rest of the look as the screensaver tile previews show it (live and
-  // cached grid): hidden icon, whole-card opacity, own text color, text
-  // position. Tile color None is drawn by the background code.
+  // cached grid): hidden icon, own text color, text position. The tile's
+  // Opacity and color None are drawn by the background code.
   function applyScreensaverLookPreview(tileElem, look) {
     if (!tileElem) return;
     const empty = String(tileElem.dataset.type || '0') === '0';
     const icon = empty || !['0', 'false'].includes(String(look?.ss_icon));
-    const opacity = empty ? 255 : clampInt(look?.ss_opacity, 0, 255, 255);
     const text = !empty && /^#[0-9a-f]{6}$/i.test(String(look?.ss_text_color || ''))
       ? String(look.ss_text_color) : '';
     tileElem.classList.toggle('ss-icon-hidden', !icon);
-    tileElem.style.opacity = opacity < 255 ? (opacity / 255).toFixed(3) : '';
+    tileElem.style.opacity = '';
     tileElem.classList.toggle('ss-text-colored', !!text);
     if (text) tileElem.style.setProperty('--ss-text-color', text);
     else tileElem.style.removeProperty('--ss-text-color');

@@ -56,8 +56,17 @@ assert.match(look, /if \(text\.length\(\) != 7 \|\| text\[0\] != '#'\) return 0;
 // without fill, hidden icons and own text color through an unused state.
 const panel = read('src/ui/screensaver/image_screensaver.cpp');
 const apply = fn(panel, 'apply_slot_look');
-assert.match(apply, /set_opa_if_changed\(card, LV_STYLE_OPA, tile\.ss_opacity, LV_PART_MAIN \| LV_STATE_DEFAULT\);/);
-assert.match(apply, /set_opa_if_changed\(card, LV_STYLE_OPA, tile\.ss_opacity, LV_PART_MAIN \| LV_STATE_PRESSED\);/);
+// The tile's Opacity fades only the fill, like the clock card (user
+// 2026-10-10): the global fill opacity scaled by it; text and icon stay.
+assert.doesNotMatch(apply, /LV_STYLE_OPA, tile\.ss_opacity/);
+assert.match(fn(panel, 'build_slot_tile'),
+  /const lv_opa_t opacity =\s*screensaver_tile_look::fill_opacity\(screensaverConfig\.get\(\)\.tile_opacity, tile\);/);
+assert.match(look, /return static_cast<uint8_t>\(\(static_cast<unsigned>\(global_opacity\) \* tile\.ss_opacity \+ 127\) \/ 255\);/);
+const editorJs = read('src/web/admin/screensaver/editor.js');
+assert.match(editorJs, /return Math\.floor\(\(screensaverTileOpacity\(\) \* own \+ 127\) \/ 255\);/);
+assert.match(read('src/web/admin/tiles/grid-preview.js'), /const opacity = screensaverTileFillOpacity\(tile\.ss_opacity\);/);
+assert.match(read('src/web/admin/tiles/live-preview.js'), /const opacity = bgNone \? 0 : screensaverTileFillOpacity\(look\.ss_opacity\);/);
+assert.doesNotMatch(read('src/web/server/render/web_admin_html.cpp'), /tileStyle \+= "opacity:";/);
 assert.match(apply, /if \(tileBgTransparent\(tile\)\) apply_transparent_tile_card\(card\);/);
 const children = fn(panel, 'apply_look_to_children');
 assert.match(children, /if \(!tile\.ss_show_icon\) set_opa_if_changed\(child, LV_STYLE_OPA, LV_OPA_TRANSP, 0\);/);
@@ -145,7 +154,7 @@ assert.deepEqual(saved, {ss_icon: '0', ss_opacity: '128', ss_text_color: '#00FF0
 const tile = element({dataset: {type: '1'}});
 api.applyScreensaverLookPreview(tile, saved);
 assert.ok(tile.classList.contains('ss-icon-hidden') && tile.classList.contains('ss-text-colored'));
-assert.equal(tile.style.opacity, '0.502');
+assert.equal(tile.style.opacity, '', 'text and icon keep full opacity');
 assert.equal(tile.style.props['--ss-text-color'], '#00FF00');
 assert.ok(tile.classList.contains('ss-text-centered'), 'centered text position');
 

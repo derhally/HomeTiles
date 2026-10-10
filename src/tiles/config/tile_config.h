@@ -146,7 +146,8 @@ struct Tile {
   String weather_humidity_sensor;
 
   // Screensaver-only look (screensaver_tile_look.h), kept in
-  // /_screensaver/tile_looks.json: whole-card opacity, icon visibility, an own
+  // /_screensaver/tile_looks.json: fill opacity (scales the global one), icon
+  // visibility, an own
   // text color (0 = the type's colors) and the text position beside the icon
   // (0 = standard, 1 = centered on the icon row). A tile without background
   // uses tile color None (TILE_BG_TRANSPARENT) like on every grid. Normal

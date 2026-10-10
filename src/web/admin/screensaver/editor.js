@@ -37,6 +37,13 @@
     return Math.round(ssClamp(value ?? SCREENSAVER_TILE_DEFAULT_OPACITY, 0, 255));
   }
 
+  // Background opacity of one screensaver tile: its own Opacity scales the
+  // global fill opacity; text and icon stay (screensaver_tile_look::fill_opacity).
+  function screensaverTileFillOpacity(tileOpacity) {
+    const own = Math.round(ssClamp(tileOpacity ?? 255, 0, 255));
+    return Math.floor((screensaverTileOpacity() * own + 127) / 255);
+  }
+
   // The new opacity on every screensaver tile preview and in the footer.
   function refreshScreensaverTileOpacity() {
     const value = screensaverTileOpacity();

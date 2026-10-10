@@ -510,7 +510,8 @@ static void appendTileTabHTML(
       // through one CSS variable, so the preview repaints them live.
       if (screensaver_mode) {
         tileStyle = "background:color-mix(in srgb,var(--tile-default-bg) ";
-        tileStyle += String(screensaverConfig.get().tile_opacity * 100.0f / 255.0f, 2);
+        tileStyle += String(screensaver_tile_look::fill_opacity(
+                                screensaverConfig.get().tile_opacity, tile) * 100.0f / 255.0f, 2);
         tileStyle += "%,transparent)";
       } else {
         tileStyle = "background:var(--tile-default-bg)";
@@ -525,7 +526,8 @@ static void appendTileTabHTML(
         // One opacity for every screensaver tile (ScreensaverConfigData).
         snprintf(colorHex, sizeof(colorHex), "#%06X%02X",
                  (unsigned int)bg_color,
-                 static_cast<unsigned int>(screensaverConfig.get().tile_opacity));
+                 static_cast<unsigned int>(screensaver_tile_look::fill_opacity(
+                     screensaverConfig.get().tile_opacity, tile)));
       } else {
         snprintf(colorHex, sizeof(colorHex), "#%06X", (unsigned int)bg_color);
       }
@@ -549,17 +551,13 @@ static void appendTileTabHTML(
     // A fully transparent screensaver card casts no shadow
     // (apply_slot_tile_shadows).
     if (screensaver_mode && tile.type != TILE_EMPTY &&
-        (screensaverConfig.get().tile_opacity == 0 || tileBgTransparent(tile))) {
+        (screensaver_tile_look::fill_opacity(screensaverConfig.get().tile_opacity, tile) == 0 ||
+         tileBgTransparent(tile))) {
       cssClass += " screensaver-bg-clear";
     }
     // Per-tile screensaver look (image_screensaver.cpp apply_slot_look).
     if (screensaver_mode && tile.type != TILE_EMPTY) {
       if (!tile.ss_show_icon) cssClass += " ss-icon-hidden";
-      if (tile.ss_opacity < 255) {
-        tileStyle += "opacity:";
-        tileStyle += String(tile.ss_opacity / 255.0f, 3);
-        tileStyle += ";";
-      }
       if (screensaver_tile_look::has_text_color(tile)) {
         cssClass += " ss-text-colored";
         tileStyle += "--ss-text-color:";
@@ -1314,7 +1312,7 @@ static void appendTileTabHTML(
 )html";
   append_tile_color_from_icon_html(html, tab_id);
   if (screensaver_mode) {
-    // Per-tile screensaver look (screensaver_tile_look.h): icon, whole-card
+    // Per-tile screensaver look (screensaver_tile_look.h): icon, fill
     // opacity, an own text color and the text position. The fill is the tile
     // color (None = no background).
     html += R"html(            <div class="screensaver-tile-look">

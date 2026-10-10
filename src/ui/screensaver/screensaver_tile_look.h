@@ -4,7 +4,7 @@
 
 #include "src/tiles/config/tile_config.h"
 
-// Per-tile look of a screensaver tile (Tile::ss_*): the whole card's opacity,
+// Per-tile look of a screensaver tile (Tile::ss_*): its fill opacity,
 // whether its icon shows, an own text color and the text position beside the
 // icon. The background follows the tile color (None = no fill). Stored in /_screensaver/tile_looks.json by ScreensaverConfigStore;
 // normal grids keep the defaults.
@@ -52,6 +52,13 @@ inline constexpr uint8_t kTextAlignCentered = 1;
 
 inline uint8_t normalize_text_align(long raw) {
   return raw == kTextAlignCentered ? kTextAlignCentered : kTextAlignStandard;
+}
+
+// Background opacity of a screensaver card: the tile's Opacity scales the
+// global fill opacity (ScreensaverConfigData::tile_opacity). Like the clock
+// card's opacity it fades only the fill, never the text or the icon.
+inline uint8_t fill_opacity(uint8_t global_opacity, const Tile& tile) {
+  return static_cast<uint8_t>((static_cast<unsigned>(global_opacity) * tile.ss_opacity + 127) / 255);
 }
 
 inline bool is_default(const Tile& tile) {
