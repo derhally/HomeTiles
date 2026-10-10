@@ -13,6 +13,7 @@
 #include "src/core/diagnostics/crash_log.h"
 #include "src/video/camera_stream.h"
 #include "src/video/local_camera/local_camera.h"
+#include "src/audio/speaker.h"
 #include <atomic>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
@@ -412,7 +413,8 @@ static bool streamLogDue(uint32_t now_ms) {
 // The flag is only visible inside the client callback, so filter there.
 static bool dropRetainedLocalCameraCommand(PubSubClient& client,
                                            const char* topic) {
-  if (!client.lastPublishRetained() || !local_camera::isCommandTopic(topic)) {
+  if (!client.lastPublishRetained() ||
+      !(local_camera::isCommandTopic(topic) || speaker::isCommandTopic(topic))) {
     return false;
   }
   static uint32_t dropped = 0;
@@ -1782,6 +1784,7 @@ void HomeTilesNetworkManager::prepareMqttForOta() {
   // Release the camera pipeline first; a snapshot upload in progress can still
   // finish or fail while MQTT is up.
   local_camera::shutdown("ota");
+  speaker::shutdown("ota");
   if (!mqtt_enabled) return;
   mqtt_ota_prep_requested = true;
   for (int i = 0; i < 100 && mqtt_ota_prep_requested; ++i) {
