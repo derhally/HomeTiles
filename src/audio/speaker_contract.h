@@ -19,8 +19,9 @@
 //       plus "id":"<id>" of the current or last clip and "error":"<code>"
 //       when that clip failed (cleared by the next play).
 //
-// The panel downloads the whole clip into PSRAM before playing it, so this
-// is for announcements, chimes and TTS, not for endless streams.
+// The panel plays while it downloads, so clips of any length and endless
+// MP3 streams (internet radio) work. Formats: MP3 (MPEG layer III) and
+// 16-bit PCM WAV; AAC, Ogg and FLAC streams are refused.
 
 #include <math.h>
 #include <stddef.h>
@@ -39,8 +40,19 @@ constexpr size_t kMinRequestIdLength = 16;
 constexpr size_t kMaxRequestIdLength = 32;
 constexpr size_t kMaxUrlLength = 1024;
 constexpr size_t kMaxRequestPayloadBytes = 1536;
-// Largest clip the panel downloads (about four minutes of 128 kbit/s MP3).
+// Announced as "max_bytes" for older Bridges. Clips and live streams are
+// played while they download, so their length is not limited.
 constexpr uint32_t kMaxClipBytes = 4u * 1024u * 1024u;
+// Compressed audio between the network and the decoder: 16 s at 128 kbit/s.
+constexpr size_t kStreamBufferBytes = 256u * 1024u;
+// About 1.5 s of 128 kbit/s MP3 before playback starts or resumes.
+constexpr size_t kPrebufferBytes = 24u * 1024u;
+// A low bitrate stream starts after this wait with what it has.
+constexpr uint32_t kPrebufferMaxWaitMs = 1500;
+// More than the largest MP3 frame (1441 bytes), so a frame is never cut.
+constexpr size_t kMinDecodeBytes = 2048;
+// Metadata chunks in a WAV header before the samples.
+constexpr size_t kMaxWavHeaderBytes = 64u * 1024u;
 constexpr float kDefaultVolume = 0.5f;
 // Volume at 1.0 is 0 dB digital gain; 0.0 mutes. In between the gain falls
 // linearly in dB down to -kVolumeRangeDb, which sounds even to the ear.
@@ -156,50 +168,144 @@ inline ClipFormat detectFormat(const uint8_t* data, size_t length) {
 struct WavInfo {
   uint32_t sample_rate = 0;
   uint16_t channels = 0;
+  // Bytes before the first sample.
   size_t data_offset = 0;
-  size_t data_length = 0;
+  // Declared data chunk size; 0 or 0xFFFFFFFF (live streams) means "until
+  // the connection ends".
+  uint32_t data_length = 0;
 };
 
-// 16-bit PCM (format 1, or WAVE_FORMAT_EXTENSIBLE with the PCM sub-format),
-// mono or stereo. A data chunk longer than the file is cut to what arrived.
-inline bool parseWav(const uint8_t* data, size_t length, WavInfo* out) {
-  if (!out || detectFormat(data, length) != ClipFormat::Wav) return false;
+enum class WavHeaderResult : uint8_t { Incomplete, Ok, Invalid };
+
+// Parses the RIFF header from the first bytes of a download. Incomplete
+// means more bytes are needed to reach the data chunk. Accepts 16-bit PCM
+// (format 1, or WAVE_FORMAT_EXTENSIBLE with the PCM sub-format), mono or
+// stereo.
+inline WavHeaderResult parseWavHeader(const uint8_t* data, size_t length, WavInfo* out) {
+  if (!out || !data) return WavHeaderResult::Invalid;
+  // Compare what arrived of "RIFF" ... "WAVE" so a non-WAV fails early.
+  static const char kRiff[] = "RIFF????WAVE";
+  for (size_t i = 0; i < 12 && i < length; ++i) {
+    if (kRiff[i] != '?' && data[i] != static_cast<uint8_t>(kRiff[i])) {
+      return WavHeaderResult::Invalid;
+    }
+  }
+  if (length < 12) return WavHeaderResult::Incomplete;
   *out = WavInfo{};
   bool have_fmt = false;
   size_t pos = 12;
-  while (pos + 8 <= length) {
+  for (;;) {
+    if (pos + 8 > length) return WavHeaderResult::Incomplete;
     const uint8_t* chunk = data + pos;
     const uint32_t size = readLe32(chunk + 4);
     const size_t body = pos + 8;
+    if (memcmp(chunk, "data", 4) == 0) {
+      if (!have_fmt) return WavHeaderResult::Invalid;
+      out->data_offset = body;
+      out->data_length = size;
+      return WavHeaderResult::Ok;
+    }
     if (memcmp(chunk, "fmt ", 4) == 0) {
-      if (size < 16 || body + 16 > length) return false;
+      if (size < 16) return WavHeaderResult::Invalid;
+      if (body + 16 > length) return WavHeaderResult::Incomplete;
       uint16_t format = readLe16(data + body);
       if (format == 0xFFFE) {
-        if (size < 40 || body + 26 > length) return false;
+        if (size < 40) return WavHeaderResult::Invalid;
+        if (body + 26 > length) return WavHeaderResult::Incomplete;
         format = readLe16(data + body + 24);
       }
       const uint16_t channels = readLe16(data + body + 2);
       const uint32_t rate = readLe32(data + body + 4);
       const uint16_t bits = readLe16(data + body + 14);
-      if (format != 1 || bits != 16 || channels < 1 || channels > 2 || rate == 0) return false;
+      if (format != 1 || bits != 16 || channels < 1 || channels > 2 || rate == 0) {
+        return WavHeaderResult::Invalid;
+      }
       out->channels = channels;
       out->sample_rate = rate;
       have_fmt = true;
-    } else if (memcmp(chunk, "data", 4) == 0) {
-      if (!have_fmt) return false;
-      out->data_offset = body;
-      const size_t available = length - body;
-      out->data_length = size < available ? size : available;
-      out->data_length -= out->data_length % (2u * out->channels);
-      return out->data_length > 0;
     }
-    // Chunks are padded to an even size.
+    // Chunks are padded to an even size. Metadata chunks before "data" are
+    // small; a huge one is a broken header, not something to wait for.
     const uint64_t next = static_cast<uint64_t>(body) + size + (size & 1u);
-    if (next > length) return false;
+    if (next > kMaxWavHeaderBytes) return WavHeaderResult::Invalid;
     pos = static_cast<size_t>(next);
+  }
+}
+
+// Content types the MP3 decoder cannot play. Many servers send no type or a
+// generic one, so anything else is decided by the bytes.
+inline bool isUnsupportedContentType(const char* type) {
+  if (!type) return false;
+  static const char* const kRejected[] = {"aac", "mp4", "m4a", "ogg", "opus",
+                                          "flac", "vorbis", "mpegurl", "x-scpls", "text/"};
+  char lower[64];
+  size_t n = 0;
+  for (; type[n] && n + 1 < sizeof(lower); ++n) {
+    const char c = type[n];
+    lower[n] = (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+  }
+  lower[n] = '\0';
+  for (const char* rejected : kRejected) {
+    if (strstr(lower, rejected)) return true;
   }
   return false;
 }
+
+// Size of an ID3v2 tag at the start of an MP3 (header, body and footer),
+// 0 when there is none. Needs the first 10 bytes.
+inline size_t id3v2Length(const uint8_t* data, size_t length) {
+  if (!data || length < 10 || memcmp(data, "ID3", 3) != 0) return 0;
+  const size_t size = (static_cast<size_t>(data[6] & 0x7F) << 21) |
+                      (static_cast<size_t>(data[7] & 0x7F) << 14) |
+                      (static_cast<size_t>(data[8] & 0x7F) << 7) |
+                      static_cast<size_t>(data[9] & 0x7F);
+  return 10 + size + ((data[5] & 0x10) ? 10 : 0);
+}
+
+// Playback starts (and restarts after the network fell behind) once enough
+// is buffered to ride out a slow moment, or once a slow stream had its time.
+inline bool prebufferDone(size_t buffered, uint32_t waited_ms, bool ended) {
+  if (ended) return true;
+  if (buffered >= kPrebufferBytes) return true;
+  return waited_ms >= kPrebufferMaxWaitMs && buffered >= kMinDecodeBytes;
+}
+
+// Linear byte buffer between the network and the decoder. The decoder needs
+// whole frames in one piece, so instead of wrapping, the unread tail moves to
+// the front once the read position passed half the buffer.
+struct StreamBuffer {
+  uint8_t* data = nullptr;
+  size_t capacity = 0;
+  size_t start = 0;
+  size_t end = 0;
+
+  void reset(uint8_t* memory, size_t size) {
+    data = memory;
+    capacity = size;
+    start = 0;
+    end = 0;
+  }
+  size_t buffered() const { return end - start; }
+  const uint8_t* read() const { return data + start; }
+  void consume(size_t bytes) {
+    start += bytes < buffered() ? bytes : buffered();
+    if (start == end) start = end = 0;
+  }
+  // Free space at the end, after compacting when that helps.
+  size_t writable() {
+    if (start > 0 && (start >= capacity / 2 || end == capacity)) {
+      memmove(data, data + start, end - start);
+      end -= start;
+      start = 0;
+    }
+    return capacity - end;
+  }
+  uint8_t* write() { return data + end; }
+  void commit(size_t bytes) {
+    const size_t room = capacity - end;
+    end += bytes < room ? bytes : room;
+  }
+};
 
 // In place: interleaved stereo frames to mono (the speaker has one channel).
 inline void downmixToMono(int16_t* samples, size_t frames) {

@@ -9,7 +9,7 @@
 //   - begin(), service(), onMqttConnected(), handleMqttMessage(),
 //     handleCommandPayload() and shutdown() run on the Arduino loop task.
 //   - isCommandTopic() may be called from the MQTT worker.
-//   - Codec access, the clip download, decoding and the I2S output run on a
+//   - Codec access, the streaming download, decoding and the I2S output run on a
 //     dedicated worker task created by begin().
 
 #include <Arduino.h>

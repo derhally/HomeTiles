@@ -1,8 +1,8 @@
 // Host regression for the speaker MQTT contract shared with the Home
 // Assistant Bridge media_player: retained status payloads, URL validation,
-// volume mapping, clip format detection and the WAV parser used by the
-// playback worker. A second program exercises the ArduinoJson command parser
-// when the pinned library is installed.
+// volume mapping, clip format detection, the streamed WAV header parser and
+// the stream buffer used by the playback worker. A second program exercises
+// the ArduinoJson command parser when the pinned library is installed.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
@@ -173,30 +173,89 @@ int main() {
   assert(detectFormat(html, sizeof(html)) == ClipFormat::Unknown);
   assert(detectFormat(nullptr, 0) == ClipFormat::Unknown);
 
-  // WAV: 16-bit PCM mono and stereo, padded chunks, truncated data.
+  // WAV header: 16-bit PCM mono and stereo, padded chunks, streamed headers.
   WavInfo info;
+  auto header = [&](const std::vector<uint8_t>& v, size_t n) {
+    return parseWavHeader(v.data(), n, &info);
+  };
   std::vector<uint8_t> mono = wav(1, 1, 22050, 16, 100, false);
   assert(detectFormat(mono.data(), mono.size()) == ClipFormat::Wav);
-  assert(parseWav(mono.data(), mono.size(), &info));
+  assert(header(mono, mono.size()) == WavHeaderResult::Ok);
   assert(info.channels == 1 && info.sample_rate == 22050);
   assert(info.data_offset == 44 && info.data_length == 100);
+  // Every prefix shorter than the header asks for more bytes.
+  for (size_t n = 0; n < 44; ++n) assert(header(mono, n) == WavHeaderResult::Incomplete);
+  assert(header(mono, 44) == WavHeaderResult::Ok);
   std::vector<uint8_t> stereo = wav(1, 2, 44100, 16, 102, true);
-  assert(parseWav(stereo.data(), stereo.size(), &info));
-  assert(info.channels == 2 && info.data_offset == 56);
-  // Whole frames only: 102 bytes of stereo 16-bit = 25 frames.
-  assert(info.data_length == 100);
-  std::vector<uint8_t> cut = wav(1, 1, 16000, 16, 1000, false);
-  cut.resize(44 + 300);
-  assert(parseWav(cut.data(), cut.size(), &info) && info.data_length == 300);
+  assert(header(stereo, stereo.size()) == WavHeaderResult::Ok);
+  assert(info.channels == 2 && info.data_offset == 56 && info.data_length == 102);
+  // Live WAV streams announce an unknown length.
+  std::vector<uint8_t> live = wav(1, 1, 16000, 16, 0, false);
+  live[40] = live[41] = live[42] = live[43] = 0xFF;
+  assert(header(live, live.size()) == WavHeaderResult::Ok && info.data_length == 0xFFFFFFFFu);
   std::vector<uint8_t> eight_bit = wav(1, 1, 8000, 8, 100, false);
-  assert(!parseWav(eight_bit.data(), eight_bit.size(), &info));
+  assert(header(eight_bit, eight_bit.size()) == WavHeaderResult::Invalid);
   std::vector<uint8_t> floats = wav(3, 1, 48000, 16, 100, false);
-  assert(!parseWav(floats.data(), floats.size(), &info));
+  assert(header(floats, floats.size()) == WavHeaderResult::Invalid);
   std::vector<uint8_t> surround = wav(1, 6, 48000, 16, 120, false);
-  assert(!parseWav(surround.data(), surround.size(), &info));
-  std::vector<uint8_t> empty = wav(1, 1, 16000, 16, 0, false);
-  assert(!parseWav(empty.data(), empty.size(), &info));
-  assert(!parseWav(id3, sizeof(id3), &info));
+  assert(header(surround, surround.size()) == WavHeaderResult::Invalid);
+  assert(parseWavHeader(id3, sizeof(id3), &info) == WavHeaderResult::Invalid);
+  // A metadata chunk claiming megabytes is a broken header, not a wait.
+  std::vector<uint8_t> huge = wav(1, 1, 16000, 16, 10, true);
+  huge[16] = 0; huge[17] = 0; huge[18] = 0x10; huge[19] = 0;
+  assert(header(huge, huge.size()) == WavHeaderResult::Invalid);
+
+  // Content types: generic or MP3 types pass, other codecs and pages do not.
+  assert(!isUnsupportedContentType(nullptr));
+  assert(!isUnsupportedContentType(""));
+  assert(!isUnsupportedContentType("audio/mpeg"));
+  assert(!isUnsupportedContentType("audio/MPEG; charset=binary"));
+  assert(!isUnsupportedContentType("audio/wav"));
+  assert(!isUnsupportedContentType("application/octet-stream"));
+  assert(isUnsupportedContentType("audio/aacp"));
+  assert(isUnsupportedContentType("audio/AAC"));
+  assert(isUnsupportedContentType("application/ogg"));
+  assert(isUnsupportedContentType("audio/flac"));
+  assert(isUnsupportedContentType("audio/x-mpegurl"));
+  assert(isUnsupportedContentType("text/html; charset=utf-8"));
+
+  // ID3v2 tag length: syncsafe size plus header and optional footer.
+  const uint8_t tag_plain[] = {'I', 'D', '3', 4, 0, 0x00, 0, 0, 0x02, 0x01};
+  const uint8_t tag_footer[] = {'I', 'D', '3', 4, 0, 0x10, 0, 0, 0x02, 0x01};
+  assert(id3v2Length(tag_plain, sizeof(tag_plain)) == 10 + 257);
+  assert(id3v2Length(tag_footer, sizeof(tag_footer)) == 20 + 257);
+  assert(id3v2Length(sync, sizeof(sync)) == 0);
+  assert(id3v2Length(tag_plain, 9) == 0);
+
+  // Prebuffer: enough bytes, the end of the download, or a slow stream's turn.
+  assert(prebufferDone(kPrebufferBytes, 0, false));
+  assert(!prebufferDone(kPrebufferBytes - 1, 0, false));
+  assert(prebufferDone(0, 0, true));
+  assert(!prebufferDone(kMinDecodeBytes, kPrebufferMaxWaitMs - 1, false));
+  assert(prebufferDone(kMinDecodeBytes, kPrebufferMaxWaitMs, false));
+  assert(!prebufferDone(kMinDecodeBytes - 1, 60000, false));
+
+  // Stream buffer: reads stay contiguous and compaction keeps unread bytes.
+  {
+    uint8_t memory[16];
+    StreamBuffer buffer;
+    buffer.reset(memory, sizeof(memory));
+    assert(buffer.writable() == 16 && buffer.buffered() == 0);
+    for (int i = 0; i < 12; ++i) buffer.write()[i] = static_cast<uint8_t>(i);
+    buffer.commit(12);
+    buffer.consume(9);
+    assert(buffer.buffered() == 3 && buffer.read()[0] == 9);
+    // Read position past half: the tail moves to the front.
+    assert(buffer.writable() == 13);
+    assert(buffer.start == 0 && buffer.read()[0] == 9 && buffer.read()[2] == 11);
+    buffer.commit(100);
+    assert(buffer.buffered() == 16 && buffer.writable() == 0);
+    buffer.consume(1);
+    // Full buffer with read bytes in front: compacts even below half.
+    assert(buffer.writable() == 1 && buffer.read()[0] == 10);
+    buffer.consume(1000);
+    assert(buffer.buffered() == 0 && buffer.start == 0 && buffer.writable() == 16);
+  }
 
   // Stereo downmix averages each frame in place.
   int16_t samples[] = {1000, 3000, -32768, -32768, 32767, -32768};
