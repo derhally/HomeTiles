@@ -23,17 +23,18 @@ for (const [table, ip, mac] of [['kStringsDe', 'IP-Adresse', 'MAC-Adresse'],
     `${table} ends with the IP and MAC labels`);
 }
 
-// The row sits under the Web Admin password row and follows the connection.
-assert.match(settings,
-  /create_security_row\(system_info_rows, tr\(\)\.system_ip_label, &system_ip_value, nullptr\);/);
-assert.match(settings, /static void system_refresh_rows\(\) \{\s*system_refresh_ip_row\(\);/);
-assert.match(settings, /ip \? networkTransport\.localIP\(\)\.toString\(\)\.c_str\(\) : "-"/);
-assert.match(settings, /system_ip_value = nullptr;\s*system_ip_shown = 0xFFFFFFFF;\s*system_mac_value = nullptr;/,
-  'teardown forgets the rows');
-assert.match(settings,
-  /create_security_row\(system_info_rows, tr\(\)\.system_mac_label, &system_mac_value, nullptr\);/);
+// Five rows overflowed the 600 px layout, so the idle status area above the
+// buttons shows the IP and MAC address instead of extra rows.
+assert.doesNotMatch(settings, /create_security_row\(system_info_rows, tr\(\)\.system_(ip|mac)_label/);
+assert.equal((settings.match(/create_security_row\(system_info_rows,/g) || []).length, 3,
+  'the System popup keeps exactly three rows');
+assert.match(settings, /static void system_refresh_rows\(\) \{\s*system_refresh_network_status\(\);/);
+assert.match(settings, /if \(!system_status_label \|\| system_status_message\) return;/,
+  'an update or error message keeps priority over the network lines');
+assert.match(settings, /"%s: %s\\n%s: %s", tr\(\)\.system_ip_label, ip,\s*tr\(\)\.system_mac_label, mac\);/);
+assert.match(settings, /system_status_message = false;\s*system_network_shown\[0\] = '\\0';\s*system_status_text\(""[^)]*\);\s*system_refresh_network_status\(\);/);
 const transport = read('src/network/transport/network_transport.cpp');
 assert.match(transport, /if \(connected && wifi_mac_\.load\(\) == 0\)/, 'the radio MAC is read once');
 assert.match(transport, /if \(activeEthernetState\(\) \|\| !isWifiConnected\(\) \|\| mac == 0\) return false;/);
 assert.match(read('src/network/mqtt/mqtt_topics.cpp'), /STAT_MAC, TopicDomain::State, "mac"/);
-console.log('System popup IP row checks passed.');
+console.log('System popup network lines checks passed.');

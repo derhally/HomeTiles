@@ -162,11 +162,8 @@ static lv_obj_t *security_ha_check = nullptr;  // Shown while connected
 static lv_obj_t *security_encryption_value = nullptr;
 static lv_obj_t *security_encryption_icon = nullptr;
 static lv_obj_t *security_password_value = nullptr;
-// IP address row of the System popup and the address it shows (0 = none).
-static lv_obj_t *system_ip_value = nullptr;
-static uint32_t system_ip_shown = 0xFFFFFFFF;
-static lv_obj_t *system_mac_value = nullptr;
-static bool system_mac_shown = false;
+// Network lines the idle System status area shows (IP and MAC address).
+static char system_network_shown[96] = "";
 static lv_obj_t *security_password_icon = nullptr;
 static lv_obj_t *security_prompt_box = nullptr;  // Confirmation questions
 static lv_obj_t *security_prompt_icon = nullptr;
@@ -1140,10 +1137,7 @@ static void reset_popup_refs() {
   security_encryption_icon = nullptr;
   security_password_value = nullptr;
   security_password_icon = nullptr;
-  system_ip_value = nullptr;
-  system_ip_shown = 0xFFFFFFFF;
-  system_mac_value = nullptr;
-  system_mac_shown = false;
+  system_network_shown[0] = '\0';
   security_prompt_box = nullptr;
   security_prompt_icon = nullptr;
   security_prompt_title = nullptr;
@@ -2652,16 +2646,38 @@ static void system_set_buttons_enabled(bool enabled) {
 }
 
 // Status line above the buttons: an update or error message (one or two
-// lines). The rows under the branding stay visible meanwhile.
+// lines). The rows under the branding stay visible meanwhile. Without a
+// message it shows the panel's IP and MAC address; the rows area has no room
+// for more lines on 600 px high displays.
 static void system_status_text(const char* text, uint32_t color) {
   if (!system_status_label) return;
   lv_label_set_text(system_status_label, text ? text : "");
   lv_obj_set_style_text_color(system_status_label, lv_color_hex(color), 0);
 }
 
+// The address can change while the popup is open (DHCP renewal, Wi-Fi to
+// Ethernet), so it is checked with the rows; "-" while offline or unknown.
+static void system_refresh_network_status() {
+  if (!system_status_label || system_status_message) return;
+  char ip[16] = "-";
+  if (networkTransport.isConnected()) {
+    snprintf(ip, sizeof(ip), "%s", networkTransport.localIP().toString().c_str());
+  }
+  char mac[18] = "-";
+  if (!networkTransport.activeMac(mac, sizeof(mac))) snprintf(mac, sizeof(mac), "-");
+  char text[sizeof(system_network_shown)];
+  snprintf(text, sizeof(text), "%s: %s\n%s: %s", tr().system_ip_label, ip,
+           tr().system_mac_label, mac);
+  if (strcmp(text, system_network_shown) == 0) return;
+  memcpy(system_network_shown, text, sizeof(system_network_shown));
+  system_status_text(text, 0xA8A8A8);
+}
+
 static void system_clear_status() {
   system_status_message = false;
+  system_network_shown[0] = '\0';
   system_status_text("", 0xA8A8A8);
+  system_refresh_network_status();
 }
 
 static void system_show_status(const char* text, uint32_t color) {
@@ -2682,31 +2698,8 @@ static void system_set_row(lv_obj_t* value, lv_obj_t* icon, const char* text, bo
   system_set_label_color(icon, color);
 }
 
-// The address can change while the popup is open (DHCP renewal, Wi-Fi to
-// Ethernet), so it is checked with the other rows; "-" while offline.
-static void system_refresh_ip_row() {
-  if (!system_ip_value) return;
-  // Re-check while the MAC is not shown yet; it can arrive after the IP.
-  if (system_mac_value && !system_mac_shown && networkTransport.isWifiConnected()) {
-    system_ip_shown = 0xFFFFFFFF;
-  }
-  const uint32_t ip = networkTransport.isConnected()
-                          ? static_cast<uint32_t>(networkTransport.localIP())
-                          : 0;
-  if (ip == system_ip_shown) return;
-  system_ip_shown = ip;
-  lv_label_set_text(system_ip_value,
-                    ip ? networkTransport.localIP().toString().c_str() : "-");
-  // The MAC follows the connection: it appears once Wi-Fi reports it.
-  if (system_mac_value) {
-    char mac[18];
-    system_mac_shown = networkTransport.activeMac(mac, sizeof(mac));
-    lv_label_set_text(system_mac_value, system_mac_shown ? mac : "-");
-  }
-}
-
 static void system_refresh_rows() {
-  system_refresh_ip_row();
+  system_refresh_network_status();
   const bool connected = networkManager.isMqttConnected();
   const bool encrypted = command_channel::state() == command_channel::PairingState::Active;
   const bool password_on = web_admin_auth::enabled();
@@ -3382,8 +3375,6 @@ static void build_system_popup(lv_obj_t* parent) {
                       &security_encryption_value, &security_encryption_icon);
   create_security_row(system_info_rows, tr().web_auth_section, &security_password_value,
                       &security_password_icon);
-  create_security_row(system_info_rows, tr().system_ip_label, &system_ip_value, nullptr);
-  create_security_row(system_info_rows, tr().system_mac_label, &system_mac_value, nullptr);
 
   // A confirmation question or the pairing number takes the place of the
   // rows, line by line with the same height and gap.
@@ -3509,8 +3500,7 @@ static void build_system_popup(lv_obj_t* parent) {
   system_view = SystemView::Main;
   security_step = SecurityStep::List;
   system_rows_state = 0xFF;
-  system_ip_shown = 0xFFFFFFFF;
-  system_mac_shown = false;
+  system_network_shown[0] = '\0';
   system_refresh_rows();
   system_apply_view();
   // The rows follow the connection while the popup is open; closing the
