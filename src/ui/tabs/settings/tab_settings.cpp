@@ -162,6 +162,9 @@ static lv_obj_t *security_ha_check = nullptr;  // Shown while connected
 static lv_obj_t *security_encryption_value = nullptr;
 static lv_obj_t *security_encryption_icon = nullptr;
 static lv_obj_t *security_password_value = nullptr;
+// IP address row of the System popup and the address it shows (0 = none).
+static lv_obj_t *system_ip_value = nullptr;
+static uint32_t system_ip_shown = 0xFFFFFFFF;
 static lv_obj_t *security_password_icon = nullptr;
 static lv_obj_t *security_prompt_box = nullptr;  // Confirmation questions
 static lv_obj_t *security_prompt_icon = nullptr;
@@ -1135,6 +1138,8 @@ static void reset_popup_refs() {
   security_encryption_icon = nullptr;
   security_password_value = nullptr;
   security_password_icon = nullptr;
+  system_ip_value = nullptr;
+  system_ip_shown = 0xFFFFFFFF;
   security_prompt_box = nullptr;
   security_prompt_icon = nullptr;
   security_prompt_title = nullptr;
@@ -2673,7 +2678,21 @@ static void system_set_row(lv_obj_t* value, lv_obj_t* icon, const char* text, bo
   system_set_label_color(icon, color);
 }
 
+// The address can change while the popup is open (DHCP renewal, Wi-Fi to
+// Ethernet), so it is checked with the other rows; "-" while offline.
+static void system_refresh_ip_row() {
+  if (!system_ip_value) return;
+  const uint32_t ip = networkTransport.isConnected()
+                          ? static_cast<uint32_t>(networkTransport.localIP())
+                          : 0;
+  if (ip == system_ip_shown) return;
+  system_ip_shown = ip;
+  lv_label_set_text(system_ip_value,
+                    ip ? networkTransport.localIP().toString().c_str() : "-");
+}
+
 static void system_refresh_rows() {
+  system_refresh_ip_row();
   const bool connected = networkManager.isMqttConnected();
   const bool encrypted = command_channel::state() == command_channel::PairingState::Active;
   const bool password_on = web_admin_auth::enabled();
@@ -3349,6 +3368,7 @@ static void build_system_popup(lv_obj_t* parent) {
                       &security_encryption_value, &security_encryption_icon);
   create_security_row(system_info_rows, tr().web_auth_section, &security_password_value,
                       &security_password_icon);
+  create_security_row(system_info_rows, tr().system_ip_label, &system_ip_value, nullptr);
 
   // A confirmation question or the pairing number takes the place of the
   // rows, line by line with the same height and gap.
@@ -3474,6 +3494,7 @@ static void build_system_popup(lv_obj_t* parent) {
   system_view = SystemView::Main;
   security_step = SecurityStep::List;
   system_rows_state = 0xFF;
+  system_ip_shown = 0xFFFFFFFF;
   system_refresh_rows();
   system_apply_view();
   // The rows follow the connection while the popup is open; closing the

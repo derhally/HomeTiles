@@ -673,6 +673,8 @@ struct Strings {
   const char* weather_colored_icons;
   // Web Admin navigation: the menu with every folder besides Home.
   const char* admin_folders;
+  // System popup row: the panel's current IP address.
+  const char* system_ip_label;
 };
 
 // Locale-specific display rules and short runtime strings shared by
