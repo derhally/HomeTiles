@@ -602,7 +602,8 @@ static const Strings kStringsDe = {
     "oder",
     "Farbige Wetter-Icons",
     "Ordner",
-    "IP-Adresse"};
+    "IP-Adresse",
+    "MAC-Adresse"};
 
 static const Strings kStringsEn = {
     "en",
@@ -1199,7 +1200,8 @@ static const Strings kStringsEn = {
     "or",
     "Colored weather icons",
     "Folders",
-    "IP address"};
+    "IP address",
+    "MAC address"};
 
 static const Strings kStringsFr = {
     "fr",
@@ -1796,7 +1798,8 @@ static const Strings kStringsFr = {
     "ou",
     "Icônes météo en couleur",
     "Dossiers",
-    "Adresse IP"};
+    "Adresse IP",
+    "Adresse MAC"};
 
 static const LocaleProfile kLocaleDe = {
     "de",
@@ -2717,6 +2720,7 @@ static const Strings kStringsPl = {
     "Kolorowe ikony pogody",
     "Foldery",
     "Adres IP",
+    "Adres MAC",
 };
 
 static const LocaleProfile kLocalePl = {

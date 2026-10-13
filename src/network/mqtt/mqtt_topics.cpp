@@ -24,6 +24,7 @@ const MqttTopicRegistry::TopicDescriptor MqttTopicRegistry::kDescriptors[] = {
   {TopicKey::SENSOR_CHIP_TEMP, TopicDomain::Sensor, "chip_temperature"},
   {TopicKey::STAT_RESET_REASON, TopicDomain::State, "reset_reason"},
   {TopicKey::STAT_FIRMWARE, TopicDomain::State, "firmware_version"},
+  {TopicKey::STAT_MAC, TopicDomain::State, "mac"},
   {TopicKey::HA_WOHN_TEMP, TopicDomain::HaStatestream, "sensor/og_wohnbereich_sensor_temperatur/state"},
   {TopicKey::DISPLAY_BRIGHTNESS_CMND, TopicDomain::Command, "display_brightness"},
   {TopicKey::DISPLAY_BRIGHTNESS_STAT, TopicDomain::State, "display_brightness"},
