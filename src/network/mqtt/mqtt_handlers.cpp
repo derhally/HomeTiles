@@ -2062,6 +2062,16 @@ static void publish_runtime_diagnostics(bool force) {
   }
   networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::SENSOR_CHIP_TEMP), buf, true);
 
+  // Retained once known; it only changes with the transport.
+  {
+    static char last_mac[18] = "";
+    char mac[18];
+    if (networkTransport.activeMac(mac, sizeof(mac)) && (force || strcmp(mac, last_mac) != 0)) {
+      networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::STAT_MAC), mac, true);
+      memcpy(last_mac, mac, sizeof(last_mac));
+    }
+  }
+
   // esp_timer does not wrap after 49 days like millis().
   snprintf(buf, sizeof(buf), "%llu",
            static_cast<unsigned long long>(esp_timer_get_time() / 1000000LL));
