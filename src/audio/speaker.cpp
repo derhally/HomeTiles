@@ -4,6 +4,7 @@
 
 #include <atomic>
 
+#include "src/audio/assist_contract.h"
 #include "src/audio/speaker_contract.h"
 #include "src/network/mqtt/mqtt_topics.h"
 #include "src/network/network_manager.h"
@@ -22,8 +23,12 @@
 #include <freertos/task.h>
 
 #include "mp3dec.h"
+#include "src/audio/assist_request.h"
+#include "src/audio/codecs/es7210/es7210_codec.h"
 #include "src/audio/codecs/es8311/es8311_codec.h"
 #include "src/audio/speaker_request.h"
+#include "src/audio/wakeword/wake_word_detector.h"
+#include "src/audio/wakeword/wake_word_engine.h"
 #include "src/core/config/batched_nvs_write.h"
 #include "src/devices/device.h"
 #include HOMETILES_SPEAKER_BOARD
@@ -33,6 +38,8 @@ namespace speaker {
 namespace {
 
 using namespace speaker_contract;
+// Assist names stay qualified: both contracts define ErrorCode and friends.
+namespace assist = assist_contract;
 
 #if defined(HOMETILES_SPEAKER)
 constexpr bool kSupported = true;
@@ -48,7 +55,29 @@ std::atomic<bool> g_muted{false};
 // Bumped by every change of the retained status; service() publishes it.
 std::atomic<uint32_t> g_state_generation{0};
 uint32_t g_published_generation = 0;
-bool g_last_capability = false;
+// Bridge capability bits: 1 = audio_output, 2 = audio_input.
+uint8_t g_last_capability = 0;
+
+// Assist microphone capture (assist_contract.h).
+std::atomic<bool> g_mic_ready{false};
+std::atomic<uint8_t> g_assist_state{static_cast<uint8_t>(assist::PublicState::Idle)};
+std::atomic<uint8_t> g_assist_error{static_cast<uint8_t>(assist::ErrorCode::None)};
+std::atomic<uint32_t> g_assist_state_generation{0};
+uint32_t g_assist_published_generation = 0;
+
+// On-panel wake word (assist_contract.h addendum). Catalog mask of the words
+// the Bridge activated; set on the loop task, read by the worker.
+std::atomic<uint32_t> g_wake_active{0};
+// The model could not run; the status then offers no wake words.
+std::atomic<bool> g_wake_failed{false};
+
+#if defined(HOMETILES_WAKE_WORD)
+constexpr uint32_t kCompiledWakeWords = assist::kAllWakeWordsMask;
+#else
+constexpr uint32_t kCompiledWakeWords = 0;
+#endif
+
+uint32_t availableWakeWords() { return g_wake_failed.load() ? 0 : kCompiledWakeWords; }
 
 #if defined(HOMETILES_SPEAKER)
 
@@ -63,16 +92,21 @@ constexpr const char* kLogPrefix = "[Speaker]";
 constexpr const char* kPrefsNamespace = "speaker";
 constexpr const char* kPrefsVolumeKey = "volume";
 constexpr const char* kPrefsMutedKey = "muted";
+// Comma-separated wake word ids (names, not catalog bits).
+constexpr const char* kPrefsWakeWordsKey = "wake_words";
 // Volume sliders send many steps; store once they settle and nothing plays
 // (flash writes stall both cores and would click in the output).
 constexpr uint32_t kPersistDelayMs = 3000;
 
-constexpr uint32_t kWorkerStackBytes = 8192;
+// TensorFlow Lite Micro inference runs on this stack too (PSRAM).
+constexpr uint32_t kWorkerStackBytes = 12288;
 // Above the loop task so LVGL rendering cannot starve the I2S DMA.
 constexpr UBaseType_t kWorkerPriority = 3;
 constexpr uint32_t kNotifyPlay = 1u << 0;
 constexpr uint32_t kNotifyVolume = 1u << 1;
 constexpr uint32_t kNotifyShutdown = 1u << 2;
+constexpr uint32_t kNotifyAssist = 1u << 3;
+constexpr uint32_t kNotifyWake = 1u << 4;
 constexpr uint32_t kShutdownWaitMs = 1500;
 
 constexpr uint32_t kHttpTimeoutMs = 5000;
@@ -102,6 +136,33 @@ struct PlayRequest {
   char url[kMaxUrlLength + 1];
 };
 
+// Assist capture: 16 kHz 16-bit stereo (one mic per slot). 6 x 320 frames x
+// 4 bytes = 7.5 KiB internal DMA RAM (the same budget as the closed speaker
+// output), 120 ms of audio to ride out a flash write or a busy core.
+constexpr uint32_t kRxDmaDescriptors = 6;
+constexpr uint32_t kRxDmaFrames = 320;
+// One 20 ms read; five reads fill a 100 ms frame.
+constexpr size_t kCaptureChunkFrames = 320;
+constexpr size_t kCaptureChunkBytes = kCaptureChunkFrames * 2 * sizeof(int16_t);
+constexpr uint32_t kI2sReadTimeoutMs = 200;
+// Samples dropped after the ADC was (re)configured: power-up settling.
+constexpr uint32_t kCaptureWarmupMs = 40;
+// Mono PSRAM ring between the microphone and the published frames: the 3 s
+// wake word handoff window plus 1 s for that backlog to drain once the
+// session runs (125 KiB).
+constexpr size_t kRingSamples = assist::kSampleRate * 4;
+// Backlog frames published per 20 ms read (5x real time).
+constexpr size_t kBacklogFramesPerRead = 3;
+// Wake word listening resumes this long after playback or a session ended,
+// so the answer cannot retrigger it, and retries this long after an error.
+constexpr uint32_t kWakeRefractoryMs = 1000;
+constexpr uint32_t kWakeRetryMs = 5000;
+
+struct AssistRequest {
+  char id[assist::kMaxRequestIdLength + 1];
+  uint32_t max_ms;
+};
+
 // ---------------------------------------------------------------------------
 // Shared state
 // ---------------------------------------------------------------------------
@@ -119,19 +180,38 @@ std::atomic<uint32_t> g_shutdown_ack{0};
 
 portMUX_TYPE g_id_mux = portMUX_INITIALIZER_UNLOCKED;
 char g_status_id[kMaxRequestIdLength + 1] = {};
+char g_assist_status_id[assist::kMaxRequestIdLength + 1] = {};
+
+// Latest Assist start (newest wins), guarded by g_request_mutex. Only one of
+// g_play_pending and g_assist_pending is set: each command clears the other.
+AssistRequest g_assist_request = {};
+std::atomic<bool> g_assist_pending{false};
+// Bumped by an Assist stop, a newer start, a play command and shutdown; a
+// capture session ends when it changed.
+std::atomic<uint32_t> g_capture_generation{0};
 
 // Loop task only.
 bool g_persist_pending = false;
 uint32_t g_persist_due_ms = 0;
 uint32_t g_command_log_ms = 0;
+uint32_t g_assist_log_ms = 0;
+// Id of the newest accepted start; a stop must name it.
+char g_assist_session_id[assist::kMaxRequestIdLength + 1] = {};
 
 // Worker only.
 es8311::Codec g_codec;
+es7210::Codec g_mic;
+i2s_chan_handle_t g_rx = nullptr;
 i2s_chan_handle_t g_tx = nullptr;
 uint32_t g_tx_rate = 0;
 bool g_amp_on = false;
 uint8_t g_applied_volume_reg = 0xFF;
 int g_applied_mute = -1;
+int16_t* g_chunk = nullptr;
+int16_t* g_mono = nullptr;
+wake_word::PcmRing g_ring;
+// Wake word listening waits until this time (millis).
+uint32_t g_wake_resume_ms = 0;
 
 bool logDue(uint32_t* last_ms, uint32_t interval_ms) {
   const uint32_t now_ms = millis();
@@ -155,6 +235,23 @@ void setPublic(PublicState state, ErrorCode error) {
   g_public_state.store(static_cast<uint8_t>(state));
   g_error.store(static_cast<uint8_t>(error));
   g_state_generation.fetch_add(1);
+}
+
+void setAssistStatusId(const char* id) {
+  portENTER_CRITICAL(&g_id_mux);
+  if (id) {
+    strncpy(g_assist_status_id, id, assist::kMaxRequestIdLength);
+    g_assist_status_id[assist::kMaxRequestIdLength] = '\0';
+  } else {
+    g_assist_status_id[0] = '\0';
+  }
+  portEXIT_CRITICAL(&g_id_mux);
+}
+
+void setAssistPublic(assist::PublicState state, assist::ErrorCode error) {
+  g_assist_state.store(static_cast<uint8_t>(state));
+  g_assist_error.store(static_cast<uint8_t>(error));
+  g_assist_state_generation.fetch_add(1);
 }
 
 void notifyWorker(uint32_t bits) {
@@ -195,13 +292,7 @@ void applyVolumeIfChanged() {
   }
 }
 
-void probeCodec() {
-  initAmpPin();
-  i2c_master_bus_handle_t bus = speaker_board::bus();
-  if (!bus) {
-    Serial.printf("%s I2C bus unavailable, speaker disabled\n", kLogPrefix);
-    return;
-  }
+void probeSpeakerCodec(i2c_master_bus_handle_t bus) {
   esp_err_t err = es8311::probe(bus, speaker_board::kCodecAddress, &g_codec);
   if (err == ESP_OK) err = es8311::init(&g_codec, kInitialSampleRate);
   if (err != ESP_OK) {
@@ -214,6 +305,36 @@ void probeCodec() {
   g_codec_ready.store(true);
   g_state_generation.fetch_add(1);
   Serial.printf("%s ES8311 ready at 0x%02X\n", kLogPrefix, speaker_board::kCodecAddress);
+}
+
+// The ES7210 is configured once here to prove it answers, and again at every
+// capture start once MCLK runs.
+void probeMic(i2c_master_bus_handle_t bus) {
+  if (speaker_board::kMicAddress == 0) return;
+  uint16_t chip_id = 0;
+  esp_err_t err = es7210::probe(bus, speaker_board::kMicAddress, &g_mic, &chip_id);
+  if (err == ESP_OK) err = es7210::init(&g_mic, assist::kSampleRate);
+  if (err != ESP_OK) {
+    Serial.printf("%s ES7210 not ready (%s), Assist microphone disabled\n", kLogPrefix,
+                  esp_err_to_name(err));
+    es7210::release(&g_mic);
+    return;
+  }
+  g_mic_ready.store(true);
+  g_assist_state_generation.fetch_add(1);
+  Serial.printf("%s ES7210 ready at 0x%02X (id 0x%04X)\n", kLogPrefix,
+                speaker_board::kMicAddress, static_cast<unsigned>(chip_id));
+}
+
+void probeCodec() {
+  initAmpPin();
+  i2c_master_bus_handle_t bus = speaker_board::bus();
+  if (!bus) {
+    Serial.printf("%s I2C bus unavailable, speaker and microphone disabled\n", kLogPrefix);
+    return;
+  }
+  probeSpeakerCodec(bus);
+  probeMic(bus);
 }
 
 void writeSilence(uint32_t ms) {
@@ -655,8 +776,401 @@ void playRequest(const PlayRequest& request, uint8_t* stream_memory) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Worker: Assist microphone capture
+// ---------------------------------------------------------------------------
+// The ring holds mono samples in native order and is copied byte-wise into
+// the little-endian frames.
+static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "assist frames are little-endian");
+
+void closeInput() {
+  if (!g_rx) return;
+  i2s_channel_disable(g_rx);
+  i2s_del_channel(g_rx);
+  g_rx = nullptr;
+}
+
+// Capture buffers, allocated once by the worker: one stereo I2S chunk, its
+// mono conversion and the PSRAM ring that queues mono audio for publishing.
+bool allocateCaptureBuffers() {
+  g_chunk = static_cast<int16_t*>(heap_caps_malloc(kCaptureChunkBytes, MALLOC_CAP_INTERNAL));
+  g_mono = static_cast<int16_t*>(
+      heap_caps_malloc(kCaptureChunkFrames * sizeof(int16_t), MALLOC_CAP_INTERNAL));
+  int16_t* ring = static_cast<int16_t*>(
+      heap_caps_malloc(kRingSamples * sizeof(int16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!g_chunk || !g_mono || !ring) {
+    heap_caps_free(g_chunk);
+    heap_caps_free(g_mono);
+    heap_caps_free(ring);
+    g_chunk = nullptr;
+    g_mono = nullptr;
+    Serial.printf("%s Capture buffers unavailable, Assist microphone disabled\n", kLogPrefix);
+    return false;
+  }
+  g_ring.reset(ring, kRingSamples);
+  return true;
+}
+
+// RX-only master channel on the shared I2S lines: the P4 drives MCLK, BCLK
+// and LRCK, the ES7210 sends MIC1/MIC2 as the left/right slot on din.
+assist::ErrorCode openInput() {
+  i2s_chan_config_t chan = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
+  chan.dma_desc_num = kRxDmaDescriptors;
+  chan.dma_frame_num = kRxDmaFrames;
+  const esp_err_t created = i2s_new_channel(&chan, nullptr, &g_rx);
+  if (created != ESP_OK) {
+    g_rx = nullptr;
+    Serial.printf("%s Microphone channel unavailable (%s)\n", kLogPrefix,
+                  esp_err_to_name(created));
+    return created == ESP_ERR_NO_MEM ? assist::ErrorCode::OutOfMemory : assist::ErrorCode::Busy;
+  }
+  i2s_std_config_t config = {};
+  config.clk_cfg = clockConfig(assist::kSampleRate);
+  config.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+                                                     I2S_SLOT_MODE_STEREO);
+  config.slot_cfg.slot_mask = I2S_STD_SLOT_BOTH;
+  config.gpio_cfg.mclk = speaker_board::kI2sMclk;
+  config.gpio_cfg.bclk = speaker_board::kI2sBclk;
+  config.gpio_cfg.ws = speaker_board::kI2sLrck;
+  config.gpio_cfg.dout = I2S_GPIO_UNUSED;
+  config.gpio_cfg.din = speaker_board::kI2sDin;
+  if (i2s_channel_init_std_mode(g_rx, &config) != ESP_OK) {
+    i2s_del_channel(g_rx);
+    g_rx = nullptr;
+    return assist::ErrorCode::MicUnavailable;
+  }
+  if (i2s_channel_enable(g_rx) != ESP_OK) {
+    i2s_del_channel(g_rx);
+    g_rx = nullptr;
+    return assist::ErrorCode::MicUnavailable;
+  }
+  // Reprogram the ADC now that its clocks run, as the esp-bsp examples do.
+  const esp_err_t configured = es7210::init(&g_mic, assist::kSampleRate);
+  if (configured != ESP_OK) {
+    Serial.printf("%s ES7210 setup failed (%s)\n", kLogPrefix, esp_err_to_name(configured));
+    closeInput();
+    return assist::ErrorCode::MicUnavailable;
+  }
+  // Drop the samples of the ADC's power-up settling.
+  size_t warmup_bytes = static_cast<size_t>(assist::kSampleRate) * kCaptureWarmupMs / 1000 *
+                        2 * sizeof(int16_t);
+  while (warmup_bytes > 0) {
+    size_t bytes_read = 0;
+    const size_t want = warmup_bytes < kCaptureChunkBytes ? warmup_bytes : kCaptureChunkBytes;
+    if (i2s_channel_read(g_rx, g_chunk, want, &bytes_read, kI2sReadTimeoutMs) != ESP_OK ||
+        bytes_read == 0) {
+      break;
+    }
+    warmup_bytes -= bytes_read < warmup_bytes ? bytes_read : warmup_bytes;
+  }
+  return assist::ErrorCode::None;
+}
+
+// Reads one 20 ms stereo chunk into g_mono. Returns the mono sample count,
+// or -1 when the microphone stopped answering.
+int readMono() {
+  size_t bytes_read = 0;
+  const esp_err_t read =
+      i2s_channel_read(g_rx, g_chunk, kCaptureChunkBytes, &bytes_read, kI2sReadTimeoutMs);
+  if (read != ESP_OK && bytes_read == 0) {
+    Serial.printf("%s Microphone read failed (%s)\n", kLogPrefix, esp_err_to_name(read));
+    return -1;
+  }
+  const size_t frames = bytes_read / (2 * sizeof(int16_t));
+  assist::stereoToMono(g_chunk, frames, g_mono);
+  return static_cast<int>(frames);
+}
+
+// Writes the header in front of the PCM already at frame + header length and
+// queues the frame. The MQTT layer copies it, so the buffer is free again.
+bool publishAudioFrame(const char* topic, uint8_t* frame, const char* id, size_t id_length,
+                       uint32_t sequence, size_t pcm_bytes, bool last) {
+  const size_t header_length = assist::frameHeaderLength(id_length);
+  if (assist::buildFrameHeader(frame, header_length, id, id_length, last, sequence) !=
+      header_length) {
+    return false;
+  }
+  return networkManager.mqttEnqueuePublish(topic, frame, header_length + pcm_bytes, false);
+}
+
+// Publishes up to max_frames full 100 ms frames from the ring. A frame the
+// publish queue refuses stays in the ring for the next attempt; returns
+// false then.
+bool sendRingFrames(const char* topic, uint8_t* frame, const char* id, size_t id_length,
+                    uint32_t* sequence, size_t max_frames) {
+  uint8_t* pcm = frame + assist::frameHeaderLength(id_length);
+  for (size_t sent = 0; sent < max_frames && g_ring.size() >= assist::kFrameSamples; ++sent) {
+    g_ring.peekBytes(pcm, assist::kFrameSamples);
+    if (!publishAudioFrame(topic, frame, id, id_length, *sequence, assist::kFrameBytes, false)) {
+      return false;
+    }
+    g_ring.discard(assist::kFrameSamples);
+    ++*sequence;
+  }
+  return true;
+}
+
+// handoff: a wake word detection left the input open and the audio since the
+// detection in the ring; it is sent first, then live audio.
+void captureSession(const AssistRequest& request, uint32_t generation, bool handoff) {
+  setAssistStatusId(request.id);
+  if (!g_mic_ready.load()) {
+    setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::MicUnavailable);
+    return;
+  }
+  // The capture uses the speaker's I2S lines and clocks.
+  closeOutput();
+  if (!handoff) g_ring.clear();
+  const char* audio_topic = mqttTopics.topic(TopicKey::ASSIST_AUDIO_STAT);
+  // Copied once: the registry may rebuild its strings on the loop task.
+  const String topic = audio_topic ? audio_topic : "";
+  const size_t id_length = strlen(request.id);
+  const size_t header_length = assist::frameHeaderLength(id_length);
+  uint8_t* frame = static_cast<uint8_t*>(heap_caps_malloc(
+      header_length + assist::kFrameBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  assist::ErrorCode result = assist::ErrorCode::None;
+  if (!frame || !g_chunk || g_ring.capacity() == 0) result = assist::ErrorCode::OutOfMemory;
+  if (result == assist::ErrorCode::None && topic.isEmpty()) result = assist::ErrorCode::Invalid;
+  if (result == assist::ErrorCode::None && !handoff) result = openInput();
+  if (result != assist::ErrorCode::None) {
+    Serial.printf("%s Assist capture %s refused: %s\n", kLogPrefix, request.id,
+                  assist::errorCodeName(result));
+    closeInput();
+    g_ring.clear();
+    heap_caps_free(frame);
+    // Still answer the Bridge's stream with an empty last frame.
+    if (!topic.isEmpty() && networkManager.isMqttConnected()) {
+      uint8_t header[assist::kMaxFrameHeaderBytes];
+      publishAudioFrame(topic.c_str(), header, request.id, id_length, 0, 0, true);
+    }
+    setAssistPublic(assist::PublicState::Idle, result);
+    return;
+  }
+
+  setAssistPublic(assist::PublicState::Listening, assist::ErrorCode::None);
+  Serial.printf("%s Assist capture %s started (max %lu ms%s)\n", kLogPrefix, request.id,
+                static_cast<unsigned long>(request.max_ms),
+                handoff ? ", after the wake word" : "");
+  uint32_t sequence = 0;
+  const char* end_reason = "stopped";
+  const uint32_t started_ms = millis();
+  for (;;) {
+    if (g_shutdown.load()) {
+      end_reason = "shutdown";
+      break;
+    }
+    if (g_capture_generation.load() != generation) break;
+    if (static_cast<uint32_t>(millis() - started_ms) >= request.max_ms) {
+      result = assist::ErrorCode::Timeout;
+      break;
+    }
+    // Frames queued while offline would only pile up; the Bridge ends the
+    // pipeline after 2 s without frames.
+    if (!networkManager.isMqttConnected()) {
+      end_reason = "MQTT offline";
+      break;
+    }
+    const int frames = readMono();
+    if (frames < 0) {
+      result = assist::ErrorCode::MicUnavailable;
+      break;
+    }
+    // A ring that overflows means MQTT has not kept up for seconds; stop
+    // instead of dropping audio in the middle of a sentence.
+    if (!g_ring.write(g_mono, static_cast<size_t>(frames))) {
+      result = assist::ErrorCode::Busy;
+      break;
+    }
+    // A few frames per read drain the wake word backlog without flooding
+    // the publish queue; a refused frame is retried after the next read.
+    sendRingFrames(topic.c_str(), frame, request.id, id_length, &sequence,
+                   kBacklogFramesPerRead);
+  }
+  closeInput();
+  // Whatever is still buffered goes out as far as the queue takes it. Every
+  // session ends with a frame carrying the last flag, also after an error;
+  // it may hold the remaining samples or none.
+  sendRingFrames(topic.c_str(), frame, request.id, id_length, &sequence, SIZE_MAX);
+  size_t rest = g_ring.size() < assist::kFrameSamples ? g_ring.size() : assist::kFrameSamples;
+  g_ring.peekBytes(frame + header_length, rest);
+  const bool last_sent = publishAudioFrame(topic.c_str(), frame, request.id, id_length, sequence,
+                                           rest * sizeof(int16_t), true);
+  g_ring.clear();
+  heap_caps_free(frame);
+  Serial.printf("%s Assist capture %s ended (%s), %lu frames%s\n", kLogPrefix, request.id,
+                result != assist::ErrorCode::None ? assist::errorCodeName(result) : end_reason,
+                static_cast<unsigned long>(sequence + 1),
+                last_sent ? "" : ", last frame not queued");
+  // A newer start keeps the state "listening" instead of flashing idle.
+  if (!(g_assist_pending.load() && result == assist::ErrorCode::None)) {
+    setAssistPublic(assist::PublicState::Idle, result);
+  }
+}
+
+// Takes the newest Assist start. The generation is read under the mutex: a
+// stop after this point changes it.
+bool takeAssistRequest(AssistRequest* request, uint32_t* generation) {
+  bool have = false;
+  if (xSemaphoreTake(g_request_mutex, portMAX_DELAY) == pdTRUE) {
+    have = g_assist_pending.exchange(false);
+    if (have) {
+      *request = g_assist_request;
+      *generation = g_capture_generation.load();
+    }
+    xSemaphoreGive(g_request_mutex);
+  }
+  return have;
+}
+
+// Non-blocking: the pending notification bits, with volume changes already
+// applied (they never interrupt listening).
+uint32_t takeNotifications() {
+  uint32_t bits = 0;
+  xTaskNotifyWait(0, UINT32_MAX, &bits, 0);
+  if (bits & kNotifyVolume) applyVolumeIfChanged();
+  return bits & ~kNotifyVolume;
+}
+
+// ---------------------------------------------------------------------------
+// Worker: on-panel wake word
+// ---------------------------------------------------------------------------
+uint32_t activeWakeWords() { return g_wake_active.load() & availableWakeWords(); }
+
+bool wakeListenWanted() {
+  return activeWakeWords() != 0 && g_mic_ready.load() && g_ring.capacity() != 0 &&
+         !g_shutdown.load() && !g_play_pending.load() && !g_assist_pending.load();
+}
+
+#if defined(HOMETILES_WAKE_WORD)
+wake_word::Engine g_wake_engine;
+uint32_t g_wake_sequence = 0;
+uint32_t g_wake_log_ms = 0;
+
+void disableWakeWords(const char* reason) {
+  Serial.printf("%s Wake word disabled: %s\n", kLogPrefix, reason);
+  g_wake_failed.store(true);
+  g_assist_state_generation.fetch_add(1);
+}
+
+// After a detection: tells the Bridge, then buffers audio for kWakeHandoffMs
+// and hands it to the first Assist start. Returns true to keep listening with
+// the input still open; false when the input was closed, with the
+// notifications the main loop still has to handle in *bits.
+bool handleWakeDetection(const char* word, const String& topic, uint32_t mask, uint32_t* bits) {
+  *bits = 0;
+  char payload[96];
+  const size_t length = assist::buildWakeJson(payload, sizeof(payload), word, g_wake_sequence);
+  if (topic.isEmpty() || length == 0 || !networkManager.isMqttConnected() ||
+      !networkManager.mqttEnqueuePublish(topic.c_str(), reinterpret_cast<const uint8_t*>(payload),
+                                         length, false)) {
+    if (logDue(&g_wake_log_ms, 10000)) {
+      Serial.printf("%s Wake word %s detected but not sent (MQTT unavailable)\n", kLogPrefix, word);
+    }
+    return true;
+  }
+  Serial.printf("%s Wake word %s sent (seq %lu), waiting for Assist\n", kLogPrefix, word,
+                static_cast<unsigned long>(g_wake_sequence));
+  ++g_wake_sequence;
+  setAssistStatusId(nullptr);
+  setAssistPublic(assist::PublicState::Wake, assist::ErrorCode::None);
+  g_ring.clear();
+  const uint32_t detected_ms = millis();
+  for (;;) {
+    const uint32_t pending = takeNotifications();
+    if (pending & kNotifyAssist) {
+      AssistRequest request = {};
+      uint32_t generation = 0;
+      if (takeAssistRequest(&request, &generation)) {
+        captureSession(request, generation, true);
+        *bits = pending & ~(kNotifyAssist | kNotifyWake);
+        return false;
+      }
+    }
+    if ((pending & (kNotifyPlay | kNotifyShutdown)) || g_shutdown.load() ||
+        activeWakeWords() != mask) {
+      Serial.printf("%s Wake word handoff abandoned\n", kLogPrefix);
+      closeInput();
+      g_ring.clear();
+      setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::None);
+      *bits = pending & ~kNotifyWake;
+      return false;
+    }
+    if (static_cast<uint32_t>(millis() - detected_ms) >= assist::kWakeHandoffMs) {
+      Serial.printf("%s No Assist start within %lu ms, listening again\n", kLogPrefix,
+                    static_cast<unsigned long>(assist::kWakeHandoffMs));
+      g_ring.clear();
+      setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::None);
+      return true;
+    }
+    const int frames = readMono();
+    if (frames < 0) {
+      closeInput();
+      g_ring.clear();
+      setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::None);
+      g_wake_resume_ms = millis() + kWakeRetryMs;
+      return false;
+    }
+    // The ring holds more than the handoff window, so this never drops.
+    g_ring.write(g_mono, static_cast<size_t>(frames));
+  }
+}
+
+// Listens until a notification, a wake word change or an error. Returns the
+// notifications the main loop still has to handle (0: re-evaluate).
+uint32_t wakeListen() {
+  const uint32_t mask = activeWakeWords();
+  size_t index = 0;
+  while (index < assist::kWakeWordCount && !(mask & (1u << index))) ++index;
+  const wake_word::ModelSpec* spec = wake_word::modelForCatalogIndex(index);
+  if (!spec) {
+    disableWakeWords("no model for the active word");
+    return 0;
+  }
+  if (g_wake_engine.spec() != spec && !g_wake_engine.begin(*spec)) {
+    disableWakeWords("model setup failed");
+    return 0;
+  }
+  const char* wake_topic = mqttTopics.topic(TopicKey::ASSIST_WAKE_STAT);
+  // Copied once: the registry may rebuild its strings on the loop task.
+  const String topic = wake_topic ? wake_topic : "";
+  // The input uses the speaker's I2S lines and clocks.
+  closeOutput();
+  if (openInput() != assist::ErrorCode::None) {
+    g_wake_resume_ms = millis() + kWakeRetryMs;
+    return 0;
+  }
+  g_wake_engine.reset();
+  if (logDue(&g_wake_log_ms, 60000)) {
+    Serial.printf("%s Listening for wake word %s\n", kLogPrefix, spec->id);
+  }
+  uint32_t bits = 0;
+  for (;;) {
+    bits = takeNotifications();
+    if (bits || g_shutdown.load() || activeWakeWords() != mask) break;
+    const int frames = readMono();
+    if (frames < 0) {
+      g_wake_resume_ms = millis() + kWakeRetryMs;
+      break;
+    }
+    if (frames == 0 || !g_wake_engine.process(g_mono, static_cast<size_t>(frames))) continue;
+    uint32_t handoff_bits = 0;
+    if (handleWakeDetection(spec->id, topic, mask, &handoff_bits)) continue;
+    g_wake_resume_ms = millis() + kWakeRefractoryMs;
+    return handoff_bits;
+  }
+  closeInput();
+  return bits & ~kNotifyWake;
+}
+#else
+uint32_t wakeListen() { return 0; }
+#endif  // defined(HOMETILES_WAKE_WORD)
+
 void workerMain(void*) {
   probeCodec();
+  if (g_mic_ready.load() && !allocateCaptureBuffers()) {
+    g_mic_ready.store(false);
+    g_assist_state_generation.fetch_add(1);
+  }
   PlayRequest* request = static_cast<PlayRequest*>(
       heap_caps_malloc(sizeof(PlayRequest), MALLOC_CAP_SPIRAM));
   // Allocated once: a fragmented PSRAM heap later cannot refuse a stream.
@@ -665,8 +1179,19 @@ void workerMain(void*) {
   if (!stream_memory) Serial.printf("%s Stream buffer unavailable\n", kLogPrefix);
   for (;;) {
     uint32_t bits = 0;
-    xTaskNotifyWait(0, UINT32_MAX, &bits, portMAX_DELAY);
+    const bool wake_wanted = wakeListenWanted();
+    const int32_t refractory_ms = static_cast<int32_t>(g_wake_resume_ms - millis());
+    if (wake_wanted && refractory_ms <= 0) {
+      // Listening runs until something needs the worker or the I2S lines.
+      bits = wakeListen();
+      if (bits == 0) continue;
+    } else {
+      const TickType_t wait =
+          wake_wanted ? pdMS_TO_TICKS(static_cast<uint32_t>(refractory_ms)) + 1 : portMAX_DELAY;
+      if (xTaskNotifyWait(0, UINT32_MAX, &bits, wait) != pdTRUE) continue;
+    }
     if ((bits & kNotifyShutdown) || g_shutdown.load()) {
+      closeInput();
       closeOutput();
       g_shutdown_ack.fetch_add(1);
       continue;
@@ -679,12 +1204,24 @@ void workerMain(void*) {
         if (have) memcpy(request, g_request, sizeof(PlayRequest));
         xSemaphoreGive(g_request_mutex);
       }
-      if (have) playRequest(*request, stream_memory);
+      if (have) {
+        playRequest(*request, stream_memory);
+        // The answer must not retrigger the wake word.
+        g_wake_resume_ms = millis() + kWakeRefractoryMs;
+      }
+    }
+    if (bits & kNotifyAssist) {
+      AssistRequest assist_request = {};
+      uint32_t generation = 0;
+      if (takeAssistRequest(&assist_request, &generation)) {
+        captureSession(assist_request, generation, false);
+        g_wake_resume_ms = millis() + kWakeRefractoryMs;
+      }
     }
   }
 }
 
-void storeVolume() {
+void storeSettings() {
   Device::ScopedStorageWrite storage_write(BatchedNvsWrite::kNeedsDisplayGuard);
   BatchedNvsWrite::Preferences prefs;
   if (!prefs.begin(kPrefsNamespace, false)) {
@@ -693,8 +1230,11 @@ void storeVolume() {
   }
   prefs.putFloat(kPrefsVolumeKey, g_volume.load());
   prefs.putBool(kPrefsMutedKey, g_muted.load());
+  char wake_words[assist::kMaxWakeWordListChars];
+  assist::formatWakeWordList(g_wake_active.load(), wake_words, sizeof(wake_words));
+  prefs.putString(kPrefsWakeWordsKey, wake_words);
   if (!BatchedNvsWrite::finish(prefs)) {
-    Serial.printf("%s Could not save the volume\n", kLogPrefix);
+    Serial.printf("%s Could not save the speaker settings\n", kLogPrefix);
   }
 }
 
@@ -722,6 +1262,34 @@ void publishStatus() {
   networkManager.mqttEnqueuePublish(topic, payload, true);
 }
 
+// Only once the microphone answered: a board without one never announces
+// Assist.
+void publishAssistStatus() {
+  if (!kSupported || !g_mic_ready.load() || !networkManager.isMqttConnected()) return;
+  const char* topic = mqttTopics.topic(TopicKey::ASSIST_STAT);
+  if (!topic || !*topic) return;
+  assist::StatusFields fields;
+  fields.state = static_cast<assist::PublicState>(g_assist_state.load());
+  fields.error = static_cast<assist::ErrorCode>(g_assist_error.load());
+  fields.wake_words = true;
+  fields.available_wake_words = availableWakeWords();
+  fields.active_wake_words = g_wake_active.load();
+  char id[assist::kMaxRequestIdLength + 1] = {};
+#if defined(HOMETILES_SPEAKER)
+  portENTER_CRITICAL(&g_id_mux);
+  memcpy(id, g_assist_status_id, sizeof(id));
+  portEXIT_CRITICAL(&g_id_mux);
+#endif
+  if (id[0]) fields.id = id;
+  char payload[256];
+  if (!assist::buildStatusJson(payload, sizeof(payload), fields)) return;
+  networkManager.mqttEnqueuePublish(topic, payload, true);
+}
+
+uint8_t capabilityBits() {
+  return static_cast<uint8_t>((bridgeCapability() ? 1u : 0u) | (micCapability() ? 2u : 0u));
+}
+
 }  // namespace
 
 bool supported() { return kSupported; }
@@ -733,6 +1301,11 @@ void begin() {
   if (prefs.begin(kPrefsNamespace, true)) {
     g_volume.store(clampVolume(prefs.getFloat(kPrefsVolumeKey, kDefaultVolume)));
     g_muted.store(prefs.getBool(kPrefsMutedKey, false));
+    // Unknown names (a word dropped from the catalog) are ignored.
+    if (prefs.isKey(kPrefsWakeWordsKey)) {
+      g_wake_active.store(
+          assist::parseWakeWordList(prefs.getString(kPrefsWakeWordsKey).c_str()));
+    }
     prefs.end();
   }
   g_request_mutex = xSemaphoreCreateMutex();
@@ -759,7 +1332,12 @@ void service() {
     g_published_generation = generation;
     publishStatus();
   }
-  const bool capability = bridgeCapability();
+  const uint32_t assist_generation = g_assist_state_generation.load();
+  if (assist_generation != g_assist_published_generation) {
+    g_assist_published_generation = assist_generation;
+    publishAssistStatus();
+  }
+  const uint8_t capability = capabilityBits();
   if (capability != g_last_capability) {
     g_last_capability = capability;
     // The post-connect path announces the current value after a reconnect.
@@ -769,9 +1347,11 @@ void service() {
   if (g_persist_pending && !g_shutdown.load() &&
       static_cast<int32_t>(millis() - g_persist_due_ms) >= 0 &&
       static_cast<PublicState>(g_public_state.load()) == PublicState::Idle &&
-      !g_play_pending.load()) {
+      !g_play_pending.load() &&
+      static_cast<assist::PublicState>(g_assist_state.load()) == assist::PublicState::Idle &&
+      !g_assist_pending.load()) {
     g_persist_pending = false;
-    storeVolume();
+    storeSettings();
   }
 #endif
 }
@@ -779,8 +1359,10 @@ void service() {
 void onMqttConnected() {
   if (!kSupported) return;
   g_published_generation = g_state_generation.load();
-  g_last_capability = bridgeCapability();
+  g_assist_published_generation = g_assist_state_generation.load();
+  g_last_capability = capabilityBits();
   publishStatus();
+  publishAssistStatus();
 }
 
 const char* commandTopic() {
@@ -794,10 +1376,27 @@ bool isCommandTopic(const char* topic) {
   return command && topic && strcmp(topic, command) == 0;
 }
 
+const char* assistCommandTopic() {
+  if (!kSupported) return nullptr;
+  const char* topic = mqttTopics.topic(TopicKey::ASSIST_CMND);
+  return topic && *topic ? topic : nullptr;
+}
+
+bool isAssistCommandTopic(const char* topic) {
+  const char* command = assistCommandTopic();
+  return command && topic && strcmp(topic, command) == 0;
+}
+
 bool handleMqttMessage(const char* topic, const uint8_t* payload, size_t length) {
-  if (!isCommandTopic(topic)) return false;
-  handleCommandPayload(payload, length);
-  return true;
+  if (isCommandTopic(topic)) {
+    handleCommandPayload(payload, length);
+    return true;
+  }
+  if (isAssistCommandTopic(topic)) {
+    handleAssistCommandPayload(payload, length);
+    return true;
+  }
+  return false;
 }
 
 void handleCommandPayload(const uint8_t* payload, size_t length) {
@@ -826,6 +1425,9 @@ void handleCommandPayload(const uint8_t* payload, size_t length) {
       memcpy(g_request->id, command.id, sizeof(g_request->id));
       memcpy(g_request->url, g_parse_url, command.url_length + 1);
       g_play_pending.store(true);
+      // Playback ends a capture session or a start that has not begun.
+      g_assist_pending.store(false);
+      g_capture_generation.fetch_add(1);
       xSemaphoreGive(g_request_mutex);
       // Ends the current clip; the worker then takes the new request.
       g_stop_generation.fetch_add(1);
@@ -860,13 +1462,100 @@ void handleCommandPayload(const uint8_t* payload, size_t length) {
 #endif
 }
 
+void handleAssistCommandPayload(const uint8_t* payload, size_t length) {
+#if defined(HOMETILES_SPEAKER)
+  if (!g_worker || g_shutdown.load() || !g_request_mutex) return;
+  assist::Command command;
+  assist::parseCommand(reinterpret_cast<const char*>(payload), length, &command);
+  if (command.status != assist::CommandStatus::Ok) {
+    if (logDue(&g_assist_log_ms, 10000)) {
+      Serial.printf("%s Ignored Assist command: %s (%u bytes)\n", kLogPrefix,
+                    assist::commandStatusName(command.status), static_cast<unsigned>(length));
+    }
+    // A refused start still answers, unless another session is listening.
+    if (command.kind == assist::CommandKind::Start && command.id[0] != '\0' &&
+        g_mic_ready.load() &&
+        static_cast<assist::PublicState>(g_assist_state.load()) == assist::PublicState::Idle) {
+      setAssistStatusId(command.id);
+      setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::Invalid);
+    }
+    return;
+  }
+  // Wake words apply at once (the worker starts or stops listening), are
+  // stored for the next boot and show in the retained status right away.
+  if (command.kind == assist::CommandKind::WakeWords) {
+    g_wake_active.store(command.wake_words);
+    g_assist_state_generation.fetch_add(1);
+    g_persist_pending = true;
+    g_persist_due_ms = millis() + kPersistDelayMs;
+    notifyWorker(kNotifyWake);
+    char list[assist::kMaxWakeWordListChars];
+    assist::formatWakeWordList(command.wake_words, list, sizeof(list));
+    Serial.printf("%s Wake words: %s\n", kLogPrefix, list[0] ? list : "off");
+    return;
+  }
+  if (!g_mic_ready.load()) {
+    if (logDue(&g_assist_log_ms, 10000)) {
+      Serial.printf("%s Assist command ignored: no microphone\n", kLogPrefix);
+    }
+    return;
+  }
+  switch (command.kind) {
+    case assist::CommandKind::Start: {
+      if (xSemaphoreTake(g_request_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+      memcpy(g_assist_request.id, command.id, sizeof(g_assist_request.id));
+      g_assist_request.max_ms = command.max_ms;
+      g_assist_pending.store(true);
+      // Ends a running session; the worker then takes the new one.
+      g_capture_generation.fetch_add(1);
+      // A start stops speaker playback first.
+      g_play_pending.store(false);
+      xSemaphoreGive(g_request_mutex);
+      g_stop_generation.fetch_add(1);
+      memcpy(g_assist_session_id, command.id, sizeof(g_assist_session_id));
+      notifyWorker(kNotifyAssist);
+      break;
+    }
+    case assist::CommandKind::Stop: {
+      if (strcmp(command.id, g_assist_session_id) != 0) {
+        if (logDue(&g_assist_log_ms, 10000)) {
+          Serial.printf("%s Assist stop for another session ignored\n", kLogPrefix);
+        }
+        return;
+      }
+      bool withdrawn = false;
+      if (xSemaphoreTake(g_request_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        withdrawn = g_assist_pending.exchange(false);
+        xSemaphoreGive(g_request_mutex);
+      }
+      g_capture_generation.fetch_add(1);
+      // Stopped before the worker began it: report the session as done.
+      if (withdrawn) {
+        setAssistStatusId(command.id);
+        setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::None);
+      }
+      break;
+    }
+    case assist::CommandKind::WakeWords:
+    case assist::CommandKind::Invalid:
+      break;
+  }
+#else
+  (void)payload;
+  (void)length;
+#endif
+}
+
 bool bridgeCapability() { return kSupported && g_codec_ready.load(); }
+
+bool micCapability() { return kSupported && g_mic_ready.load(); }
 
 void shutdown(const char* reason) {
 #if defined(HOMETILES_SPEAKER)
   if (!g_worker || g_shutdown.exchange(true)) return;
   const uint32_t ack = g_shutdown_ack.load();
   g_stop_generation.fetch_add(1);
+  g_capture_generation.fetch_add(1);
   notifyWorker(kNotifyShutdown);
   const uint32_t started_ms = millis();
   while (g_shutdown_ack.load() == ack &&
