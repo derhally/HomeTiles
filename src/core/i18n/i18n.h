@@ -686,10 +686,8 @@ struct Strings {
   const char* weather_colored_icons;
   // Web Admin navigation: the menu with every folder besides Home.
   const char* admin_folders;
-  // System popup row: the panel's current IP address.
-  const char* system_ip_label;
-  // System popup row: the MAC address of the active network connection.
-  const char* system_mac_label;
+  // Wi-Fi popup line under the connection status: the station MAC address.
+  const char* wifi_mac_label;
   // Settings Audio tile and popup (panels with a speaker).
   const char* audio_label;
   const char* settings_tile_desc_audio;

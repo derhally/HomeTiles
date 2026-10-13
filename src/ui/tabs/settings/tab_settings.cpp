@@ -110,6 +110,8 @@ static lv_obj_t *wifi_pass_eye_icon = nullptr;
 static lv_obj_t *wifi_list_view = nullptr;
 static lv_obj_t *wifi_entry_view = nullptr;
 static lv_obj_t *wifi_conn_status_label = nullptr;
+// MAC address line under the connection status (Wi-Fi only).
+static lv_obj_t *wifi_mac_label = nullptr;
 static lv_obj_t *wifi_scan_status_label = nullptr;
 // Holds the scan status, network list and manual row; takes the free height
 // above the footer so a long list scrolls instead of pushing it down.
@@ -175,8 +177,6 @@ static lv_obj_t *security_ha_check = nullptr;  // Shown while connected
 static lv_obj_t *security_encryption_value = nullptr;
 static lv_obj_t *security_encryption_icon = nullptr;
 static lv_obj_t *security_password_value = nullptr;
-// Network lines the idle System status area shows (IP and MAC address).
-static char system_network_shown[96] = "";
 static lv_obj_t *security_password_icon = nullptr;
 static lv_obj_t *security_prompt_box = nullptr;  // Confirmation questions
 static lv_obj_t *security_prompt_icon = nullptr;
@@ -1112,6 +1112,7 @@ static void reset_popup_refs() {
   wifi_list_view = nullptr;
   wifi_entry_view = nullptr;
   wifi_conn_status_label = nullptr;
+  wifi_mac_label = nullptr;
   wifi_scan_status_label = nullptr;
   wifi_list_block = nullptr;
   wifi_list_container = nullptr;
@@ -1156,7 +1157,6 @@ static void reset_popup_refs() {
   security_encryption_icon = nullptr;
   security_password_value = nullptr;
   security_password_icon = nullptr;
-  system_network_shown[0] = '\0';
   security_prompt_box = nullptr;
   security_prompt_icon = nullptr;
   security_prompt_title = nullptr;
@@ -1500,6 +1500,7 @@ static void wifi_update_conn_status_label() {
   if (ap) {
     // Use a heading and aligned SSID/password/IP rows instead of inline
     // credential text.
+    if (wifi_mac_label) lv_obj_add_flag(wifi_mac_label, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(wifi_conn_status_label, tr().wifi_ap_active);
     lv_obj_set_style_text_font(wifi_conn_status_label, popup_layout::font28(), 0);
     lv_obj_set_style_text_color(wifi_conn_status_label, lv_color_hex(0xFFC04D), 0);
@@ -1574,6 +1575,17 @@ static void wifi_update_conn_status_label() {
   } else {
     lv_label_set_text(wifi_conn_status_label, tr().wifi_offline);
     lv_obj_set_style_text_color(wifi_conn_status_label, lv_color_hex(0xFF6B6B), 0);
+  }
+  // The station MAC, as the router lists it; only once Wi-Fi reported it.
+  if (wifi_mac_label) {
+    char mac[18];
+    if (networkTransport.activeMac(mac, sizeof(mac))) {
+      snprintf(buf, sizeof(buf), "%s: %s", tr().wifi_mac_label, mac);
+      lv_label_set_text(wifi_mac_label, buf);
+      lv_obj_clear_flag(wifi_mac_label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(wifi_mac_label, LV_OBJ_FLAG_HIDDEN);
+    }
   }
 }
 
@@ -2329,6 +2341,14 @@ static void build_wifi_popup(lv_obj_t* parent) {
   lv_obj_set_style_text_font(wifi_conn_status_label,
                              popup_layout::font24(), 0);
 
+  wifi_mac_label = lv_label_create(wifi_info_box);
+  lv_obj_set_width(wifi_mac_label, LV_PCT(100));
+  lv_label_set_long_mode(wifi_mac_label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(wifi_mac_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(wifi_mac_label, popup_layout::font20(), 0);
+  lv_obj_set_style_text_color(wifi_mac_label, lv_color_hex(0xA8A8A8), 0);
+  lv_obj_add_flag(wifi_mac_label, LV_OBJ_FLAG_HIDDEN);
+
   // After a mode change, show the restart hint beside the current connection
   // status in the information box instead of below the buttons.
   if (NetworkTransportManager::deviceSupportsEthernet()) {
@@ -2665,38 +2685,16 @@ static void system_set_buttons_enabled(bool enabled) {
 }
 
 // Status line above the buttons: an update or error message (one or two
-// lines). The rows under the branding stay visible meanwhile. Without a
-// message it shows the panel's IP and MAC address; the rows area has no room
-// for more lines on 600 px high displays.
+// lines). The rows under the branding stay visible meanwhile.
 static void system_status_text(const char* text, uint32_t color) {
   if (!system_status_label) return;
   lv_label_set_text(system_status_label, text ? text : "");
   lv_obj_set_style_text_color(system_status_label, lv_color_hex(color), 0);
 }
 
-// The address can change while the popup is open (DHCP renewal, Wi-Fi to
-// Ethernet), so it is checked with the rows; "-" while offline or unknown.
-static void system_refresh_network_status() {
-  if (!system_status_label || system_status_message) return;
-  char ip[16] = "-";
-  if (networkTransport.isConnected()) {
-    snprintf(ip, sizeof(ip), "%s", networkTransport.localIP().toString().c_str());
-  }
-  char mac[18] = "-";
-  if (!networkTransport.activeMac(mac, sizeof(mac))) snprintf(mac, sizeof(mac), "-");
-  char text[sizeof(system_network_shown)];
-  snprintf(text, sizeof(text), "%s: %s\n%s: %s", tr().system_ip_label, ip,
-           tr().system_mac_label, mac);
-  if (strcmp(text, system_network_shown) == 0) return;
-  memcpy(system_network_shown, text, sizeof(system_network_shown));
-  system_status_text(text, 0xA8A8A8);
-}
-
 static void system_clear_status() {
   system_status_message = false;
-  system_network_shown[0] = '\0';
   system_status_text("", 0xA8A8A8);
-  system_refresh_network_status();
 }
 
 static void system_show_status(const char* text, uint32_t color) {
@@ -2718,7 +2716,6 @@ static void system_set_row(lv_obj_t* value, lv_obj_t* icon, const char* text, bo
 }
 
 static void system_refresh_rows() {
-  system_refresh_network_status();
   const bool connected = networkManager.isMqttConnected();
   const bool encrypted = command_channel::state() == command_channel::PairingState::Active;
   const bool password_on = web_admin_auth::enabled();
@@ -3519,7 +3516,6 @@ static void build_system_popup(lv_obj_t* parent) {
   system_view = SystemView::Main;
   security_step = SecurityStep::List;
   system_rows_state = 0xFF;
-  system_network_shown[0] = '\0';
   system_refresh_rows();
   system_apply_view();
   // The rows follow the connection while the popup is open; closing the
