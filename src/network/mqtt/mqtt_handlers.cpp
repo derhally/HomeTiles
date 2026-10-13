@@ -24,6 +24,8 @@
 #include "src/network/bridge/device_entities.h"
 #include "src/core/power/power_manager.h"
 #include "src/core/power/battery_state.h"
+#include "src/core/firmware/firmware_version.h"
+#include "src/core/hardware/chip_temperature.h"
 #include "src/network/transport/network_transport.h"
 #include "src/core/hardware/board_hal.h"
 #include "src/core/display/lvgl_tick_service.h"
@@ -1993,9 +1995,11 @@ static const char* reset_reason_key(esp_reset_reason_t reason) {
   }
 }
 
-// Battery voltage, Wi-Fi signal and uptime once a minute (retained, so the
-// Bridge has values after a Home Assistant restart); the reset reason only
-// with the post-connect snapshot because it cannot change while running.
+// Battery, Wi-Fi signal, free memory, chip temperature and uptime once a
+// minute (retained, so the Bridge has values after a Home Assistant restart);
+// the reset reason and firmware version only with the post-connect snapshot
+// because they cannot change while running. The panel IP is published by the
+// network manager on every connect.
 static void publish_runtime_diagnostics(bool force) {
   static constexpr uint32_t kIntervalMs = 60000;
   static uint32_t last_ms = 0;
@@ -2026,6 +2030,21 @@ static void publish_runtime_diagnostics(bool force) {
   }
   networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::SENSOR_WIFI_RSSI), buf, true);
 
+  snprintf(buf, sizeof(buf), "%u",
+           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) / 1024));
+  networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::SENSOR_FREE_INTERNAL), buf, true);
+  snprintf(buf, sizeof(buf), "%u",
+           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
+  networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::SENSOR_FREE_PSRAM), buf, true);
+
+  float chip_c = 0.0f;
+  if (chip_temperature::read(&chip_c) && std::isfinite(chip_c)) {
+    snprintf(buf, sizeof(buf), "%.1f", chip_c);
+  } else {
+    snprintf(buf, sizeof(buf), "unavailable");
+  }
+  networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::SENSOR_CHIP_TEMP), buf, true);
+
   // esp_timer does not wrap after 49 days like millis().
   snprintf(buf, sizeof(buf), "%llu",
            static_cast<unsigned long long>(esp_timer_get_time() / 1000000LL));
@@ -2034,6 +2053,7 @@ static void publish_runtime_diagnostics(bool force) {
   if (force) {
     networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::STAT_RESET_REASON),
                                       reset_reason_key(esp_reset_reason()), true);
+    networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::STAT_FIRMWARE), FW_VERSION, true);
   }
 }
 
