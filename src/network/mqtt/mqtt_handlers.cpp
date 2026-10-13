@@ -25,6 +25,7 @@
 #include "src/network/bridge/device_entities.h"
 #include "src/core/power/power_manager.h"
 #include "src/core/power/battery_state.h"
+#include "src/network/transport/network_transport.h"
 #include "src/core/hardware/board_hal.h"
 #include "src/core/display/lvgl_tick_service.h"
 #include "src/io/hardware_io.h"
@@ -33,7 +34,10 @@
 #include "src/web/server/web_admin.h"
 #include "src/video/local_camera/local_camera.h"
 #include "src/audio/speaker.h"
+#include <WiFi.h>
 #include <esp_heap_caps.h>
+#include <esp_system.h>
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <algorithm>
@@ -912,11 +916,17 @@ static int readBatterySocPercent() {
   return g_soc_pct;
 }
 
-static void sync_internal_battery_entity() {
+static int g_last_synced_soc = -1;
+
+static void sync_internal_battery_entity(bool force) {
   if (!batteryStateSupportsMeasurement() || batteryStateIsBatteryMissing()) {
     return;
   }
   const int soc = readBatterySocPercent();
+  // The service loop calls this every 500 ms and the map updates below
+  // rebuild strings, so it only syncs when the level changes.
+  if (!force && soc == g_last_synced_soc) return;
+  g_last_synced_soc = soc;
   char soc_payload[8];
   snprintf(soc_payload, sizeof(soc_payload), "%d", soc);
 
@@ -1265,7 +1275,7 @@ static void sync_local_device_entities(bool publish_mqtt) {
                    screensaver_bright_payload);
   update_all_grids(kEntityDisplayRotate, rotate_state);
   update_all_grids(kEntityDisplaySleep, sleep_state);
-  sync_internal_battery_entity();
+  sync_internal_battery_entity(true);
   // Explicit local I/O owns all external temperature telemetry.
   (void)publish_mqtt;
 }
@@ -2256,6 +2266,73 @@ void mqttSubscribeTopics() {
   }
 }
 
+// ========== Runtime diagnostics ==========
+// Stable identifiers for the Bridge's reset-reason enum sensor.
+static const char* reset_reason_key(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON: return "power_on";
+    case ESP_RST_EXT: return "external";
+    case ESP_RST_SW: return "software";
+    case ESP_RST_PANIC: return "panic";
+    case ESP_RST_INT_WDT: return "interrupt_watchdog";
+    case ESP_RST_TASK_WDT: return "task_watchdog";
+    case ESP_RST_WDT: return "other_watchdog";
+    case ESP_RST_DEEPSLEEP: return "deep_sleep";
+    case ESP_RST_BROWNOUT: return "brownout";
+    case ESP_RST_SDIO: return "sdio";
+    case ESP_RST_USB: return "usb";
+    case ESP_RST_JTAG: return "jtag";
+    case ESP_RST_EFUSE: return "efuse";
+    case ESP_RST_PWR_GLITCH: return "power_glitch";
+    case ESP_RST_CPU_LOCKUP: return "cpu_lockup";
+    default: return "unknown";
+  }
+}
+
+// Battery voltage, Wi-Fi signal and uptime once a minute (retained, so the
+// Bridge has values after a Home Assistant restart); the reset reason only
+// with the post-connect snapshot because it cannot change while running.
+static void publish_runtime_diagnostics(bool force) {
+  static constexpr uint32_t kIntervalMs = 60000;
+  static uint32_t last_ms = 0;
+  if (!networkManager.isMqttConnected()) return;
+  const uint32_t now_ms = millis();
+  if (!force && (now_ms - last_ms) < kIntervalMs) return;
+  last_ms = now_ms;
+
+  char buf[24];
+  if (batteryStateSupportsMeasurement()) {
+    const int soc = readBatterySocPercent();
+    if (batteryStateHasDisplayPercent()) snprintf(buf, sizeof(buf), "%d", soc);
+    else snprintf(buf, sizeof(buf), "unavailable");
+    networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::SENSOR_SOC), buf, true);
+
+    if (batteryStateHasVoltage()) {
+      snprintf(buf, sizeof(buf), "%.2f", batteryStateGet().voltage_mv / 1000.0f);
+    } else {
+      snprintf(buf, sizeof(buf), "unavailable");
+    }
+    networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::SENSOR_BATTERY_V), buf, true);
+  }
+
+  if (networkTransport.activeKind() == NetworkTransportKind::Wifi && WiFi.isConnected()) {
+    snprintf(buf, sizeof(buf), "%d", static_cast<int>(WiFi.RSSI()));
+  } else {
+    snprintf(buf, sizeof(buf), "unavailable");
+  }
+  networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::SENSOR_WIFI_RSSI), buf, true);
+
+  // esp_timer does not wrap after 49 days like millis().
+  snprintf(buf, sizeof(buf), "%llu",
+           static_cast<unsigned long long>(esp_timer_get_time() / 1000000LL));
+  networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::TELE_UP), buf, true);
+
+  if (force) {
+    networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::STAT_RESET_REASON),
+                                      reset_reason_key(esp_reset_reason()), true);
+  }
+}
+
 // ========== Publish home snapshot ==========
 void mqttPublishHomeSnapshot() {
   if (!networkManager.isMqttConnected()) return;
@@ -2276,6 +2353,7 @@ void mqttPublishHomeSnapshot() {
     // Remove the old retained synthetic zero rather than publishing false data.
     networkManager.mqttEnqueuePublish(mqttTopics.topic(TopicKey::SENSOR_SOC), "", true);
   }
+  publish_runtime_diagnostics(true);
 }
 
 // ========== Publish device settings ==========
@@ -2319,7 +2397,8 @@ void mqttServiceLocalSensors() {
     return;
   }
   last_run_ms = now_ms;
-  sync_internal_battery_entity();
+  sync_internal_battery_entity(false);
+  publish_runtime_diagnostics(false);
 
 }
 

@@ -25,5 +25,7 @@ bool batteryStateIsBatteryMissing();
 bool batteryStateHasDisplayPercent();
 int32_t batteryStateDisplayPercent();
 int32_t batteryStateRawPercent();
+// True when voltage_mv holds a filtered cell voltage.
+bool batteryStateHasVoltage();
 
 #endif // BATTERY_STATE_H
