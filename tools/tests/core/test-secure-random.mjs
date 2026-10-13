@@ -13,12 +13,12 @@ import {maskCpp} from '../../lib/cpp-source.mjs';
 const helper = maskCpp(readRepoFile('src/core/security/secure_random.cpp'));
 const radioless = helper.slice(helper.indexOf('#if !SOC_WIFI_SUPPORTED && !SOC_BT_SUPPORTED\n  '),
   helper.indexOf('#else'));
-const steps = ['xSemaphoreTake(mutex, portMAX_DELAY);', 'bootloader_random_enable();',
-  'esp_fill_random(out, length);', 'bootloader_random_disable();', 'xSemaphoreGive(mutex);'];
+const steps = ['sar_adc::Lock adc_lock;', 'bootloader_random_enable();',
+  'esp_fill_random(out, length);', 'bootloader_random_disable();'];
 let previous = -1;
 for (const step of steps) {
   const index = radioless.indexOf(step);
-  assert.ok(index > previous, `radio-less chips run "${step}" in order inside the mutex`);
+  assert.ok(index > previous, `radio-less chips run "${step}" in order inside the shared ADC lock`);
   previous = index;
 }
 assert.match(helper, /#else\s*esp_fill_random\(out, length\);\s*#endif/,
@@ -50,8 +50,10 @@ const auth = maskCpp(readRepoFile('src/web/server/auth/web_admin_auth.cpp'));
 assert.match(auth, /void fillRandom\(uint8_t\* out, size_t length\) \{\s*secure_random::fill\(out, length\);\s*\}/,
   'Web Admin nonces, sessions and CSRF tokens come from secure_random::fill');
 
-// bootloader_random_enable() resets and reprograms the SAR ADC, so nothing
-// else in the firmware may use the ADC.
+// bootloader_random_enable() resets and reprograms the SAR ADC. The only ADC
+// users are the measurements below; each opens and closes its driver inside
+// the shared sar_adc::Lock so it never reads a peripheral reset by the
+// entropy source.
 function sourceFiles(directory) {
   return fs.readdirSync(path.join(repoRoot, directory), {withFileTypes: true}).flatMap(entry => {
     const relative = path.join(directory, entry.name);
@@ -60,9 +62,27 @@ function sourceFiles(directory) {
   });
 }
 const adcUse = /\banalogRead(?:Milli[Vv]olts)?\s*\(|\badc_oneshot_|\badc_continuous_|\badc_cali_|\btemperature_sensor_|\btemperatureRead\s*\(/;
+const lockedAdcUsers = {
+  [path.join('src', 'core', 'power', 'battery_state.cpp')]: ['adc_oneshot_new_unit(', 'adc_oneshot_del_unit(unit);'],
+  [path.join('src', 'core', 'hardware', 'chip_temperature.cpp')]: ['temperature_sensor_install(', 'temperature_sensor_uninstall(sensor);'],
+};
 const firmwareSources = [...sourceFiles('src'), 'HomeTiles.ino'];
 for (const file of firmwareSources) {
-  assert.doesNotMatch(maskCpp(readRepoFile(file)), adcUse,
-    `${file} uses the ADC, which conflicts with the P4 entropy source in secure_random.cpp`);
+  const source = maskCpp(readRepoFile(file));
+  const steps = lockedAdcUsers[path.normalize(file)];
+  if (!steps) {
+    assert.doesNotMatch(source, adcUse,
+      `${file} uses the ADC, which conflicts with the P4 entropy source in secure_random.cpp`);
+    continue;
+  }
+  assert.doesNotMatch(source, /\banalogRead(?:Milli[Vv]olts)?\s*\(|\btemperatureRead\s*\(|\badc_continuous_/,
+    `${file} must not use Arduino's persistent ADC handles or continuous mode`);
+  let previous = source.indexOf('sar_adc::Lock adc_lock;');
+  assert.ok(previous >= 0, `${file} takes the shared ADC lock`);
+  for (const step of steps) {
+    const index = source.indexOf(step, previous);
+    assert.ok(index > previous, `${file} runs "${step}" inside the shared ADC lock`);
+    previous = index;
+  }
 }
-console.log(`Secure random: P4 entropy source paired, security code uses it, no ADC use in ${firmwareSources.length} files`);
+console.log(`Secure random: P4 entropy source paired, security code uses it, ADC users share its lock in ${firmwareSources.length} files`);
