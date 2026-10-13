@@ -347,6 +347,11 @@ String HaBridgeConfig::buildJsonPayload(const char* device_id,
   }
   json += ",\"capabilities\":{\"view_navigation\":true,\"battery_soc\":";
   json += batteryStateSupportsMeasurement() ? "true" : "false";
+  // Cell voltage comes from the same measurement as the level.
+  json += ",\"battery_voltage\":";
+  json += batteryStateSupportsMeasurement() ? "true" : "false";
+  // Wi-Fi signal, uptime and reset reason (every profile).
+  json += ",\"runtime_diagnostics\":true";
   json += ",\"legacy_external_temperature\":false";
   // Only an enabled and detected built-in camera on its exact profile; older
   // Bridges drop unknown capability keys.
