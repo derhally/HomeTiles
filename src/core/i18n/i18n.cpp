@@ -612,7 +612,14 @@ static const Strings kStringsDe = {
     "Farbige Wetter-Icons",
     "Ordner",
     "IP-Adresse",
-    "MAC-Adresse"};
+    "MAC-Adresse",
+    "Audio",
+    "Lautstärke und Mikrofon",
+    "Lautstärke",
+    "Mikrofon-Empfindlichkeit",
+    "Mikrofon an",
+    "Mikrofon aus",
+    "Spielt MP3 und 16-Bit-WAV, gestreamt über HTTP oder HTTPS.\nMikrofon: 16 kHz mono an Home Assistant Assist."};
 
 static const Strings kStringsEn = {
     "en",
@@ -1219,7 +1226,14 @@ static const Strings kStringsEn = {
     "Colored weather icons",
     "Folders",
     "IP address",
-    "MAC address"};
+    "MAC address",
+    "Audio",
+    "Volume and microphone",
+    "Volume",
+    "Mic sensitivity",
+    "Microphone on",
+    "Microphone off",
+    "Plays MP3 and 16-bit WAV, streamed over HTTP or HTTPS.\nMicrophone: 16 kHz mono to Home Assistant Assist."};
 
 static const Strings kStringsFr = {
     "fr",
@@ -1826,7 +1840,14 @@ static const Strings kStringsFr = {
     "Icônes météo en couleur",
     "Dossiers",
     "Adresse IP",
-    "Adresse MAC"};
+    "Adresse MAC",
+    "Audio",
+    "Volume et microphone",
+    "Volume",
+    "Sensibilité du micro",
+    "Microphone activé",
+    "Microphone coupé",
+    "Lit le MP3 et le WAV 16 bits, diffusés en HTTP ou HTTPS.\nMicrophone : 16 kHz mono vers Home Assistant Assist."};
 
 static const LocaleProfile kLocaleDe = {
     "de",
@@ -2760,6 +2781,13 @@ static const Strings kStringsPl = {
     "Foldery",
     "Adres IP",
     "Adres MAC",
+    "Audio",
+    "Głośność i mikrofon",
+    "Głośność",
+    "Czułość mikrofonu",
+    "Mikrofon włączony",
+    "Mikrofon wyłączony",
+    "Odtwarza MP3 i 16-bitowy WAV przesyłane przez HTTP lub HTTPS.\nMikrofon: 16 kHz mono do Home Assistant Assist.",
 };
 
 static const LocaleProfile kLocalePl = {

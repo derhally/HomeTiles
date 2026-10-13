@@ -33,6 +33,7 @@
 #include "src/ui/screensaver/image_screensaver.h"
 #include "src/ui/shared/ui_surface_style.h"
 #include "src/ui/popups/weather/weather_popup.h"
+#include "src/audio/speaker.h"
 
 static lv_obj_t *brightness_label = nullptr;
 static lv_obj_t *screensaver_brightness_value_label = nullptr;
@@ -65,6 +66,8 @@ enum class SettingsPopupKind : uint8_t {
   Wifi,
   Localization,
   Firmware,
+  // Panels with a speaker only (speaker::supported()).
+  Audio,
 };
 
 static lv_obj_t *settings_tile_display_title = nullptr;
@@ -75,6 +78,16 @@ static lv_obj_t *settings_tile_locale_title = nullptr;
 static lv_obj_t *settings_tile_locale_summary = nullptr;
 static lv_obj_t *settings_tile_firmware_title = nullptr;
 static lv_obj_t *settings_tile_firmware_summary = nullptr;
+static lv_obj_t *settings_tile_audio_title = nullptr;
+static lv_obj_t *settings_tile_audio_summary = nullptr;
+
+// Audio popup controls (reset_popup_refs clears them).
+static lv_obj_t *audio_volume_value_label = nullptr;
+static lv_obj_t *audio_gain_value_label = nullptr;
+static lv_obj_t *audio_mic_btn = nullptr;
+static lv_obj_t *audio_mic_btn_icon = nullptr;
+static lv_obj_t *audio_mic_btn_label = nullptr;
+static lv_obj_t *audio_mic_gain_row = nullptr;
 
 static lv_obj_t *settings_popup_overlay = nullptr;
 static lv_obj_t *settings_popup_card = nullptr;
@@ -1049,6 +1062,12 @@ static void on_popup_textarea_defocused(lv_event_t*) {
 }
 
 static void reset_popup_refs() {
+  audio_volume_value_label = nullptr;
+  audio_gain_value_label = nullptr;
+  audio_mic_btn = nullptr;
+  audio_mic_btn_icon = nullptr;
+  audio_mic_btn_label = nullptr;
+  audio_mic_gain_row = nullptr;
   settings_popup_card = nullptr;
   settings_popup_title = nullptr;
   settings_popup_content = nullptr;
@@ -3510,6 +3529,137 @@ static void build_system_popup(lv_obj_t* parent) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Audio popup: speaker volume, microphone switch and sensitivity, formats.
+// Laid out like the Display popup (label, slider, value; full-width toggle).
+
+static void audio_set_volume_text(int32_t pct) {
+  static char buf[8];
+  snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(pct));
+  if (audio_volume_value_label) lv_label_set_text(audio_volume_value_label, buf);
+}
+
+static void audio_set_gain_text(uint8_t step) {
+  static char buf[16];
+  const uint16_t tenths = speaker::micGainTenthsDb(step);
+  if (tenths % 10) {
+    snprintf(buf, sizeof(buf), "%u.%u dB", static_cast<unsigned>(tenths / 10),
+             static_cast<unsigned>(tenths % 10));
+  } else {
+    snprintf(buf, sizeof(buf), "%u dB", static_cast<unsigned>(tenths / 10));
+  }
+  if (audio_gain_value_label) lv_label_set_text(audio_gain_value_label, buf);
+}
+
+// Teal while the microphone may listen, gray while the privacy switch is off.
+static void audio_update_mic_button() {
+  if (!audio_mic_btn) return;
+  const bool on = speaker::micEnabled();
+  style_settings_button(audio_mic_btn, on ? 0x26A69A : 0x424242);
+  if (audio_mic_btn_icon) {
+    lv_label_set_text(audio_mic_btn_icon,
+                      getMdiChar(on ? "microphone" : "microphone-off").c_str());
+  }
+  if (audio_mic_btn_label) {
+    lv_label_set_text(audio_mic_btn_label, on ? tr().audio_mic_on_btn : tr().audio_mic_off_btn);
+  }
+}
+
+// The value follows the finger; the speaker takes it on release so a drag
+// does not publish a status per step.
+static void on_audio_volume(lv_event_t* e) {
+  lv_obj_t* slider = static_cast<lv_obj_t*>(lv_event_get_target(e));
+  const lv_event_code_t code = lv_event_get_code(e);
+  const int32_t pct = lv_slider_get_value(slider);
+  audio_set_volume_text(pct);
+  if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+    speaker::setVolume(static_cast<float>(pct) / 100.0f);
+  }
+}
+
+static void on_audio_gain(lv_event_t* e) {
+  lv_obj_t* slider = static_cast<lv_obj_t*>(lv_event_get_target(e));
+  const lv_event_code_t code = lv_event_get_code(e);
+  const uint8_t step = static_cast<uint8_t>(lv_slider_get_value(slider));
+  audio_set_gain_text(step);
+  if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+    speaker::setMicGainStep(step);
+  }
+}
+
+static void on_audio_mic_clicked(lv_event_t*) {
+  speaker::setMicEnabled(!speaker::micEnabled(), "panel");
+  audio_update_mic_button();
+}
+
+static void build_audio_popup(lv_obj_t* parent) {
+  lv_obj_t* form = create_form_area(parent);
+  lv_obj_clear_flag(form, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_pad_top(form, popup_layout::scale(32), 0);
+  lv_obj_set_style_pad_row(form, popup_layout::scale(18), 0);
+
+  lv_obj_t* volume_row = create_display_control_row(form);
+  create_display_row_label(volume_row, tr().audio_volume_label, popup_layout::scale(170));
+  lv_obj_t* volume_slider = lv_slider_create(volume_row);
+  style_settings_slider(volume_slider);
+  lv_obj_set_width(volume_slider, 1);
+  lv_obj_set_flex_grow(volume_slider, 1);
+  lv_slider_set_range(volume_slider, 0, 100);
+  const int32_t volume_pct = static_cast<int32_t>(speaker::volume() * 100.0f + 0.5f);
+  lv_slider_set_value(volume_slider, volume_pct, LV_ANIM_OFF);
+  lv_obj_add_event_cb(volume_slider, on_audio_volume, LV_EVENT_VALUE_CHANGED, nullptr);
+  lv_obj_add_event_cb(volume_slider, on_audio_volume, LV_EVENT_RELEASED, nullptr);
+  lv_obj_add_event_cb(volume_slider, on_audio_volume, LV_EVENT_PRESS_LOST, nullptr);
+  audio_volume_value_label = create_display_row_label(volume_row, "", popup_layout::scale(130),
+                                                      LV_TEXT_ALIGN_RIGHT);
+  audio_set_volume_text(volume_pct);
+
+  // The microphone controls only where the microphone answered.
+  if (speaker::micCapability()) {
+    audio_mic_gain_row = create_display_control_row(form);
+    lv_obj_t* gain_title = create_display_row_label(audio_mic_gain_row, tr().audio_mic_gain_label,
+                                                    popup_layout::scale(170));
+    lv_label_set_long_mode(gain_title, LV_LABEL_LONG_WRAP);
+    lv_obj_t* gain_slider = lv_slider_create(audio_mic_gain_row);
+    style_settings_slider(gain_slider);
+    lv_obj_set_width(gain_slider, 1);
+    lv_obj_set_flex_grow(gain_slider, 1);
+    lv_slider_set_range(gain_slider, 0, speaker::kMaxMicGainStep);
+    lv_slider_set_value(gain_slider, speaker::micGainStep(), LV_ANIM_OFF);
+    lv_obj_add_event_cb(gain_slider, on_audio_gain, LV_EVENT_VALUE_CHANGED, nullptr);
+    lv_obj_add_event_cb(gain_slider, on_audio_gain, LV_EVENT_RELEASED, nullptr);
+    lv_obj_add_event_cb(gain_slider, on_audio_gain, LV_EVENT_PRESS_LOST, nullptr);
+    audio_gain_value_label = create_display_row_label(audio_mic_gain_row, "",
+                                                      popup_layout::scale(130),
+                                                      LV_TEXT_ALIGN_RIGHT);
+    audio_set_gain_text(speaker::micGainStep());
+
+    // Full-width toggle with icon and label, like the Rotate button.
+    audio_mic_btn = create_popup_button(form, "", 0x26A69A, on_audio_mic_clicked);
+    lv_obj_set_width(audio_mic_btn, LV_PCT(100));
+    lv_obj_set_height(audio_mic_btn, popup_layout::scale(76));
+    lv_obj_set_flex_flow(audio_mic_btn, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(audio_mic_btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(audio_mic_btn, popup_layout::scale(14), 0);
+    audio_mic_btn_icon = lv_obj_get_child(audio_mic_btn, 0);
+    if (FONT_MDI_ICONS) lv_obj_set_style_text_font(audio_mic_btn_icon, FONT_MDI_ICONS, 0);
+    popup_layout::applyIconScale(audio_mic_btn_icon);
+    audio_mic_btn_label = lv_label_create(audio_mic_btn);
+    lv_obj_set_style_text_font(audio_mic_btn_label, popup_layout::font28(), 0);
+    lv_obj_set_style_text_color(audio_mic_btn_label, lv_color_white(), 0);
+    audio_update_mic_button();
+  }
+
+  lv_obj_t* info = lv_label_create(form);
+  lv_label_set_text(info, tr().audio_formats_info);
+  lv_label_set_long_mode(info, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(info, LV_PCT(100));
+  lv_obj_set_style_text_font(info, popup_layout::font20(), 0);
+  lv_obj_set_style_text_color(info, lv_color_hex(0xA8A8A8), 0);
+  lv_obj_set_style_pad_top(info, popup_layout::scale(8), 0);
+}
+
 static const char* popup_title_for_kind(SettingsPopupKind kind) {
   switch (kind) {
     case SettingsPopupKind::Display:
@@ -3520,6 +3670,8 @@ static const char* popup_title_for_kind(SettingsPopupKind kind) {
       return tr().admin_settings_language;
     case SettingsPopupKind::Firmware:
       return "System";
+    case SettingsPopupKind::Audio:
+      return tr().audio_label;
   }
   return "";
 }
@@ -3534,6 +3686,8 @@ static const char* popup_icon_for_kind(SettingsPopupKind kind) {
       return "translate";
     case SettingsPopupKind::Firmware:
       return "chip";
+    case SettingsPopupKind::Audio:
+      return "volume-high";
   }
   return "cog";
 }
@@ -3551,6 +3705,9 @@ static void build_popup_content(SettingsPopupKind kind, lv_obj_t* parent) {
       break;
     case SettingsPopupKind::Firmware:
       build_system_popup(parent);
+      break;
+    case SettingsPopupKind::Audio:
+      build_audio_popup(parent);
       break;
   }
 }
@@ -3640,10 +3797,10 @@ static lv_obj_t* create_settings_menu_tile(lv_obj_t* parent, uint8_t col, uint8_
                                            const char* icon_name, const char* title,
                                            lv_obj_t** title_label_out,
                                            lv_obj_t** summary_label_out,
-                                           SettingsPopupKind kind) {
+                                           SettingsPopupKind kind, uint8_t span_w = 3) {
   lv_obj_t* tile = lv_button_create(parent);
   lv_obj_clear_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_grid_cell(tile, LV_GRID_ALIGN_STRETCH, col, 3, LV_GRID_ALIGN_STRETCH, row, 1);
+  lv_obj_set_grid_cell(tile, LV_GRID_ALIGN_STRETCH, col, span_w, LV_GRID_ALIGN_STRETCH, row, 1);
   style_settings_button(tile, settings_tile_color());
   settings_track_tinted(tile);
   ui_surface_style::apply_radius(tile, popup_layout::scale480(22), 0);
@@ -3722,6 +3879,9 @@ static void update_settings_tile_summaries() {
   }
   if (settings_tile_locale_summary) {
     lv_label_set_text(settings_tile_locale_summary, tr().settings_tile_desc_locale);
+  }
+  if (settings_tile_audio_summary) {
+    lv_label_set_text(settings_tile_audio_summary, tr().settings_tile_desc_audio);
   }
   if (settings_tile_firmware_summary) {
     static char buf[48];
@@ -3886,33 +4046,59 @@ void build_settings_tab(lv_obj_t *tab, hotspot_callback_t hotspot_cb) {
 
   create_settings_back_button(tab);
 
-  // Stack all four three-cell-wide tiles vertically from row 0. On the
-  // four-column B4 grid, start directly beside the back button; center
-  // them horizontally on wider seven-column grids (8-inch/Tab5).
-  static constexpr uint8_t kSettingsMenuTileSpanW = 3;
-  const uint8_t tile_col = (GRID_COLS <= kSettingsMenuTileSpanW + 1)
-                               ? GRID_COLS - kSettingsMenuTileSpanW
-                               : (GRID_COLS - kSettingsMenuTileSpanW) / 2;
+  settings_tile_audio_title = nullptr;
+  settings_tile_audio_summary = nullptr;
+  // Panels with a speaker add an Audio tile. Five tiles do not fit one
+  // stack of four rows, so they form two equally wide columns of two-cell
+  // tiles beside the back button (Display, Wi-Fi, Language | Audio, System).
+  static constexpr uint8_t kSettingsTwoColumnSpanW = 2;
+  if (speaker::supported() && GRID_COLS >= 1 + 2 * kSettingsTwoColumnSpanW && GRID_ROWS >= 3) {
+    constexpr uint8_t left = 1;
+    constexpr uint8_t right = left + kSettingsTwoColumnSpanW;
+    create_settings_menu_tile(tab, left, 0, "monitor", tr().display_label,
+                              &settings_tile_display_title, &settings_tile_display_summary,
+                              SettingsPopupKind::Display, kSettingsTwoColumnSpanW);
+    create_settings_menu_tile(tab, left, 1, "wifi", tr().wifi_label,
+                              &settings_tile_wifi_title, &settings_tile_wifi_summary,
+                              SettingsPopupKind::Wifi, kSettingsTwoColumnSpanW);
+    create_settings_menu_tile(tab, left, 2, "translate", tr().admin_settings_language,
+                              &settings_tile_locale_title, &settings_tile_locale_summary,
+                              SettingsPopupKind::Localization, kSettingsTwoColumnSpanW);
+    create_settings_menu_tile(tab, right, 0, "volume-high", tr().audio_label,
+                              &settings_tile_audio_title, &settings_tile_audio_summary,
+                              SettingsPopupKind::Audio, kSettingsTwoColumnSpanW);
+    create_settings_menu_tile(tab, right, 1, "chip", "System",
+                              &settings_tile_firmware_title, &settings_tile_firmware_summary,
+                              SettingsPopupKind::Firmware, kSettingsTwoColumnSpanW);
+  } else {
+    // Stack all four three-cell-wide tiles vertically from row 0. On the
+    // four-column B4 grid, start directly beside the back button; center
+    // them horizontally on wider seven-column grids (8-inch/Tab5).
+    static constexpr uint8_t kSettingsMenuTileSpanW = 3;
+    const uint8_t tile_col = (GRID_COLS <= kSettingsMenuTileSpanW + 1)
+                                 ? GRID_COLS - kSettingsMenuTileSpanW
+                                 : (GRID_COLS - kSettingsMenuTileSpanW) / 2;
 
-  create_settings_menu_tile(tab, tile_col, 0, "monitor", tr().display_label,
-                            &settings_tile_display_title,
-                            &settings_tile_display_summary,
-                            SettingsPopupKind::Display);
+    create_settings_menu_tile(tab, tile_col, 0, "monitor", tr().display_label,
+                              &settings_tile_display_title,
+                              &settings_tile_display_summary,
+                              SettingsPopupKind::Display);
 
-  create_settings_menu_tile(tab, tile_col, 1, "wifi", tr().wifi_label,
-                            &settings_tile_wifi_title,
-                            &settings_tile_wifi_summary,
-                            SettingsPopupKind::Wifi);
+    create_settings_menu_tile(tab, tile_col, 1, "wifi", tr().wifi_label,
+                              &settings_tile_wifi_title,
+                              &settings_tile_wifi_summary,
+                              SettingsPopupKind::Wifi);
 
-  create_settings_menu_tile(tab, tile_col, 2, "translate", tr().admin_settings_language,
-                            &settings_tile_locale_title,
-                            &settings_tile_locale_summary,
-                            SettingsPopupKind::Localization);
+    create_settings_menu_tile(tab, tile_col, 2, "translate", tr().admin_settings_language,
+                              &settings_tile_locale_title,
+                              &settings_tile_locale_summary,
+                              SettingsPopupKind::Localization);
 
-  create_settings_menu_tile(tab, tile_col, 3, "chip", "System",
-                            &settings_tile_firmware_title,
-                            &settings_tile_firmware_summary,
-                            SettingsPopupKind::Firmware);
+    create_settings_menu_tile(tab, tile_col, 3, "chip", "System",
+                              &settings_tile_firmware_title,
+                              &settings_tile_firmware_summary,
+                              SettingsPopupKind::Firmware);
+  }
 
   mains_wake_btn = nullptr;
   mains_wake_label = nullptr;
@@ -3967,6 +4153,7 @@ void settings_refresh_language() {
   if (settings_tile_wifi_title) lv_label_set_text(settings_tile_wifi_title, s.wifi_label);
   if (settings_tile_locale_title) lv_label_set_text(settings_tile_locale_title, s.admin_settings_language);
   if (settings_tile_firmware_title) lv_label_set_text(settings_tile_firmware_title, "System");
+  if (settings_tile_audio_title) lv_label_set_text(settings_tile_audio_title, s.audio_label);
   set_settings_popup_title(popup_title_for_kind(settings_popup_kind));
   if (display_section_label) lv_label_set_text(display_section_label, s.display_label);
   if (brightness_title_label) lv_label_set_text(brightness_title_label, s.brightness_label);
