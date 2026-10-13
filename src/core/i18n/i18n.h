@@ -673,6 +673,14 @@ struct Strings {
   const char* weather_colored_icons;
   // Web Admin navigation: the menu with every folder besides Home.
   const char* admin_folders;
+  // Settings Audio tile and popup (panels with a speaker).
+  const char* audio_label;
+  const char* settings_tile_desc_audio;
+  const char* audio_volume_label;
+  const char* audio_mic_gain_label;
+  const char* audio_mic_on_btn;
+  const char* audio_mic_off_btn;
+  const char* audio_formats_info;
 };
 
 // Locale-specific display rules and short runtime strings shared by
