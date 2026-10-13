@@ -1844,7 +1844,7 @@ static const Strings kStringsFr = {
     "Sensibilité du micro",
     "Microphone activé",
     "Microphone coupé",
-    "Lit le MP3 et le WAV 16 bits, diffusés en HTTP ou HTTPS.\nMicrophone : 16 kHz mono vers Home Assistant Assist."};
+    "Lit le MP3 et le WAV 16 bits, diffusés en HTTP ou HTTPS.\nMicrophone : 16 kHz mono vers Home Assistant Assist."};
 
 static const LocaleProfile kLocaleDe = {
     "de",
