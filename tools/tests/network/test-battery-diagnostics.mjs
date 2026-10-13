@@ -14,7 +14,8 @@ const bridge = read('src/network/bridge/ha_bridge_config.cpp');
 // profile keeps the stub.
 const sevenB = battery.slice(battery.indexOf('#if defined(DEVICE_WAVESHARE_TOUCH_LCD_7B)'),
                              battery.indexOf('#else'));
-assert.match(sevenB, /kBatteryAdcPin = 20;/);
+assert.match(sevenB, /kAdcChannel = static_cast<adc_channel_t>\(ADC1_GPIO20_CHANNEL\);/);
+assert.match(sevenB, /kAdcUnit = ADC_UNIT_1;/);
 assert.match(sevenB, /kDividerNumerator = 3;/);
 assert.match(sevenB, /batteryStateSupportsMeasurement\(\) \{ return true; \}/);
 assert.match(sevenB, /batteryStateIsOnMains\(\) \{ return true; \}/,
@@ -49,10 +50,16 @@ assert.equal(pct(4300), 100);
 assert.match(topics, /SENSOR_BATTERY_V, TopicDomain::Sensor, "battery_voltage"/);
 assert.match(topics, /SENSOR_WIFI_RSSI, TopicDomain::Sensor, "wifi_rssi"/);
 assert.match(topics, /STAT_RESET_REASON, TopicDomain::State, "reset_reason"/);
+assert.match(topics, /SENSOR_FREE_INTERNAL, TopicDomain::Sensor, "free_internal_kib"/);
+assert.match(topics, /SENSOR_FREE_PSRAM, TopicDomain::Sensor, "free_psram_kib"/);
+assert.match(topics, /SENSOR_CHIP_TEMP, TopicDomain::Sensor, "chip_temperature"/);
+assert.match(topics, /STAT_FIRMWARE, TopicDomain::State, "firmware_version"/);
 const diag = mqtt.slice(mqtt.indexOf('static void publish_runtime_diagnostics('),
                         mqtt.indexOf('void mqttPublishHomeSnapshot()'));
 assert.match(diag, /kIntervalMs = 60000/);
 assert.match(diag, /if \(force\) \{\s*networkManager\.mqttEnqueuePublish\(mqttTopics\.topic\(TopicKey::STAT_RESET_REASON\)/);
+assert.match(diag, /TopicKey::STAT_FIRMWARE\), FW_VERSION, true/);
+assert.match(diag, /chip_temperature::read\(&chip_c\) && std::isfinite\(chip_c\)/);
 assert.match(diag, /"unavailable"/, 'Missing values must be explicit, not zero');
 const service = mqtt.slice(mqtt.indexOf('void mqttServiceLocalSensors()'));
 assert.match(service, /publish_runtime_diagnostics\(false\)/);
