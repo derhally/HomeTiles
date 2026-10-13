@@ -23,6 +23,10 @@ enum class TopicKey : uint8_t {
   STAT_CONN,
   STAT_IP,
   TELE_UP,
+  // Panel diagnostics for the Bridge's diagnostic sensors.
+  SENSOR_BATTERY_V,
+  SENSOR_WIFI_RSSI,
+  STAT_RESET_REASON,
   HA_WOHN_TEMP,
   DISPLAY_BRIGHTNESS_CMND,
   DISPLAY_BRIGHTNESS_STAT,
