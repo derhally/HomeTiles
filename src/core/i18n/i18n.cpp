@@ -679,7 +679,10 @@ static const Strings kStringsDe = {
     "Lautstärke",
     "Mikrofon",
     "Empfindlichkeit",
-    "Mikrofon aus"};
+    "Mikrofon aus",
+    "Ich höre zu…",
+    "Einen Moment…",
+    "Antwort…"};
 
 static const Strings kStringsEn = {
     "en",
@@ -1353,7 +1356,10 @@ static const Strings kStringsEn = {
     "Volume",
     "Microphone",
     "Sensitivity",
-    "Microphone off"};
+    "Microphone off",
+    "Listening…",
+    "Thinking…",
+    "Answering…"};
 
 static const Strings kStringsFr = {
     "fr",
@@ -2027,7 +2033,10 @@ static const Strings kStringsFr = {
     "Volume",
     "Microphone",
     "Sensibilité",
-    "Microphone coupé"};
+    "Microphone coupé",
+    "J’écoute…",
+    "Je réfléchis…",
+    "Je réponds…"};
 
 static const LocaleProfile kLocaleDe = {
     "de",
@@ -3067,7 +3076,10 @@ static const Strings kStringsPl = {
     "Głośność",
     "Mikrofon",
     "Czułość",
-    "Mikrofon wyłączony"};
+    "Mikrofon wyłączony",
+    "Słucham…",
+    "Chwileczkę…",
+    "Odpowiadam…"};
 
 static const LocaleProfile kLocalePl = {
     "pl",
