@@ -120,6 +120,15 @@ int main() {
   // Status: unchanged without wake fields; with them, both arrays always.
   StatusFields fields;
   assert(status(fields) == "{\"v\":1,\"state\":\"idle\"}");
+  // Assist screen style: the chosen id and the whole catalog.
+  fields.screen_style_state = true;
+  fields.screen_style = 2;
+  assert(status(fields) == "{\"v\":1,\"state\":\"idle\",\"screen_style\":\"dot_halo\","
+                           "\"screen_styles\":[\"atom\",\"reactor\",\"dot_halo\",\"voice_pills\"]}");
+  fields.screen_style = 99;  // out of range reports the default
+  assert(status(fields).find("\"screen_style\":\"atom\"") != std::string::npos);
+  fields.screen_style_state = false;
+  assert(screenStyleIndex("voice_pills") == 3 && screenStyleIndex("sphere") == -1);
   fields.wake_words = true;
   assert(status(fields) == "{\"v\":1,\"state\":\"idle\",\"wake_words\":[],\"active_wake_words\":[]}");
   fields.available_wake_words = kAllWakeWordsMask;
@@ -620,6 +629,13 @@ int main() {
   assert(parse("{\"v\":1,\"op\":\"mic\"}").status == CommandStatus::InvalidValue);
   assert(parse("{\"v\":1,\"op\":\"mic\",\"enabled\":1}").status == CommandStatus::InvalidValue);
   assert(parse("{\"v\":1,\"op\":\"mic\",\"enabled\":\"false\"}").status ==
+         CommandStatus::InvalidValue);
+  // Assist screen style: a known id only.
+  c = parse("{\"v\":1,\"op\":\"screen_style\",\"style\":\"reactor\"}");
+  assert(c.kind == CommandKind::ScreenStyle && c.status == CommandStatus::Ok && c.screen_style == 1);
+  assert(parse("{\"v\":1,\"op\":\"screen_style\",\"style\":\"sphere\"}").status ==
+         CommandStatus::InvalidValue);
+  assert(parse("{\"v\":1,\"op\":\"screen_style\",\"style\":1}").status ==
          CommandStatus::InvalidValue);
   puts("wake_words command parser ok");
   return 0;
