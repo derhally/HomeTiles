@@ -11,6 +11,8 @@
 
 #include <new>
 
+#include "miniz.h"  // the ROM's tinfl (esp_rom)
+
 #include "src/audio/assist_contract.h"
 #include "src/audio/wakeword/microfrontend/frontend.h"
 #include "src/audio/wakeword/microfrontend/frontend_util.h"
@@ -32,12 +34,15 @@ constexpr const char* kLogPrefix = "[WakeWord]";
 // Embedded models (src/audio/wakeword/models/PROVENANCE.md).
 const ModelSpec kModels[] = {
     {"okay_nabu", wake_word_models::kOkayNabuModel, wake_word_models::kOkayNabuModelSize,
+     wake_word_models::kOkayNabuModelPackedSize,
      wake_word_models::kOkayNabuProbabilityCutoff, wake_word_models::kOkayNabuSlidingWindowSize,
      wake_word_models::kOkayNabuTensorArenaSize, wake_word_models::kOkayNabuFeatureStepMs},
     {"hey_jarvis", wake_word_models::kHeyJarvisModel, wake_word_models::kHeyJarvisModelSize,
+     wake_word_models::kHeyJarvisModelPackedSize,
      wake_word_models::kHeyJarvisProbabilityCutoff, wake_word_models::kHeyJarvisSlidingWindowSize,
      wake_word_models::kHeyJarvisTensorArenaSize, wake_word_models::kHeyJarvisFeatureStepMs},
     {"alexa", wake_word_models::kAlexaModel, wake_word_models::kAlexaModelSize,
+     wake_word_models::kAlexaModelPackedSize,
      wake_word_models::kAlexaProbabilityCutoff, wake_word_models::kAlexaSlidingWindowSize,
      wake_word_models::kAlexaTensorArenaSize, wake_word_models::kAlexaFeatureStepMs},
 };
@@ -96,6 +101,8 @@ struct Engine::Impl {
   bool frontend_ready = false;
   OpResolver resolver;
   const tflite::Model* model = nullptr;
+  // The inflated flatbuffer (PSRAM, 16-byte aligned for its tensor data).
+  uint8_t* model_data = nullptr;
   uint8_t* arena = nullptr;
   size_t arena_size = 0;
   tflite::MicroInterpreter* interpreter = nullptr;
@@ -163,19 +170,58 @@ struct Engine::Impl {
   }
 };
 
+namespace {
+
+// Inflates a model's zlib stream with the ROM's tinfl into a new PSRAM
+// buffer; nullptr when memory is short or the stream is not exactly `size`.
+uint8_t* inflateModel(const ModelSpec& spec) {
+  uint8_t* out = static_cast<uint8_t*>(
+      heap_caps_aligned_alloc(16, spec.size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  // About 11 KB of decoder state, only while inflating.
+  tinfl_decompressor* decompressor = static_cast<tinfl_decompressor*>(
+      heap_caps_malloc(sizeof(tinfl_decompressor), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  bool ok = out && decompressor;
+  if (ok) {
+    tinfl_init(decompressor);
+    size_t in_bytes = spec.packed_size;
+    size_t out_bytes = spec.size;
+    const tinfl_status status =
+        tinfl_decompress(decompressor, spec.data, &in_bytes, out, out, &out_bytes,
+                         TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+    ok = status == TINFL_STATUS_DONE && out_bytes == spec.size;
+  }
+  heap_caps_free(decompressor);
+  if (!ok) {
+    heap_caps_free(out);
+    return nullptr;
+  }
+  return out;
+}
+
+}  // namespace
+
 bool Engine::begin(const ModelSpec& spec) {
   end();
-  const tflite::Model* model = tflite::GetModel(spec.data);
-  if (!model || model->version() != TFLITE_SCHEMA_VERSION) {
-    Serial.printf("%s %s: unsupported model schema\n", kLogPrefix, spec.id);
-    return false;
-  }
   void* memory = heap_caps_calloc(1, sizeof(Impl), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (!memory) {
     Serial.printf("%s %s: out of memory\n", kLogPrefix, spec.id);
     return false;
   }
   Impl* impl = new (memory) Impl();
+  impl_ = impl;
+  spec_ = &spec;
+  impl->model_data = inflateModel(spec);
+  if (!impl->model_data) {
+    Serial.printf("%s %s: model could not be inflated\n", kLogPrefix, spec.id);
+    end();
+    return false;
+  }
+  const tflite::Model* model = tflite::GetModel(impl->model_data);
+  if (!model || model->version() != TFLITE_SCHEMA_VERSION) {
+    Serial.printf("%s %s: unsupported model schema\n", kLogPrefix, spec.id);
+    end();
+    return false;
+  }
   impl->model = model;
   bool ok = registerOps(&impl->resolver);
   if (!ok) Serial.printf("%s %s: operator registration failed\n", kLogPrefix, spec.id);
@@ -235,6 +281,7 @@ void Engine::end() {
     impl_->destroyInterpreter();
     if (impl_->frontend_ready) FrontendFreeStateContents(&impl_->frontend);
     heap_caps_free(impl_->arena);
+    heap_caps_free(impl_->model_data);
     impl_->~Impl();
     heap_caps_free(impl_);
   }
