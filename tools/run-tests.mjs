@@ -36,7 +36,9 @@ const skipped = [];
 const started = Date.now();
 
 for (const test of tests) {
-  const run = spawnSync(process.execPath, [path.join(testsDir, test)],
+  // A bounded V8 heap per test: a runaway test (a huge assertion diff) stops
+  // with an out-of-memory error instead of taking the whole machine's memory.
+  const run = spawnSync(process.execPath, ['--max-old-space-size=4096', path.join(testsDir, test)],
     {encoding: 'utf8'});
   const output = `${run.stdout || ''}${run.stderr || ''}`;
   if (run.status === 0) {

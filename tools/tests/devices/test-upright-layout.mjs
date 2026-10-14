@@ -194,8 +194,13 @@ for (const [file, ns, own] of [
     `${file}: both pushes draw turned`);
   assert.ok(source.includes('byte_swap, frame_rotation(),') && source.includes('fullFrameInfo(frame_rotation(), '),
     `${file}: the camera frames turn with the UI`);
+  // The 7B alone also switches its tear-free UI path off while turned (the
+  // turn writes the shown framebuffer; p4_dsi_camera_presenter.h setUiFlip).
+  const hookEnd = ns === 'DeviceWaveshareTouchLCD7B'
+    ? '  g_camera_presenter.setUpright(upright);\n  // The turned drawing writes the shown framebuffer: no tear-free path.\n  g_camera_presenter.setUiFlip(!upright);\n}'
+    : '  g_camera_presenter.setUpright(upright);\n}';
   assert.ok(source.includes(`void ${ns}::displaySetUpright(bool upright) {\n  // The turned layout: the UI and the camera popup's frames a quarter turned.\n  g_turned = upright;`) &&
-    source.includes('  g_camera_presenter.setUpright(upright);\n}'), `${file}: the shared hook`);
+    source.includes(hookEnd), `${file}: the shared hook`);
   // Their touch reports the panel's point (with 180 the mirrored one), as the
   // native check above assumes.
   assert.match(source, /  if \(g_rotation & 0x02\) \{\n    mapped_x = static_cast<int32_t>\(display_cfg\.width\) - 1 - static_cast<int32_t>\(px\[selected\]\);\n    mapped_y = static_cast<int32_t>\(display_cfg\.height\) - 1 - static_cast<int32_t>\(py\[selected\]\);\n  \} else \{\n    mapped_x = static_cast<int32_t>\(px\[selected\]\);\n    mapped_y = static_cast<int32_t>\(py\[selected\]\);/,

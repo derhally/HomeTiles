@@ -61,7 +61,14 @@ assert.equal(gunzipSync(compressed).toString('utf8'), delivery,
   'The firmware must serve the checked delivery output');
 const expectedGzip = gzipSync(Buffer.from(delivery), {level: 9, mtime: 0});
 expectedGzip[9] = 255;
-assert.deepEqual(compressed, expectedGzip);
+// Compared as bytes with a short message: assert.deepEqual's diff of two
+// 160 KB buffers grew past 64 GB on Node 26 and took the host down. Node 26's
+// zlib also compresses differently, so the check needs Node 24 (like CI).
+assert.ok(compressed.equals(expectedGzip),
+  `The embedded gzip (${compressed.length} B, ${createHash('sha256').update(compressed).digest('hex').slice(0, 12)}) ` +
+  `differs from this host's (${expectedGzip.length} B, ` +
+  `${createHash('sha256').update(expectedGzip).digest('hex').slice(0, 12)}); ` +
+  `run with Node 24 (${process.version} here)`);
 assert.equal(compressed[9], 255, 'Normalize the gzip OS marker across hosts');
 assert.ok(compressed.length < gzipSync(Buffer.from(bundle.source), {level: 9}).length,
   'Delivery formatting should reduce the embedded JavaScript asset');
