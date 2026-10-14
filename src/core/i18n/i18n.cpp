@@ -678,6 +678,12 @@ static const Strings kStringsDe = {
     "Seiten haben keine PIN.",
     "Seiten",
     "Der Ordner enthält noch Kacheln. Löschen geht über „Löschen“.",
+    "Audio",
+    "Lautsprecher",
+    "Lautstärke",
+    "Mikrofon",
+    "Empfindlichkeit",
+    "Mikrofon aus",
 };
 
 static const Strings kStringsEn = {
@@ -1351,6 +1357,12 @@ static const Strings kStringsEn = {
     "Pages have no PIN.",
     "Pages",
     "The folder still contains tiles. Remove it with “Delete”.",
+    "Audio",
+    "Speaker",
+    "Volume",
+    "Microphone",
+    "Sensitivity",
+    "Microphone off",
 };
 
 static const Strings kStringsFr = {
@@ -2024,6 +2036,12 @@ static const Strings kStringsFr = {
     "Les pages n'ont pas de code PIN.",
     "Pages",
     "Le dossier contient encore des tuiles. Supprimez-le avec «\u00A0Supprimer\u00A0».",
+    "Audio",
+    "Haut-parleur",
+    "Volume",
+    "Microphone",
+    "Sensibilité",
+    "Microphone coupé",
 };
 
 static const LocaleProfile kLocaleDe = {
@@ -3072,6 +3090,12 @@ static const Strings kStringsPl = {
     "Strony nie mają kodu PIN.",
     "Strony",
     "Folder nadal zawiera kafelki. Usuń go przyciskiem „Usuń”.",
+    "Dźwięk",
+    "Głośnik",
+    "Głośność",
+    "Mikrofon",
+    "Czułość",
+    "Mikrofon wyłączony",
 };
 
 static const Strings kStringsCs = {
@@ -3715,6 +3739,12 @@ static const Strings kStringsCs = {
     "Stránky nemají PIN.",
     "Stránky",
     "Složka stále obsahuje dlaždice. Odstraňte ji pomocí „Odstranit“.",
+    "Zvuk",
+    "Reproduktor",
+    "Hlasitost",
+    "Mikrofon",
+    "Citlivost",
+    "Mikrofon vypnut",
 };
 
 static const Strings kStringsEs = {
@@ -4358,6 +4388,12 @@ static const Strings kStringsEs = {
     "Las páginas no tienen PIN.",
     "Páginas",
     "La carpeta aún contiene mosaicos. Quítala con “Eliminar”.",
+    "Audio",
+    "Altavoz",
+    "Volumen",
+    "Micrófono",
+    "Sensibilidad",
+    "Micrófono apagado",
 };
 
 static const Strings kStringsSk = {
@@ -5001,6 +5037,12 @@ static const Strings kStringsSk = {
     "Stránky nemajú PIN.",
     "Stránky",
     "Priečinok stále obsahuje dlaždice. Odstráňte ho pomocou „Odstrániť“.",
+    "Zvuk",
+    "Reproduktor",
+    "Hlasitosť",
+    "Mikrofón",
+    "Citlivosť",
+    "Mikrofón vypnutý",
 };
 
 static const LocaleProfile kLocalePl = {
