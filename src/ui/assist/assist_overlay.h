@@ -4,10 +4,12 @@
 // is heard (or an Assist start arrives) and follows speaker::assistUiPhase():
 //   Listening  a glowing sphere of overlapping color lobes that swells and
 //              changes shape with the live microphone level;
-//   Thinking   the lobes gather into orbiting satellites around a pulsing
-//              core while Home Assistant works on the answer;
-//   Answering  the same orbit, its core and satellites following the speaker
-//              level while the answer plays.
+//   Thinking   the lobes gather into a smaller sphere while nine small
+//              satellites circle it on three tilted orbits, inside two
+//              counter-rotating rings, while Home Assistant works on the
+//              answer;
+//   Answering  the same orbits, the sphere and satellites following the
+//              speaker level while the answer plays.
 // When the conversation ends the screen hides and the panel shows what it
 // showed before; a display that the wake word woke goes back to sleep. A tap
 // hides the screen for the rest of the conversation.
