@@ -682,7 +682,14 @@ static const Strings kStringsDe = {
     "Mikrofon aus",
     "Ich höre zu…",
     "Einen Moment…",
-    "Antwort…"};
+    "Antwort…",
+    "Assist",
+    "Anzeige",
+    "Atom",
+    "Reaktor",
+    "Punkt-Halo",
+    "Sprach-Pillen",
+    "Vorschau"};
 
 static const Strings kStringsEn = {
     "en",
@@ -1359,7 +1366,14 @@ static const Strings kStringsEn = {
     "Microphone off",
     "Listening…",
     "Thinking…",
-    "Answering…"};
+    "Answering…",
+    "Assist",
+    "Screen style",
+    "Atom",
+    "Reactor",
+    "Dot Halo",
+    "Voice Pills",
+    "Preview"};
 
 static const Strings kStringsFr = {
     "fr",
@@ -2036,7 +2050,14 @@ static const Strings kStringsFr = {
     "Microphone coupé",
     "J’écoute…",
     "Je réfléchis…",
-    "Je réponds…"};
+    "Je réponds…",
+    "Assist",
+    "Style d’écran",
+    "Atome",
+    "Réacteur",
+    "Halo de points",
+    "Pilules vocales",
+    "Aperçu"};
 
 static const LocaleProfile kLocaleDe = {
     "de",
@@ -3079,7 +3100,14 @@ static const Strings kStringsPl = {
     "Mikrofon wyłączony",
     "Słucham…",
     "Chwileczkę…",
-    "Odpowiadam…"};
+    "Odpowiadam…",
+    "Assist",
+    "Styl ekranu",
+    "Atom",
+    "Reaktor",
+    "Aureola z kropek",
+    "Głosowe pigułki",
+    "Podgląd"};
 
 static const LocaleProfile kLocalePl = {
     "pl",

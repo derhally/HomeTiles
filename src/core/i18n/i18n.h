@@ -841,6 +841,16 @@ struct Strings {
   const char* assist_listening;
   const char* assist_thinking;
   const char* assist_answering;
+  // Settings > Audio, Assist group: the Assist screen look (a dropdown row of
+  // the four styles in speaker::AssistScreenStyle order) and the row that
+  // plays it once.
+  const char* settings_assist;
+  const char* settings_assist_style;
+  const char* assist_style_atom;
+  const char* assist_style_reactor;
+  const char* assist_style_dot_halo;
+  const char* assist_style_voice_pills;
+  const char* settings_assist_preview;
 };
 
 // Locale-specific display rules and short runtime strings shared by
