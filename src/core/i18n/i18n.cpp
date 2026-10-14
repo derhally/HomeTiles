@@ -699,6 +699,9 @@ static const Strings kStringsDe = {
     "Lautsprecher",
     "Empfindlichkeit",
     "Mikrofon aus",
+    "Ich höre zu…",
+    "Einen Moment…",
+    "Antwort…",
 };
 
 static const Strings kStringsEn = {
@@ -1393,6 +1396,9 @@ static const Strings kStringsEn = {
     "Speaker",
     "Sensitivity",
     "Microphone off",
+    "Listening…",
+    "Thinking…",
+    "Answering…",
 };
 
 static const Strings kStringsFr = {
@@ -2087,6 +2093,9 @@ static const Strings kStringsFr = {
     "Haut-parleur",
     "Sensibilité",
     "Microphone coupé",
+    "J’écoute…",
+    "Je réfléchis…",
+    "Je réponds…",
 };
 
 static const LocaleProfile kLocaleDe = {
@@ -3156,6 +3165,9 @@ static const Strings kStringsPl = {
     "Głośnik",
     "Czułość",
     "Mikrofon wyłączony",
+    "Słucham…",
+    "Chwileczkę…",
+    "Odpowiadam…",
 };
 
 static const Strings kStringsCs = {
@@ -3820,6 +3832,9 @@ static const Strings kStringsCs = {
     "Reproduktor",
     "Citlivost",
     "Mikrofon vypnut",
+    "Poslouchám…",
+    "Okamžik…",
+    "Odpovídám…",
 };
 
 static const Strings kStringsEs = {
@@ -4484,6 +4499,9 @@ static const Strings kStringsEs = {
     "Altavoz",
     "Sensibilidad",
     "Micrófono apagado",
+    "Escuchando…",
+    "Un momento…",
+    "Respondiendo…",
 };
 
 static const Strings kStringsSk = {
@@ -5148,6 +5166,9 @@ static const Strings kStringsSk = {
     "Reproduktor",
     "Citlivosť",
     "Mikrofón vypnutý",
+    "Počúvam…",
+    "Moment…",
+    "Odpovedám…",
 };
 
 static const LocaleProfile kLocalePl = {
