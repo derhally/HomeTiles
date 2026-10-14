@@ -12,24 +12,56 @@ const speaker = read('src/audio/speaker.cpp');
 const overlay = read('src/ui/assist/assist_overlay.cpp');
 const sketch = read('HomeTiles.ino');
 
-// The three Assist screen strings sit right before the seven Audio strings
-// in the schema and are translated in every locale.
+// The Assist screen strings and the Settings > Audio Assist group's strings
+// are translated in every locale, read by their place in the schema.
 const fields = ['assist_listening', 'assist_thinking', 'assist_answering'];
-assert.match(header, new RegExp(fields.map(f => `const char\\* ${f};`).join('\\s*') +
-  '\\s*// Settings Audio tile and popup'));
+const styleFields = ['settings_assist', 'settings_assist_style', 'assist_style_atom', 'assist_style_reactor',
+  'assist_style_dot_halo', 'assist_style_voice_pills', 'settings_assist_preview'];
+const struct = header.slice(header.indexOf('struct Strings {'), header.indexOf('\n};', header.indexOf('struct Strings {')));
+const schema = [...struct.replace(/\/\/[^\n]*/g, '').matchAll(/const char\*\s+(\w+);/g)].map(m => m[1]);
+for (const group of [fields, styleFields]) {
+  const at = schema.indexOf(group[0]);
+  assert.deepEqual(schema.slice(at, at + group.length), group, `${group[0]}.. sit together`);
+}
 const english = [];
 for (const table of ['kStringsDe', 'kStringsEn', 'kStringsFr', 'kStringsPl']) {
   const body = strings.slice(strings.indexOf(`static const Strings ${table} = {`));
-  const values = [...body.slice(0, body.indexOf('};') + 2).matchAll(/"((?:[^"\\]|\\.)*)"/g)]
-    .map(m => m[1]).slice(-10, -7);
-  assert.equal(values.length, 3, table);
-  for (const value of values) assert.match(value, /…$/, `${table} has every Assist screen string`);
-  if (table === 'kStringsEn') english.push(...values);
-  else assert.notDeepEqual(values, english, `${table} is translated`);
+  const values = [...body.slice(0, body.indexOf('};') + 2).matchAll(/"((?:[^"\\]|\\.)*)"/g)].map(m => m[1]);
+  assert.equal(values.length, schema.length, `${table} has one value per field`);
+  const screen = fields.map(f => values[schema.indexOf(f)]);
+  const style = styleFields.map(f => values[schema.indexOf(f)]);
+  for (const value of screen) assert.match(value, /…$/, `${table} has every Assist screen string`);
+  for (const value of style) assert.ok(value, `${table} has every Assist style string`);
+  if (table === 'kStringsEn') english.push(...screen);
+  else assert.notDeepEqual(screen, english, `${table} is translated`);
 }
 assert.deepEqual(english, ['Listening…', 'Thinking…', 'Answering…']);
 // The overlay shows them through the central schema.
 for (const f of fields) assert.match(overlay, new RegExp(`tr\\(\\)\\.${f}`));
+// Settings > Audio: the model names the styles in their stored order, saves a
+// pick and previews; the page shows them as a dropdown row and a play row.
+const settings = read('src/ui/tabs/settings/tab_settings.cpp');
+for (const f of styleFields.slice(2, 6)) assert.match(settings, new RegExp(`return s\\.${f};`));
+assert.match(settings, /speaker::setAssistScreenStyle\(static_cast<speaker::AssistScreenStyle>\(index\)\);/);
+assert.match(settings, /void assist_preview\(\) \{ assist_overlay::preview\(\); \}/);
+const page = read('src/ui/tabs/settings/settings_screen.cpp');
+assert.match(page, /settings_parts::section\(page, s\.settings_assist, false\);/);
+assert.match(page, /settings_parts::row\(assist, "palette-outline", s\.settings_assist_style,/);
+assert.match(page, /settings_parts::row\(assist, "animation-play-outline", s\.settings_assist_preview\);/);
+assert.match(page, /void on_preview_clicked\(lv_event_t\*\) \{ settings_model::assist_preview\(\); \}/);
+
+// Styles: stored by number (append only), four of them, one module each.
+assert.match(speakerHeader, /enum class AssistScreenStyle : uint8_t \{ Atom = 0, Reactor = 1, DotHalo = 2, VoicePills = 3 \};/);
+assert.match(speaker, /g_screen_style\.store\(style < kAssistScreenStyleCount \? style : 0\);/);
+assert.match(speaker, /prefs\.putUChar\(kPrefsScreenStyleKey, g_screen_style\.load\(\)\);/);
+const styles = read('src/ui/assist/assist_styles.cpp');
+for (const ns of ['atom', 'reactor', 'halo', 'pills']) {
+  assert.match(styles, new RegExp(`namespace ${ns} \\{`));
+  assert.match(styles, new RegExp(`${ns}::create\\(parent\\)`));
+  assert.match(styles, new RegExp(`${ns}::frame\\(f\\)`));
+}
+// Only the chosen style's objects exist.
+assert.match(overlay, /lv_obj_clean\(g_stage\);\s*assist_styles::create\(style, g_stage\);/);
 
 // Phase contract: any wake word or Assist start listens; a normal end of the
 // capture thinks; the answer clip answers; its end or a failure is idle.
@@ -73,5 +105,11 @@ assert.match(sketch, /if \(assist_overlay::serviceSleep\(\)\) \{\s*was_asleep = 
 // No per-frame allocation and no layer-forcing opacity on the animated parts.
 const frame = overlay.slice(overlay.indexOf('void onFrame('), overlay.indexOf('void onTap('));
 assert.doesNotMatch(frame, /lv_obj_create|lv_.*_create\(|malloc|new /);
-assert.doesNotMatch(overlay, /lv_obj_set_style_opa\(|LV_BLEND_MODE_ADDITIVE/);
+for (const ns of ['atom', 'reactor', 'halo', 'pills']) {
+  const body = styles.slice(styles.indexOf(`namespace ${ns} {`));
+  const styleFrame = body.slice(body.indexOf('void frame('), body.indexOf(`}  // namespace ${ns}`));
+  const code = styleFrame.replace(/\/\/[^\n]*/g, '');
+  assert.doesNotMatch(code, /_create\(|malloc|\bnew\b/, `${ns} allocates nothing per frame`);
+}
+assert.doesNotMatch(overlay + styles, /lv_obj_set_style_opa\(|LV_BLEND_MODE_ADDITIVE/);
 console.log('Assist overlay checks passed.');
