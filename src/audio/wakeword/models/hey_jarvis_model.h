@@ -10,8 +10,10 @@
 
 namespace wake_word_models {
 
+// zlib stream of the model (kHeyJarvisModelSize bytes once inflated).
 extern const uint8_t kHeyJarvisModel[];
 constexpr size_t kHeyJarvisModelSize = 52272;
+constexpr size_t kHeyJarvisModelPackedSize = 30630;
 constexpr float kHeyJarvisProbabilityCutoff = 0.97f;
 constexpr uint8_t kHeyJarvisSlidingWindowSize = 5;
 constexpr size_t kHeyJarvisTensorArenaSize = 22860;
