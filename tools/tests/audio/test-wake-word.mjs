@@ -5,11 +5,13 @@
 // TFLM microfrontend on a synthetic tone, and, when the pinned ArduinoJson is
 // installed, the wake_words command parser.
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import zlib from 'node:zlib';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const out = path.join(root, 'build/tests/wake-word');
@@ -478,13 +480,30 @@ for (const id of catalog) {
   assert.match(modelHeader, new RegExp(`k${symbol}TensorArenaSize = ${manifest.micro.tensor_arena_size};`));
   assert.match(modelHeader, new RegExp(`k${symbol}FeatureStepMs = ${manifest.micro.feature_step_size};`));
   const modelSource = read(`src/audio/wakeword/models/${id}_model.cpp`);
+  // The array is the zlib stream of the model; inflated it is the model whose
+  // size and SHA256 the header records.
   const size = Number(new RegExp(`k${symbol}ModelSize = (\\d+);`).exec(modelHeader)[1]);
-  assert.equal(modelSource.match(/0x[0-9a-f]{2}/g).length, size);
-  assert.match(modelSource, new RegExp(`alignas\\(16\\) const uint8_t k${symbol}Model\\[\\]`));
+  const packedSize = Number(new RegExp(`k${symbol}ModelPackedSize = (\\d+);`).exec(modelHeader)[1]);
+  const packed = Buffer.from(modelSource.slice(modelSource.indexOf('{')).match(/0x[0-9a-f]{2}/g).map(b => Number(b)));
+  assert.equal(packed.length, packedSize);
+  const inflated = zlib.inflateSync(packed);
+  assert.equal(inflated.length, size);
+  const sha = /SHA256 ([0-9a-f]{64})/.exec(modelHeader)[1];
+  assert.equal(crypto.createHash('sha256').update(inflated).digest('hex'), sha, `${id} inflates to its model`);
+  assert.equal(inflated.subarray(4, 8).toString('latin1'), 'TFL3');
+  assert.match(modelSource, new RegExp(`const uint8_t k${symbol}Model\\[\\] = \\{`));
+  assert.match(engine, new RegExp(`k${symbol}ModelSize,\\s*wake_word_models::k${symbol}ModelPackedSize,`));
   assert.match(modelSource, /#if defined\(HOMETILES_WAKE_WORD\)/);
   assert.match(engine, new RegExp(`\\{"${id}", wake_word_models::k${symbol}Model, `));
   assert.match(engine, new RegExp(`#include "src/audio/wakeword/models/${id}_model.h"`));
 }
+// The active model is inflated into an aligned PSRAM buffer with the ROM's
+// tinfl, exactly to its size, and freed with the engine.
+assert.match(engine, /heap_caps_aligned_alloc\(16, spec\.size, MALLOC_CAP_SPIRAM \| MALLOC_CAP_8BIT\)/);
+assert.match(engine, /TINFL_FLAG_PARSE_ZLIB_HEADER \| TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF/);
+assert.match(engine, /status == TINFL_STATUS_DONE && out_bytes == spec\.size/);
+assert.match(engine, /tflite::GetModel\(impl->model_data\)/);
+assert.match(engine, /heap_caps_free\(impl_->model_data\);/);
 console.log('wake word wiring ok');
 
 // --- ArduinoJson parser (assist_request.h) ----------------------------------
