@@ -109,6 +109,8 @@ std::atomic<uint8_t> g_ui_phase{static_cast<uint8_t>(AssistUiPhase::Idle)};
 std::atomic<uint32_t> g_ui_phase_ms{0};
 std::atomic<uint16_t> g_mic_level{0};
 std::atomic<uint16_t> g_out_level{0};
+static_assert(assist::kScreenStyleCount == kAssistScreenStyleCount,
+              "the MQTT style ids follow speaker::AssistScreenStyle");
 std::atomic<uint8_t> g_screen_style{static_cast<uint8_t>(AssistScreenStyle::Atom)};
 // A Listening phase older than the longest session plus the wake word
 // handoff is stale; service() clears it.
@@ -1913,6 +1915,8 @@ void publishAssistStatus() {
   fields.wake_listen = g_wake_listen.load();
   fields.mic_state = true;
   fields.mic_enabled = g_mic_enabled.load();
+  fields.screen_style_state = true;
+  fields.screen_style = g_screen_style.load();
   char id[assist::kMaxRequestIdLength + 1] = {};
 #if defined(HOMETILES_SPEAKER)
   portENTER_CRITICAL(&g_id_mux);
@@ -2185,6 +2189,12 @@ void handleAssistCommandPayload(const uint8_t* payload, size_t length, bool seal
                   wake.listen ? "on" : "off");
     return;
   }
+  if (command.kind == assist::CommandKind::ScreenStyle) {
+    setAssistScreenStyle(static_cast<AssistScreenStyle>(command.screen_style));
+    Serial.printf("%s Assist screen style: %s\n", kLogPrefix,
+                  assist::kScreenStyleIds[command.screen_style]);
+    return;
+  }
   if (command.kind == assist::CommandKind::Mic) {
     // Off always applies; on needs the encrypted channel (see the contract).
     if (command.mic_enabled && !sealed) {
@@ -2249,6 +2259,7 @@ void handleAssistCommandPayload(const uint8_t* payload, size_t length, bool seal
     }
     case assist::CommandKind::WakeWords:
     case assist::CommandKind::Mic:
+    case assist::CommandKind::ScreenStyle:
     case assist::CommandKind::Invalid:
       break;
   }
@@ -2289,6 +2300,7 @@ void setAssistScreenStyle(AssistScreenStyle style) {
   if (value >= kAssistScreenStyleCount) return;
 #if defined(HOMETILES_SPEAKER)
   if (g_screen_style.exchange(value) == value) return;
+  g_assist_state_generation.fetch_add(1);
   g_persist_pending = true;
   g_persist_due_ms = millis() + kPersistDelayMs;
 #endif
