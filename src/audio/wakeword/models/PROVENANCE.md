@@ -15,7 +15,9 @@ Flash data for the on-panel wake word; compiled only on profiles that define
   `0689abe1912a95a3318a0d8cb2e67bad0cbcfe3e24dd6e050c75debddfb6f891`.
 - `okay_nabu_model.{h,cpp}` are generated from both files by
   `node tools/generate-wake-word-model.mjs <okay_nabu.tflite> <okay_nabu.json> okay_nabu`;
-  the bytes are unchanged, stored as a 16-byte aligned const array.
+  the bytes are unchanged, stored zlib-compressed (level 9) as a const
+  array; the engine inflates the active model into a 16-byte aligned PSRAM
+  buffer with the ROM's tinfl and the tests check the inflated SHA256.
 - Manifest parameters: probability_cutoff 0.97, sliding_window_size 5,
   tensor_arena_size 26080, feature_step_size 10 ms.
 - Read from the flatbuffer: input int8 [1, 3, 40] (scale 0.10196079, zero
