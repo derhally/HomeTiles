@@ -884,6 +884,12 @@ struct Strings {
   // Settings: the System category's name (Russian brought it into the
   // tables, 2026-10-29).
   const char* settings_system;
+  // Settings > Audio (panels with a speaker): the category, its two groups
+  // and their rows (no colon), the category line while the microphone is off.
+  const char* audio_label;
+  const char* settings_speaker;
+  const char* settings_mic_sensitivity;
+  const char* settings_mic_off;
 };
 
 // Locale-specific display rules and short runtime strings shared by
