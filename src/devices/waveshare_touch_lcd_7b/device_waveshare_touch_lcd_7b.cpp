@@ -375,6 +375,12 @@ uint16_t* panel_fb() {
   return g_panel_fb_ready ? g_camera_presenter.activeFramebuffer() : nullptr;
 }
 
+// LVGL bands go into the hidden framebuffer (tear-free UI, see
+// p4_dsi_camera_presenter.h) and displayCommit() shows them.
+uint16_t* ui_fb() {
+  return g_panel_fb_ready ? g_camera_presenter.uiFramebuffer() : nullptr;
+}
+
 void clear_panel_framebuffer(uint16_t color) {
   uint16_t* fb = panel_fb();
   if (!fb) {
@@ -390,6 +396,7 @@ void clear_panel_framebuffer(uint16_t color) {
     }
   }
   flush_cache_for_dma(fb, panel_frame_bytes());
+  g_camera_presenter.invalidateUiBack();
   g_frame_dirty = false;
   g_dirty_x1 = 0;
   g_dirty_y1 = 0;
@@ -476,6 +483,9 @@ void copy_rect_to_fb(uint16_t* dst, int32_t x, int32_t y, int32_t w, int32_t h,
   flush_framebuffer_rect(dst, x, y, w, h);
 }
 
+// The upright (turned) layout is shown; see draw_turned_area().
+bool g_turned = false;
+
 bool init_panel_framebuffer() {
   if (!g_panel) {
     return false;
@@ -512,6 +522,11 @@ bool init_panel_framebuffer() {
     return false;
   }
   reset_dirty_rect();
+  // Moving content (Assist screen, swipes) tore where LVGL's partial bands
+  // met the scanout; both framebuffers already exist, so this costs no RAM.
+  // Landscape only: the upright layout's turn (p4_dsi_ui_ppa, CPU rotate)
+  // writes the shown framebuffer.
+  g_camera_presenter.setUiFlip(!g_turned);
   Serial.printf("[Device/Waveshare Touch LCD 7B] Panel framebuffers OK fb0=%p fb1=%p\n",
                 fb0, fb1);
   return true;
@@ -531,7 +546,7 @@ bool write_physical_to_panel(int32_t x, int32_t y, int32_t w, int32_t h, const u
     return false;
   }
 
-  uint16_t* fb = panel_fb();
+  uint16_t* fb = ui_fb();
   if (!fb) {
     return false;
   }
@@ -578,7 +593,7 @@ bool draw_landscape_area(int32_t x, int32_t y, int32_t w, int32_t h, const uint1
 
   if (g_ppa_handle && g_ppa_async_ready && !g_ppa_reset_pending && g_panel_fb_ready &&
       !ppa_cooldown_active() && w >= kPpaMinRotateWidth) {
-    uint16_t* fb = panel_fb();
+    uint16_t* fb = ui_fb();
     if (fb) {
       flush_cache_for_dma(data, static_cast<size_t>(w) * static_cast<size_t>(h) * sizeof(uint16_t));
 
@@ -974,8 +989,7 @@ void ensure_storage_layout() {
 // panels upright by themselves (the V2's landscape UI, p4_dsi_ui_ppa and
 // p4_dsi_cpu_rotate), the other way round, so DisplayManager's shared touch
 // turn maps this panel's points onto it: UI (x, y) at panel (y, h - 1 - x),
-// with 180 the mirrored place.
-bool g_turned = false;
+// with 180 the mirrored place (g_turned, defined above).
 p4_dsi_ui_ppa::Client g_turn_ppa("WaveshareTouchLCD7B");
 bool g_turn_ppa_started = false;
 
@@ -1125,7 +1139,8 @@ void DeviceWaveshareTouchLCD7B::displayCommit() {
     return;
   }
 
-  // Dirty pixels were already written into the active DPI framebuffer.
+  // The frame's bands are complete in the hidden framebuffer: show it.
+  g_camera_presenter.commitUi();
   reset_dirty_rect();
 }
 
@@ -1142,6 +1157,7 @@ void DeviceWaveshareTouchLCD7B::displayFillScreen(uint16_t color) {
         buf[i] = color;
       }
       flush_cache_for_dma(buf, panel_frame_bytes());
+      g_camera_presenter.invalidateUiBack();
       g_camera_presenter.noteUiWrite(
           0, 0, display_cfg.width, display_cfg.height, false);
     }
@@ -1180,6 +1196,8 @@ void DeviceWaveshareTouchLCD7B::displaySetUpright(bool upright) {
     g_turn_ppa.init();
   }
   g_camera_presenter.setUpright(upright);
+  // The turned drawing writes the shown framebuffer: no tear-free path.
+  g_camera_presenter.setUiFlip(!upright);
 }
 
 void DeviceWaveshareTouchLCD7B::setBrightness(uint8_t value) {
