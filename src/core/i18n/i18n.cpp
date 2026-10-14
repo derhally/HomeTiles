@@ -739,6 +739,10 @@ static const Strings kStringsDe = {
     "Alle abspielen",
     "Erster Wochentag:",
     "System",
+    "Audio",
+    "Lautsprecher",
+    "Empfindlichkeit",
+    "Mikrofon aus",
 };
 
 static const Strings kStringsEn = {
@@ -1473,6 +1477,10 @@ static const Strings kStringsEn = {
     "Play all",
     "First day of the week:",
     "System",
+    "Audio",
+    "Speaker",
+    "Sensitivity",
+    "Microphone off",
 };
 
 static const Strings kStringsFr = {
@@ -2207,6 +2215,10 @@ static const Strings kStringsFr = {
     "Tout lire",
     "Premier jour de la semaine\u00A0:",
     "Système",
+    "Audio",
+    "Haut-parleur",
+    "Sensibilité",
+    "Microphone coupé",
 };
 
 static const LocaleProfile kLocaleDe = {
@@ -3359,6 +3371,10 @@ static const Strings kStringsPl = {
     "Odtwórz wszystko",
     "Pierwszy dzień tygodnia:",
     "System",
+    "Dźwięk",
+    "Głośnik",
+    "Czułość",
+    "Mikrofon wyłączony",
 };
 
 static const Strings kStringsCs = {
@@ -4063,6 +4079,10 @@ static const Strings kStringsCs = {
     "Přehrát vše",
     "První den týdne:",
     "Systém",
+    "Zvuk",
+    "Reproduktor",
+    "Citlivost",
+    "Mikrofon vypnut",
 };
 
 static const Strings kStringsEs = {
@@ -4767,6 +4787,10 @@ static const Strings kStringsEs = {
     "Reproducir todo",
     "Primer día de la semana:",
     "Sistema",
+    "Audio",
+    "Altavoz",
+    "Sensibilidad",
+    "Micrófono apagado",
 };
 
 static const Strings kStringsSk = {
@@ -5471,6 +5495,10 @@ static const Strings kStringsSk = {
     "Prehrať všetko",
     "Prvý deň týždňa:",
     "Systém",
+    "Zvuk",
+    "Reproduktor",
+    "Citlivosť",
+    "Mikrofón vypnutý",
 };
 
 static const Strings kStringsRu = {
