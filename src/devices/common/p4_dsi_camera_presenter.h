@@ -73,7 +73,36 @@ class Presenter {
 
   void end();
 
+  // Optional tear-free UI path, off unless a device enables it (Waveshare
+  // 7B). While the camera path is idle, LVGL bands go into the hidden
+  // framebuffer and commitUi() shows the finished frame at the next panel
+  // refresh, so the scanned picture never mixes two frames. The hidden
+  // framebuffer is then brought up to date with the changed rectangles only.
+  // During a camera preview the existing mirror path above applies.
+  void setUiFlip(bool enabled);
+  // Framebuffer for the next UI write: the hidden one, synchronized with the
+  // shown one, while the flip path is usable; otherwise the active one.
+  uint16_t* uiFramebuffer();
+  // After the last write of an LVGL refresh: shows the hidden framebuffer.
+  void commitUi();
+  // Something wrote the shown framebuffer directly (a fill or clear); the
+  // hidden one is copied in full before the next UI write.
+  void invalidateUiBack() { ui_back_valid_ = false; }
+
  private:
+  struct Rect {
+    int32_t x1, y1, x2, y2;
+  };
+  static constexpr uint8_t kMaxUiRects = 8;
+
+  bool uiFlipUsable() const {
+    return ui_flip_ && ready_ && !double_buffer_active_;
+  }
+  static void addRect(Rect* rects, uint8_t* count, int32_t x, int32_t y,
+                      int32_t w, int32_t h);
+  bool copyRect(uint16_t* to, const uint16_t* from, const Rect& rect) const;
+  bool copyFullFrame(uint16_t* to, uint16_t* from) const;
+  void finishUiSwap();
   bool begin();
   bool syncUiToInactive();
   bool faultCooldownActive();
@@ -113,6 +142,18 @@ class Presenter {
   int32_t dirty_x2_ = 0;
   int32_t dirty_y2_ = 0;
   uint32_t fault_cooldown_until_ms_ = 0;
+  bool ui_flip_ = false;
+  // The hidden framebuffer equals the shown one outside ui_frame_rects_.
+  bool ui_back_valid_ = false;
+  // commitUi() swapped; the panel may still scan the old (now hidden)
+  // framebuffer until the next refresh, and ui_sync_rects_ still have to be
+  // copied into it.
+  bool ui_swap_pending_ = false;
+  uint32_t ui_timeout_log_ms_ = 0;
+  Rect ui_frame_rects_[kMaxUiRects] = {};
+  uint8_t ui_frame_count_ = 0;
+  Rect ui_sync_rects_[kMaxUiRects] = {};
+  uint8_t ui_sync_count_ = 0;
 };
 
 }  // namespace p4_dsi_camera_presenter
