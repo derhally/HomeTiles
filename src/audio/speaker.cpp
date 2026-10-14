@@ -70,6 +70,39 @@ std::atomic<uint8_t> g_assist_error{static_cast<uint8_t>(assist::ErrorCode::None
 std::atomic<uint32_t> g_assist_state_generation{0};
 uint32_t g_assist_published_generation = 0;
 
+// On-panel Assist screen (speaker.h AssistUiPhase) and the levels it shows.
+std::atomic<uint8_t> g_ui_phase{static_cast<uint8_t>(AssistUiPhase::Idle)};
+std::atomic<uint32_t> g_ui_phase_ms{0};
+std::atomic<uint16_t> g_mic_level{0};
+std::atomic<uint16_t> g_out_level{0};
+// A Listening phase older than the longest session plus the wake word
+// handoff is stale; service() clears it.
+constexpr uint32_t kAssistListeningLimitMs =
+    assist::kMaxMaxMs + assist::kWakeHandoffMs + 5000;
+
+[[maybe_unused]] void setUiPhase(AssistUiPhase phase) {
+  g_ui_phase_ms.store(millis());
+  g_ui_phase.store(static_cast<uint8_t>(phase));
+}
+
+// Moves only from the expected phase, so a dismissed screen stays dismissed
+// and a newer conversation is not ended by an older one.
+[[maybe_unused]] void advanceUiPhase(AssistUiPhase from, AssistUiPhase to) {
+  uint8_t expected = static_cast<uint8_t>(from);
+  if (g_ui_phase.compare_exchange_strong(expected, static_cast<uint8_t>(to))) {
+    g_ui_phase_ms.store(millis());
+  }
+}
+
+[[maybe_unused]] uint16_t peakLevel(const int16_t* samples, size_t count) {
+  int32_t peak = 0;
+  for (size_t i = 0; i < count; ++i) {
+    const int32_t v = samples[i] < 0 ? -static_cast<int32_t>(samples[i]) : samples[i];
+    if (v > peak) peak = v;
+  }
+  return static_cast<uint16_t>(peak > 32767 ? 32767 : peak);
+}
+
 // On-panel wake word (assist_contract.h addendum). Catalog mask of the words
 // the Bridge activated; set on the loop task, read by the worker.
 std::atomic<uint32_t> g_wake_active{0};
@@ -400,6 +433,7 @@ ErrorCode openOutput(uint32_t rate) {
 }
 
 bool writeFrames(const int16_t* samples, size_t frames) {
+  g_out_level.store(peakLevel(samples, frames));
   size_t written = 0;
   return i2s_channel_write(g_tx, samples, frames * sizeof(int16_t), &written,
                            kI2sWriteTimeoutMs) == ESP_OK;
@@ -730,13 +764,17 @@ void playRequest(const PlayRequest& request, uint8_t* stream_memory) {
   setStatusId(request.id);
   if (!g_codec_ready.load()) {
     setPublic(PublicState::Idle, ErrorCode::CodecUnavailable);
+    advanceUiPhase(AssistUiPhase::Thinking, AssistUiPhase::Idle);
     return;
   }
   if (!stream_memory) {
     setPublic(PublicState::Idle, ErrorCode::OutOfMemory);
+    advanceUiPhase(AssistUiPhase::Thinking, AssistUiPhase::Idle);
     return;
   }
   setPublic(PublicState::Playing, ErrorCode::None);
+  // The first clip after the end of speech is the answer.
+  advanceUiPhase(AssistUiPhase::Thinking, AssistUiPhase::Answering);
   Serial.printf("%s Playing %s\n", kLogPrefix, request.id);
   const ErrorCode result = playUrl(request.url, generation, stream_memory);
   closeOutput();
@@ -746,6 +784,8 @@ void playRequest(const PlayRequest& request, uint8_t* stream_memory) {
   // A newer request keeps the state "playing" instead of flashing idle.
   if (!(g_play_pending.load() && result == ErrorCode::None)) {
     setPublic(PublicState::Idle, result);
+    g_out_level.store(0);
+    advanceUiPhase(AssistUiPhase::Answering, AssistUiPhase::Idle);
   }
 }
 
@@ -857,6 +897,7 @@ int readMono() {
   } else {
     assist::stereoToMono(g_chunk, frames, g_mono);
   }
+  g_mic_level.store(peakLevel(g_mono, frames));
   return static_cast<int>(frames);
 }
 
@@ -923,10 +964,15 @@ void captureSession(const AssistRequest& request, uint32_t generation, bool hand
       publishAudioFrame(topic.c_str(), header, request.id, id_length, 0, 0, true);
     }
     setAssistPublic(assist::PublicState::Idle, result);
+    advanceUiPhase(AssistUiPhase::Listening, AssistUiPhase::Idle);
     return;
   }
 
   setAssistPublic(assist::PublicState::Listening, assist::ErrorCode::None);
+  if (!handoff) {
+    g_mic_level.store(0);
+    setUiPhase(AssistUiPhase::Listening);
+  }
   Serial.printf("%s Assist capture %s started (max %lu ms%s)\n", kLogPrefix, request.id,
                 static_cast<unsigned long>(request.max_ms),
                 handoff ? ", after the wake word" : "");
@@ -983,7 +1029,15 @@ void captureSession(const AssistRequest& request, uint32_t generation, bool hand
   // A newer start keeps the state "listening" instead of flashing idle.
   if (!(g_assist_pending.load() && result == assist::ErrorCode::None)) {
     setAssistPublic(assist::PublicState::Idle, result);
+    // The Bridge stops the capture at the end of speech; Home Assistant then
+    // works on the answer. Anything else ends the conversation here.
+    const bool answer_expected =
+        (result == assist::ErrorCode::None && strcmp(end_reason, "stopped") == 0) ||
+        result == assist::ErrorCode::Timeout;
+    advanceUiPhase(AssistUiPhase::Listening,
+                   answer_expected ? AssistUiPhase::Thinking : AssistUiPhase::Idle);
   }
+  g_mic_level.store(0);
 }
 
 // Takes the newest Assist start. The generation is read under the mutex: a
@@ -1074,6 +1128,7 @@ bool handleWakeDetection(const char* word, const String& topic, uint32_t mask, u
   ++g_wake_sequence;
   setAssistStatusId(nullptr);
   setAssistPublic(assist::PublicState::Wake, assist::ErrorCode::None);
+  setUiPhase(AssistUiPhase::Listening);
   g_ring.clear();
   const uint32_t detected_ms = millis();
   for (;;) {
@@ -1093,6 +1148,7 @@ bool handleWakeDetection(const char* word, const String& topic, uint32_t mask, u
       closeInput();
       g_ring.clear();
       setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::None);
+      advanceUiPhase(AssistUiPhase::Listening, AssistUiPhase::Idle);
       *bits = pending & ~kNotifyWake;
       return false;
     }
@@ -1101,6 +1157,7 @@ bool handleWakeDetection(const char* word, const String& topic, uint32_t mask, u
                     static_cast<unsigned long>(assist::kWakeHandoffMs));
       g_ring.clear();
       setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::None);
+      advanceUiPhase(AssistUiPhase::Listening, AssistUiPhase::Idle);
       return true;
     }
     const int frames = readMono();
@@ -1108,6 +1165,7 @@ bool handleWakeDetection(const char* word, const String& topic, uint32_t mask, u
       closeInput();
       g_ring.clear();
       setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::None);
+      advanceUiPhase(AssistUiPhase::Listening, AssistUiPhase::Idle);
       g_wake_resume_ms = millis() + kWakeRetryMs;
       return false;
     }
@@ -1300,6 +1358,14 @@ uint8_t capabilityBits() {
 
 bool supported() { return kSupported; }
 
+AssistUiPhase assistUiPhase() { return static_cast<AssistUiPhase>(g_ui_phase.load()); }
+
+void dismissAssistUi() { setUiPhase(AssistUiPhase::Idle); }
+
+uint16_t micPeakLevel() { return g_mic_level.load(); }
+
+uint16_t outputPeakLevel() { return g_out_level.load(); }
+
 void begin() {
 #if defined(HOMETILES_SPEAKER)
   if (g_worker) return;
@@ -1353,6 +1419,15 @@ void service() {
     if (networkManager.isMqttConnected()) networkManager.publishBridgeConfig();
   }
 #if defined(HOMETILES_SPEAKER)
+  // No answer came (Home Assistant answered elsewhere or failed), or a
+  // Listening phase outlived every session limit.
+  const AssistUiPhase ui_phase = assistUiPhase();
+  const uint32_t ui_phase_age = millis() - g_ui_phase_ms.load();
+  if (ui_phase == AssistUiPhase::Thinking && ui_phase_age >= kAssistThinkingTimeoutMs) {
+    advanceUiPhase(AssistUiPhase::Thinking, AssistUiPhase::Idle);
+  } else if (ui_phase == AssistUiPhase::Listening && ui_phase_age >= kAssistListeningLimitMs) {
+    advanceUiPhase(AssistUiPhase::Listening, AssistUiPhase::Idle);
+  }
   if (g_persist_pending && !g_shutdown.load() &&
       static_cast<int32_t>(millis() - g_persist_due_ms) >= 0 &&
       static_cast<PublicState>(g_public_state.load()) == PublicState::Idle &&
