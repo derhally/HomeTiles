@@ -924,6 +924,8 @@ void hotspot_details(char* ssid, size_t ssid_len, char* password, size_t passwor
   snprintf(password, password_len, "%s", webConfigApPassword());
 }
 
+bool wifi_mac(char* buf, size_t len) { return networkTransport.activeMac(buf, len); }
+
 bool static_address(char* buf, size_t len) {
   const char* ip = configManager.getConfig().wifi_static_ip;
   if (!valid_static_ip_value(ip)) return false;
