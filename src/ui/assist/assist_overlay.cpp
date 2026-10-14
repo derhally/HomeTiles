@@ -37,14 +37,25 @@ constexpr float kLobeSpeed[kLobeCount] = {0.9f, -1.3f, 1.7f};
 // Orbit and spinner speeds. The 7B's single DPI frame buffer is scanned out
 // while LVGL flushes partial bands, so a fast mover shows a tear line where a
 // band ends; about 5 px per frame keeps that invisible.
-constexpr float kOrbitSpeed = 1.1f;     // rad/s
+constexpr float kOrbitSpeed = 0.9f;     // rad/s
 constexpr float kSpinnerSpeed = 100.0f; // degrees/s
+// Orbit mode: small satellites on three tilted elliptical orbits around the
+// core, like an atom seen at an angle. Nearer satellites (lower half of each
+// ellipse) draw larger and brighter, so the orbits read as 3D.
+constexpr int kOrbitPlanes = 3;
+constexpr int kSatsPerPlane = 3;
+constexpr int kSatCount = kOrbitPlanes * kSatsPerPlane;
+constexpr float kOrbitFlatten = 0.34f;  // ellipse height / width
+constexpr float kPlaneTilt[kOrbitPlanes] = {0.0f, 1.0472f, 2.0944f};  // 0, 60, 120 deg
+constexpr uint32_t kSatColors[kOrbitPlanes] = {0x67E8F9, 0xC4B5FD, 0xF9A8D4};
 
 lv_obj_t* g_overlay = nullptr;
 lv_obj_t* g_glow[kGlowCount] = {};
 lv_obj_t* g_lobes[kLobeCount] = {};
 lv_obj_t* g_core = nullptr;
 lv_obj_t* g_arc = nullptr;
+lv_obj_t* g_arc_inner = nullptr;
+lv_obj_t* g_sats[kSatCount] = {};
 lv_obj_t* g_label = nullptr;
 lv_timer_t* g_timer = nullptr;
 
@@ -80,6 +91,20 @@ lv_obj_t* createCircle(lv_obj_t* parent) {
   lv_obj_set_style_radius(obj, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_size(obj, 1, 1);
   return obj;
+}
+
+lv_obj_t* createSpinner(lv_obj_t* parent, int32_t width, uint32_t color) {
+  lv_obj_t* arc = lv_arc_create(parent);
+  lv_obj_remove_flag(arc, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_arc_opa(arc, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
+  lv_obj_set_style_pad_all(arc, 0, LV_PART_KNOB);
+  lv_obj_set_style_arc_width(arc, width, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_color(arc, lv_color_hex(color), LV_PART_INDICATOR);
+  lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR);
+  lv_arc_set_bg_angles(arc, 0, 360);
+  lv_obj_add_flag(arc, LV_OBJ_FLAG_HIDDEN);
+  return arc;
 }
 
 // Loudness from a peak sample: dB above a slowly adapting noise floor, so the
@@ -137,9 +162,9 @@ void onFrame(lv_timer_t*) {
   }
 
   // Lobes: offset discs that rotate inside the sphere and push outward as the
-  // voice gets louder, so the outline morphs; in orbit mode they become
-  // satellites on a ring.
-  const float orbit_r = r * (1.25f + 0.18f * lv * m);
+  // voice gets louder, so the outline morphs; in orbit mode they gather into a
+  // smaller, calmer sphere at the center of the orbits.
+  const float orbit_r = r * (1.45f + 0.15f * lv * m);
   for (int i = 0; i < kLobeCount; ++i) {
     const float base = i * kTwoPi / kLobeCount;
     const float a_listen = base + t * kLobeSpeed[i];
@@ -148,31 +173,62 @@ void onFrame(lv_timer_t*) {
     const float size_listen =
         2.0f * r *
         (0.80f + 0.07f * sinf(t * 2.3f + i * 1.3f) + 0.38f * lv * (0.7f + 0.3f * sinf(t * 9.0f + i * 2.0f)));
-    const float a_orbit = base + t * kOrbitSpeed;
-    const float size_orbit = r * (0.42f + 0.05f * sinf(t * 5.0f + i) + 0.35f * lv);
+    const float off_orbit = r * 0.14f;
+    const float size_orbit = r * (1.05f + 0.06f * sinf(t * 2.0f + i * 1.7f) + 0.40f * lv);
 
-    const float x = (1.0f - m) * (cx + off * cosf(a_listen)) + m * (cx + orbit_r * cosf(a_orbit));
-    const float y = (1.0f - m) * (cy + off * sinf(a_listen)) + m * (cy + orbit_r * sinf(a_orbit));
+    const float x = cx + ((1.0f - m) * off + m * off_orbit) * cosf(a_listen);
+    const float y = cy + ((1.0f - m) * off + m * off_orbit) * sinf(a_listen);
     placeCircle(g_lobes[i], x, y, (1.0f - m) * size_listen + m * size_orbit);
   }
 
   // Core: a bright center that swells with the voice, and pulses (or follows
   // the answer) in orbit mode.
   const float core_listen = 2.0f * r * (0.48f + 0.22f * lv + 0.03f * sinf(t * 3.1f));
-  const float core_orbit = r * (0.95f + 0.12f * sinf(t * 4.2f) + 0.45f * lv);
+  const float core_orbit = r * (0.62f + 0.08f * sinf(t * 4.2f) + 0.30f * lv);
   placeCircle(g_core, cx, cy, (1.0f - m) * core_listen + m * core_orbit);
 
-  // Spinner arc on the orbit ring, faded in with the orbit.
+  // Satellites grow out of the center as the orbit mode fades in.
+  const float sat_r = orbit_r * m;
+  const float sat_size = r * (0.16f + 0.10f * lv);
+  for (int p = 0; p < kOrbitPlanes; ++p) {
+    const float ct = cosf(kPlaneTilt[p]);
+    const float st = sinf(kPlaneTilt[p]);
+    for (int k = 0; k < kSatsPerPlane; ++k) {
+      lv_obj_t* sat = g_sats[p * kSatsPerPlane + k];
+      if (m < 0.03f) {
+        lv_obj_add_flag(sat, LV_OBJ_FLAG_HIDDEN);
+        continue;
+      }
+      lv_obj_remove_flag(sat, LV_OBJ_FLAG_HIDDEN);
+      // Planes run at slightly different speeds so the pattern keeps changing.
+      const float a = t * kOrbitSpeed * (1.0f + 0.15f * p) + k * kTwoPi / kSatsPerPlane + p * 0.6f;
+      const float ex = sat_r * cosf(a);
+      const float ey = sat_r * kOrbitFlatten * sinf(a);
+      const float depth = 0.5f + 0.5f * sinf(a);  // 1 = nearest
+      placeCircle(sat, cx + ex * ct - ey * st, cy + ex * st + ey * ct,
+                  sat_size * (0.55f + 0.75f * depth));
+      lv_obj_set_style_bg_opa(sat, static_cast<lv_opa_t>(m * (90.0f + 165.0f * depth)), 0);
+    }
+  }
+
+  // HUD rings: a spinner on the outer orbit and a thinner one inside turning
+  // the other way, faded in with the orbit.
   const lv_opa_t arc_opa = static_cast<lv_opa_t>(m * 200.0f);
   if (arc_opa < 8) {
     lv_obj_add_flag(g_arc, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(g_arc_inner, LV_OBJ_FLAG_HIDDEN);
   } else {
     lv_obj_remove_flag(g_arc, LV_OBJ_FLAG_HIDDEN);
-    placeCircle(g_arc, cx, cy, 2.0f * orbit_r + r * 0.25f);
+    lv_obj_remove_flag(g_arc_inner, LV_OBJ_FLAG_HIDDEN);
+    placeCircle(g_arc, cx, cy, 2.0f * orbit_r + r * 0.35f);
     lv_obj_set_style_arc_opa(g_arc, arc_opa, LV_PART_INDICATOR);
     const int32_t start = static_cast<int32_t>(t * kSpinnerSpeed) % 360;
     const int32_t sweep = 70 + static_cast<int32_t>(40.0f * sinf(t * 1.9f));
     lv_arc_set_angles(g_arc, start, (start + sweep) % 360);
+    placeCircle(g_arc_inner, cx, cy, r * 1.75f);
+    lv_obj_set_style_arc_opa(g_arc_inner, static_cast<lv_opa_t>(arc_opa * 0.7f), LV_PART_INDICATOR);
+    const int32_t inner = 360 - static_cast<int32_t>(t * kSpinnerSpeed * 0.7f) % 360;
+    lv_arc_set_angles(g_arc_inner, inner % 360, (inner + 200) % 360);
   }
 
   // The label sits below the widest halo the sphere reaches.
@@ -212,16 +268,16 @@ void create() {
   lv_obj_set_style_bg_grad_dir(g_core, LV_GRAD_DIR_VER, 0);
   lv_obj_set_style_bg_opa(g_core, 190, 0);
 
-  g_arc = lv_arc_create(g_overlay);
-  lv_obj_remove_flag(g_arc, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_style_arc_opa(g_arc, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(g_arc, LV_OPA_TRANSP, LV_PART_KNOB);
-  lv_obj_set_style_pad_all(g_arc, 0, LV_PART_KNOB);
-  lv_obj_set_style_arc_width(g_arc, 3, LV_PART_INDICATOR);
-  lv_obj_set_style_arc_color(g_arc, lv_color_hex(0xA5F3FC), LV_PART_INDICATOR);
-  lv_obj_set_style_arc_rounded(g_arc, true, LV_PART_INDICATOR);
-  lv_arc_set_bg_angles(g_arc, 0, 360);
-  lv_obj_add_flag(g_arc, LV_OBJ_FLAG_HIDDEN);
+  g_arc = createSpinner(g_overlay, 3, 0xA5F3FC);
+  g_arc_inner = createSpinner(g_overlay, 2, 0xC4B5FD);
+
+  for (int i = 0; i < kSatCount; ++i) {
+    g_sats[i] = createCircle(g_overlay);
+    lv_obj_set_style_bg_color(g_sats[i], lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_grad_color(g_sats[i], lv_color_hex(kSatColors[i / kSatsPerPlane]), 0);
+    lv_obj_set_style_bg_grad_dir(g_sats[i], LV_GRAD_DIR_VER, 0);
+    lv_obj_add_flag(g_sats[i], LV_OBJ_FLAG_HIDDEN);
+  }
 
   g_label = lv_label_create(g_overlay);
   lv_obj_remove_flag(g_label, LV_OBJ_FLAG_CLICKABLE);
