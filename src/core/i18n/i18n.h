@@ -836,6 +836,11 @@ struct Strings {
   const char* settings_microphone;
   const char* settings_mic_sensitivity;
   const char* settings_mic_off;
+  // On-panel Assist screen after a wake word: listening, Home Assistant
+  // working on the answer, and the answer playing.
+  const char* assist_listening;
+  const char* assist_thinking;
+  const char* assist_answering;
 };
 
 // Locale-specific display rules and short runtime strings shared by
