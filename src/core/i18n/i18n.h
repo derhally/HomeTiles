@@ -673,6 +673,11 @@ struct Strings {
   const char* weather_colored_icons;
   // Web Admin navigation: the menu with every folder besides Home.
   const char* admin_folders;
+  // On-panel Assist screen after a wake word: listening, Home Assistant
+  // working on the answer, and the answer playing.
+  const char* assist_listening;
+  const char* assist_thinking;
+  const char* assist_answering;
   // Settings Audio tile and popup (panels with a speaker).
   const char* audio_label;
   const char* settings_tile_desc_audio;

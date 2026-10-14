@@ -84,6 +84,25 @@ inline uint16_t micGainTenthsDb(uint8_t step) {
 uint8_t micGainStep();
 void setMicGainStep(uint8_t step);
 
+// Where the current voice conversation stands, for the on-panel Assist
+// screen (src/ui/assist/assist_overlay.h). The worker advances it: a wake
+// word or an Assist start -> Listening; the capture ending normally (the
+// Bridge's stop after the end of speech, or max_ms) -> Thinking; the answer
+// starting to play -> Answering; the answer ending -> Idle. A failed capture,
+// an abandoned wake word handoff or a failed answer -> Idle. Thinking falls
+// back to Idle after kAssistThinkingTimeoutMs without an answer (service()).
+// Safe to read from any task.
+enum class AssistUiPhase : uint8_t { Idle, Listening, Thinking, Answering };
+constexpr uint32_t kAssistThinkingTimeoutMs = 15000;
+AssistUiPhase assistUiPhase();
+// Hides the screen for this conversation (the user tapped it); a new wake
+// word or Assist start shows it again. Loop task only.
+void dismissAssistUi();
+// Peak absolute sample (0..32767) of the newest microphone chunk while the
+// input is open, and of the newest speaker chunk while playing. Any task.
+uint16_t micPeakLevel();
+uint16_t outputPeakLevel();
+
 // "audio_output" flag in the Bridge capabilities: codec found and ready.
 bool bridgeCapability();
 // "audio_input" flag in the Bridge capabilities: microphone ADC answered.
