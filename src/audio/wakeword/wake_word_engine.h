@@ -17,8 +17,11 @@ namespace wake_word {
 struct ModelSpec {
   // Wake word id of the Assist contract (assist_contract::kWakeWordIds).
   const char* id;
+  // zlib stream of the flatbuffer in flash (packed_size bytes), `size` bytes
+  // once inflated.
   const uint8_t* data;
   size_t size;
+  size_t packed_size;
   float probability_cutoff;
   uint8_t sliding_window_size;
   size_t tensor_arena_size;

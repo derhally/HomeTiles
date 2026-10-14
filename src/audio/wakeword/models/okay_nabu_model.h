@@ -10,8 +10,10 @@
 
 namespace wake_word_models {
 
+// zlib stream of the model (kOkayNabuModelSize bytes once inflated).
 extern const uint8_t kOkayNabuModel[];
 constexpr size_t kOkayNabuModelSize = 60264;
+constexpr size_t kOkayNabuModelPackedSize = 34364;
 constexpr float kOkayNabuProbabilityCutoff = 0.97f;
 constexpr uint8_t kOkayNabuSlidingWindowSize = 5;
 constexpr size_t kOkayNabuTensorArenaSize = 26080;

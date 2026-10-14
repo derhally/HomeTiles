@@ -10,8 +10,10 @@
 
 namespace wake_word_models {
 
+// zlib stream of the model (kAlexaModelSize bytes once inflated).
 extern const uint8_t kAlexaModel[];
 constexpr size_t kAlexaModelSize = 55856;
+constexpr size_t kAlexaModelPackedSize = 33131;
 constexpr float kAlexaProbabilityCutoff = 0.9f;
 constexpr uint8_t kAlexaSlidingWindowSize = 5;
 constexpr size_t kAlexaTensorArenaSize = 22348;
