@@ -34,6 +34,7 @@
 #include "src/ui/shared/ui_surface_style.h"
 #include "src/ui/popups/weather/weather_popup.h"
 #include "src/audio/speaker.h"
+#include "src/ui/assist/assist_overlay.h"
 
 static lv_obj_t *brightness_label = nullptr;
 static lv_obj_t *screensaver_brightness_value_label = nullptr;
@@ -3565,9 +3566,17 @@ static void on_audio_mic_clicked(lv_event_t*) {
   audio_update_mic_button();
 }
 
+static void on_assist_style_changed(lv_event_t* e) {
+  lv_obj_t* dd = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
+  if (!dd) return;
+  speaker::setAssistScreenStyle(
+      static_cast<speaker::AssistScreenStyle>(lv_dropdown_get_selected(dd)));
+}
+
+static void on_assist_preview_clicked(lv_event_t*) { assist_overlay::preview(); }
+
 static void build_audio_popup(lv_obj_t* parent) {
   lv_obj_t* form = create_form_area(parent);
-  lv_obj_clear_flag(form, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_pad_top(form, popup_layout::scale(32), 0);
   lv_obj_set_style_pad_row(form, popup_layout::scale(18), 0);
 
@@ -3606,6 +3615,17 @@ static void build_audio_popup(lv_obj_t* parent) {
                                                       popup_layout::scale(130),
                                                       LV_TEXT_ALIGN_RIGHT);
     audio_set_gain_text(speaker::micGainStep());
+
+    // Assist screen look, with a button that plays it once.
+    lv_obj_t* style_dd = create_locale_dropdown_row(
+        form, tr().assist_style_label, tr().assist_style_options,
+        static_cast<uint32_t>(speaker::assistScreenStyle()));
+    lv_obj_add_event_cb(style_dd, on_assist_style_changed, LV_EVENT_VALUE_CHANGED, nullptr);
+    lv_obj_t* preview_btn = create_popup_button(lv_obj_get_parent(style_dd),
+                                                tr().assist_preview_btn, 0x424242,
+                                                on_assist_preview_clicked);
+    lv_obj_set_width(preview_btn, popup_layout::scale(150));
+    lv_obj_set_style_text_font(lv_obj_get_child(preview_btn, 0), popup_layout::font24(), 0);
 
     // Full-width toggle with icon and label, like the Rotate button.
     audio_mic_btn = create_popup_button(form, "", 0x26A69A, on_audio_mic_clicked);

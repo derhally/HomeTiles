@@ -678,6 +678,12 @@ struct Strings {
   const char* assist_listening;
   const char* assist_thinking;
   const char* assist_answering;
+  // Settings Audio row choosing the Assist screen look: label, the four
+  // style names as dropdown options (speaker::AssistScreenStyle order) and
+  // the button that previews the chosen look.
+  const char* assist_style_label;
+  const char* assist_style_options;
+  const char* assist_preview_btn;
   // Settings Audio tile and popup (panels with a speaker).
   const char* audio_label;
   const char* settings_tile_desc_audio;
