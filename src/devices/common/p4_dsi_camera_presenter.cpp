@@ -217,6 +217,18 @@ void Presenter::markMirrorDirty(int32_t x, int32_t y, int32_t w, int32_t h) {
 
 bool Presenter::noteUiWrite(int32_t x, int32_t y, int32_t w, int32_t h,
                             bool ppa_writer) {
+  if (uiFlipUsable()) {
+    uint16_t* hidden = inactiveFramebuffer();
+    if (!hidden ||
+        !rectInside(x, y, w, h, config_.panel_width, config_.panel_height)) {
+      return false;
+    }
+    if (ppa_writer && !syncFramebufferSpan(hidden, x, y, w, h, true)) {
+      return false;
+    }
+    addRect(ui_frame_rects_, &ui_frame_count_, x, y, w, h);
+    return true;
+  }
   uint16_t* active = activeFramebuffer();
   if (!active ||
       !rectInside(x, y, w, h, config_.panel_width, config_.panel_height)) {
@@ -231,6 +243,12 @@ bool Presenter::noteUiWrite(int32_t x, int32_t y, int32_t w, int32_t h,
 
 bool Presenter::begin(bool covers_panel) {
   if (double_buffer_active_) return true;
+  // A UI frame still in the hidden framebuffer is shown first; the camera
+  // path then starts from the complete shown picture.
+  if (ui_flip_) {
+    commitUi();
+    finishUiSwap();
+  }
   finishPendingSwap();
   uint16_t* active = activeFramebuffer();
   uint16_t* inactive = inactiveFramebuffer();
@@ -557,6 +575,12 @@ bool Presenter::swapTo(uint16_t* framebuffer) {
 bool Presenter::beginFullFrames() {
   if (!ready_) return false;
   if (full_frames_) return true;
+  // A UI frame still in the hidden framebuffer is shown first, so the copy
+  // below holds the complete UI (tear-free path).
+  if (ui_flip_) {
+    commitUi();
+    finishUiSwap();
+  }
   finishPendingSwap();
   uint16_t* active = activeFramebuffer();
   uint16_t* inactive = inactiveFramebuffer();
@@ -642,9 +666,11 @@ void Presenter::endFullFrames() {
   heap_caps_free(ui_copy_);
   ui_copy_ = nullptr;
   // The other framebuffer still holds the last video frame: a later camera
-  // frame starts over with a whole copy of the UI (begin()).
+  // frame starts over with a whole copy of the UI (begin()), and the
+  // tear-free path copies the shown UI in full before its next frame.
   double_buffer_active_ = false;
   resetMirrorDirty();
+  ui_back_valid_ = false;
   Serial.printf("[CameraDisplay/%s] Full screen ended: UI back\n",
                 config_.device_name ? config_.device_name : "P4");
 }
@@ -655,9 +681,139 @@ void Presenter::end() {
   finishPendingSwap();
   double_buffer_active_ = false;
   resetMirrorDirty();
+  // The camera path left the hidden framebuffer stale.
+  ui_back_valid_ = false;
   Serial.printf("[CameraDisplay/%s] DSI double buffering ended; fb%u remains active\n",
                 config_.device_name ? config_.device_name : "P4",
                 static_cast<unsigned>(active_index_));
+}
+
+void Presenter::addRect(Rect* rects, uint8_t* count, int32_t x, int32_t y,
+                        int32_t w, int32_t h) {
+  const Rect rect{x, y, x + w - 1, y + h - 1};
+  if (*count < kMaxUiRects) {
+    rects[(*count)++] = rect;
+    return;
+  }
+  // Out of slots: fold everything into one bounding rectangle.
+  Rect& all = rects[0];
+  for (uint8_t i = 1; i < *count; ++i) {
+    if (rects[i].x1 < all.x1) all.x1 = rects[i].x1;
+    if (rects[i].y1 < all.y1) all.y1 = rects[i].y1;
+    if (rects[i].x2 > all.x2) all.x2 = rects[i].x2;
+    if (rects[i].y2 > all.y2) all.y2 = rects[i].y2;
+  }
+  if (rect.x1 < all.x1) all.x1 = rect.x1;
+  if (rect.y1 < all.y1) all.y1 = rect.y1;
+  if (rect.x2 > all.x2) all.x2 = rect.x2;
+  if (rect.y2 > all.y2) all.y2 = rect.y2;
+  *count = 1;
+}
+
+bool Presenter::copyRect(uint16_t* to, const uint16_t* from,
+                         const Rect& rect) const {
+  const int32_t w = rect.x2 - rect.x1 + 1;
+  const int32_t h = rect.y2 - rect.y1 + 1;
+  if (!rectInside(rect.x1, rect.y1, w, h, config_.panel_width,
+                  config_.panel_height)) {
+    return false;
+  }
+  // Every writer leaves the source coherent in memory (CPU writes are written
+  // back, PPA output is invalidated), so the copy may read through the cache.
+  const size_t row_bytes = static_cast<size_t>(w) * sizeof(uint16_t);
+  for (int32_t row = 0; row < h; ++row) {
+    const size_t offset =
+        static_cast<size_t>(rect.y1 + row) * config_.panel_width + rect.x1;
+    std::memcpy(to + offset, from + offset, row_bytes);
+  }
+  return flushFramebufferRect(to, rect.x1, rect.y1, w, h);
+}
+
+bool Presenter::copyFullFrame(uint16_t* to, uint16_t* from) const {
+  if (!syncFramebufferSpan(from, 0, 0, config_.panel_width,
+                           config_.panel_height, true)) {
+    return false;
+  }
+  std::memcpy(to, from, framebufferBytes());
+  return syncCache(to, framebufferBytes(), false);
+}
+
+void Presenter::setUiFlip(bool enabled) {
+  if (ui_flip_ == enabled) return;
+  if (!enabled) {
+    commitUi();
+    finishUiSwap();
+  }
+  ui_flip_ = enabled;
+  ui_back_valid_ = false;
+  ui_frame_count_ = 0;
+  ui_sync_count_ = 0;
+  Serial.printf("[Display/%s] Tear-free UI %s\n",
+                config_.device_name ? config_.device_name : "P4",
+                enabled ? "on" : "off");
+}
+
+void Presenter::finishUiSwap() {
+  if (!ui_swap_pending_) return;
+  ui_swap_pending_ = false;
+  // Usually long confirmed by the time LVGL renders the next frame. Without
+  // the refresh callback (panel stopped for sleep) nothing scans either
+  // framebuffer, so writing on is safe; only note it.
+  if (!waitRefreshDone() &&
+      (ui_timeout_log_ms_ == 0 || millis() - ui_timeout_log_ms_ > 10000)) {
+    ui_timeout_log_ms_ = millis();
+    if (!ui_timeout_log_ms_) ui_timeout_log_ms_ = 1;
+    Serial.printf("[Display/%s] UI swap not confirmed by a refresh\n",
+                  config_.device_name ? config_.device_name : "P4");
+  }
+  uint16_t* shown = activeFramebuffer();
+  uint16_t* hidden = inactiveFramebuffer();
+  for (uint8_t i = 0; i < ui_sync_count_ && ui_back_valid_; ++i) {
+    if (!copyRect(hidden, shown, ui_sync_rects_[i])) ui_back_valid_ = false;
+  }
+  ui_sync_count_ = 0;
+}
+
+uint16_t* Presenter::uiFramebuffer() {
+  if (!uiFlipUsable()) return activeFramebuffer();
+  finishUiSwap();
+  uint16_t* hidden = inactiveFramebuffer();
+  if (!ui_back_valid_) {
+    if (!copyFullFrame(hidden, activeFramebuffer())) {
+      // Draw into the shown framebuffer this time rather than lose pixels.
+      return activeFramebuffer();
+    }
+    ui_back_valid_ = true;
+    ui_frame_count_ = 0;
+  }
+  return hidden;
+}
+
+void Presenter::commitUi() {
+  if (!uiFlipUsable() || ui_frame_count_ == 0) return;
+  uint16_t* hidden = inactiveFramebuffer();
+  // The rows were already written back by the writers; a one-pixel draw of
+  // the framebuffer's own memory only switches the scanout at the next
+  // refresh (ESP-IDF DPI driver, no copy).
+  const esp_err_t err = esp_lcd_panel_draw_bitmap(panel_, 0, 0, 1, 1, hidden);
+  if (err != ESP_OK) {
+    Serial.printf("[Display/%s] UI framebuffer swap failed: %d\n",
+                  config_.device_name ? config_.device_name : "P4",
+                  static_cast<int>(err));
+    // The frame stays hidden; copy it into the shown framebuffer instead.
+    for (uint8_t i = 0; i < ui_frame_count_; ++i) {
+      copyRect(activeFramebuffer(), hidden, ui_frame_rects_[i]);
+    }
+    ui_frame_count_ = 0;
+    return;
+  }
+  // See present(): only a refresh after this point confirms the new buffer.
+  drainRefreshSignal();
+  active_index_ ^= 1U;
+  for (uint8_t i = 0; i < ui_frame_count_; ++i) ui_sync_rects_[i] = ui_frame_rects_[i];
+  ui_sync_count_ = ui_frame_count_;
+  ui_frame_count_ = 0;
+  ui_swap_pending_ = true;
 }
 
 }  // namespace p4_dsi_camera_presenter
