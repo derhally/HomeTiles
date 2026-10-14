@@ -2,23 +2,20 @@
 
 // Full-screen Assist screen on speaker panels. It appears when the wake word
 // is heard (or an Assist start arrives) and follows speaker::assistUiPhase():
-//   Listening  a glowing sphere of overlapping color lobes that swells and
-//              changes shape with the live microphone level;
-//   Thinking   the lobes gather into a smaller sphere while nine small
-//              satellites circle it on three tilted orbits, inside two
-//              counter-rotating rings, while Home Assistant works on the
-//              answer;
-//   Answering  the same orbits, the sphere and satellites following the
-//              speaker level while the answer plays.
+// Listening reacts to the live microphone level, Thinking runs while Home
+// Assistant works on the answer, and Answering follows the speaker level
+// while the answer plays. The look is the stored speaker::assistScreenStyle()
+// (assist_styles.h: Atom, Reactor, Dot Halo, Voice Pills).
 // When the conversation ends the screen hides and the panel shows what it
 // showed before; a display that the wake word woke goes back to sleep. A tap
 // hides the screen for the rest of the conversation.
 //
-// The sphere is a handful of plain LVGL circles moved by one 33 ms timer:
+// Every style is a handful of plain LVGL objects moved by one 33 ms timer:
 // no canvas, no layers and no allocation per frame. Only the sphere's area
-// redraws, and the overlay is opaque, so the UI underneath does not.
+// redraws, and the overlay is opaque, so the UI underneath does not. Only
+// the chosen style's objects exist; changing the style replaces them.
 //
-// Threading: both functions run on the Arduino loop task.
+// Threading: every function runs on the Arduino loop task.
 
 namespace assist_overlay {
 
@@ -29,5 +26,9 @@ void service();
 // Sleep loop: wakes the display when a conversation starts. Returns true
 // when it did; the caller then leaves the sleep branch.
 bool serviceSleep();
+
+// Settings: plays listening, thinking and answering once with the stored
+// style and a simulated voice, then hides. Ignored during a conversation.
+void preview();
 
 }  // namespace assist_overlay

@@ -109,6 +109,7 @@ std::atomic<uint8_t> g_ui_phase{static_cast<uint8_t>(AssistUiPhase::Idle)};
 std::atomic<uint32_t> g_ui_phase_ms{0};
 std::atomic<uint16_t> g_mic_level{0};
 std::atomic<uint16_t> g_out_level{0};
+std::atomic<uint8_t> g_screen_style{static_cast<uint8_t>(AssistScreenStyle::Atom)};
 // A Listening phase older than the longest session plus the wake word
 // handoff is stale; service() clears it.
 constexpr uint32_t kAssistListeningLimitMs =
@@ -167,6 +168,7 @@ constexpr const char* kPrefsWakeWordsKey = "wake_words";
 constexpr const char* kPrefsWakeListenKey = "wake_listen";
 constexpr const char* kPrefsMicKey = "mic_on";
 constexpr const char* kPrefsMicGainKey = "mic_gain";
+constexpr const char* kPrefsScreenStyleKey = "assist_look";
 // Volume sliders send many steps; store once they settle and nothing plays
 // (flash writes stall both cores and would click in the output).
 constexpr uint32_t kPersistDelayMs = 3000;
@@ -1860,6 +1862,7 @@ void storeSettings() {
   prefs.putBool(kPrefsWakeListenKey, g_wake_listen.load());
   prefs.putBool(kPrefsMicKey, g_mic_enabled.load());
   prefs.putUChar(kPrefsMicGainKey, g_mic_gain.load());
+  prefs.putUChar(kPrefsScreenStyleKey, g_screen_style.load());
   if (!BatchedNvsWrite::finish(prefs)) {
     Serial.printf("%s Could not save the speaker settings\n", kLogPrefix);
   }
@@ -1956,6 +1959,8 @@ void begin() {
     g_mic_enabled.store(prefs.getBool(kPrefsMicKey, false));
     const uint8_t gain = prefs.getUChar(kPrefsMicGainKey, kDefaultMicGainStep);
     g_mic_gain.store(gain > kMaxMicGainStep ? kDefaultMicGainStep : gain);
+    const uint8_t style = prefs.getUChar(kPrefsScreenStyleKey, 0);
+    g_screen_style.store(style < kAssistScreenStyleCount ? style : 0);
     prefs.end();
   }
   g_request_mutex = xSemaphoreCreateMutex();
@@ -2274,6 +2279,20 @@ void setVolume(float volume) {
 }
 
 uint8_t micGainStep() { return g_mic_gain.load(); }
+
+AssistScreenStyle assistScreenStyle() {
+  return static_cast<AssistScreenStyle>(g_screen_style.load());
+}
+
+void setAssistScreenStyle(AssistScreenStyle style) {
+  const uint8_t value = static_cast<uint8_t>(style);
+  if (value >= kAssistScreenStyleCount) return;
+#if defined(HOMETILES_SPEAKER)
+  if (g_screen_style.exchange(value) == value) return;
+  g_persist_pending = true;
+  g_persist_due_ms = millis() + kPersistDelayMs;
+#endif
+}
 
 void setMicGainStep(uint8_t step) {
 #if defined(HOMETILES_SPEAKER)
