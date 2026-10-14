@@ -34,6 +34,11 @@ constexpr float kGlowScale[kGlowCount] = {1.30f, 1.62f, 2.0f};
 // Lobe rotation speeds (rad/s) while listening; unequal, so the outline
 // never repeats exactly.
 constexpr float kLobeSpeed[kLobeCount] = {0.9f, -1.3f, 1.7f};
+// Orbit and spinner speeds. The 7B's single DPI frame buffer is scanned out
+// while LVGL flushes partial bands, so a fast mover shows a tear line where a
+// band ends; about 5 px per frame keeps that invisible.
+constexpr float kOrbitSpeed = 1.1f;     // rad/s
+constexpr float kSpinnerSpeed = 100.0f; // degrees/s
 
 lv_obj_t* g_overlay = nullptr;
 lv_obj_t* g_glow[kGlowCount] = {};
@@ -143,7 +148,7 @@ void onFrame(lv_timer_t*) {
     const float size_listen =
         2.0f * r *
         (0.80f + 0.07f * sinf(t * 2.3f + i * 1.3f) + 0.38f * lv * (0.7f + 0.3f * sinf(t * 9.0f + i * 2.0f)));
-    const float a_orbit = base + t * 2.6f;
+    const float a_orbit = base + t * kOrbitSpeed;
     const float size_orbit = r * (0.42f + 0.05f * sinf(t * 5.0f + i) + 0.35f * lv);
 
     const float x = (1.0f - m) * (cx + off * cosf(a_listen)) + m * (cx + orbit_r * cosf(a_orbit));
@@ -165,7 +170,7 @@ void onFrame(lv_timer_t*) {
     lv_obj_remove_flag(g_arc, LV_OBJ_FLAG_HIDDEN);
     placeCircle(g_arc, cx, cy, 2.0f * orbit_r + r * 0.25f);
     lv_obj_set_style_arc_opa(g_arc, arc_opa, LV_PART_INDICATOR);
-    const int32_t start = static_cast<int32_t>(t * 220.0f) % 360;
+    const int32_t start = static_cast<int32_t>(t * kSpinnerSpeed) % 360;
     const int32_t sweep = 70 + static_cast<int32_t>(40.0f * sinf(t * 1.9f));
     lv_arc_set_angles(g_arc, start, (start + sweep) % 360);
   }
