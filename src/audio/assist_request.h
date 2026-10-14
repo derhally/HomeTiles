@@ -9,7 +9,7 @@
 
 namespace assist_contract {
 
-enum class CommandKind : uint8_t { Invalid, Start, Stop, WakeWords, Mic };
+enum class CommandKind : uint8_t { Invalid, Start, Stop, WakeWords, Mic, ScreenStyle };
 
 // More entries than any real list; a longer "active" array is refused.
 constexpr size_t kMaxWakeWordEntries = 16;
@@ -48,6 +48,8 @@ struct Command {
   uint32_t wake_words = 0;
   // Mic: the requested privacy switch state.
   bool mic_enabled = true;
+  // ScreenStyle: catalog index of "style" (kScreenStyleIds).
+  uint8_t screen_style = 0;
 };
 
 inline void parseCommand(const char* payload, size_t length, Command* out) {
@@ -82,6 +84,17 @@ inline void parseCommand(const char* payload, size_t length, Command* out) {
       return;
     }
     out->mic_enabled = enabled.as<bool>();
+    out->status = CommandStatus::Ok;
+    return;
+  } else if (op_name && strcmp(op_name, "screen_style") == 0) {
+    out->kind = CommandKind::ScreenStyle;
+    JsonVariantConst style = doc["style"];
+    const int index = style.is<const char*>() ? screenStyleIndex(style.as<const char*>()) : -1;
+    if (index < 0) {
+      out->status = CommandStatus::InvalidValue;
+      return;
+    }
+    out->screen_style = static_cast<uint8_t>(index);
     out->status = CommandStatus::Ok;
     return;
   } else if (op_name && strcmp(op_name, "wake_words") == 0) {
