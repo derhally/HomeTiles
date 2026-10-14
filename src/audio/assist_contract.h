@@ -39,6 +39,13 @@
 //       panel's own switch cannot be undone by an unauthenticated message.
 //       While off, starts are refused with "error":"mic_off" and no wake
 //       word runs. The status adds "mic_enabled":true|false.
+//
+// v1 addendum, Assist screen look (stored in NVS, default "atom"):
+//   {base}/cmnd/assist {"v":1,"op":"screen_style","style":"reactor"}
+//       Picks the on-panel Assist screen style; unknown ids are refused.
+//       Cosmetic, so accepted on the plain topic like wake_words. The status
+//       adds "screen_style":"<id>" and "screen_styles":[...] (every style
+//       this firmware draws, in catalog order).
 //   {base}/stat/assist_wake   panel -> Bridge, QoS0, not retained:
 //       {"v":1,"word":"okay_nabu","seq":<uint32 per boot>} on a detection.
 //       The panel then buffers up to 3 s of audio and sends it first when a
@@ -95,6 +102,19 @@ constexpr uint32_t kWakeHandoffMs = 3000;
 // Longest list the stored setting and the status payload need: every catalog
 // id plus separators.
 constexpr size_t kMaxWakeWordListChars = kWakeWordCount * (kMaxWakeWordIdLength + 3) + 1;
+
+// Assist screen styles in speaker::AssistScreenStyle order (stored by
+// number, so entries are only appended).
+constexpr const char* kScreenStyleIds[] = {"atom", "reactor", "dot_halo", "voice_pills"};
+constexpr size_t kScreenStyleCount = sizeof(kScreenStyleIds) / sizeof(kScreenStyleIds[0]);
+
+inline int screenStyleIndex(const char* id) {
+  if (!id) return -1;
+  for (size_t i = 0; i < kScreenStyleCount; ++i) {
+    if (strcmp(id, kScreenStyleIds[i]) == 0) return static_cast<int>(i);
+  }
+  return -1;
+}
 
 enum class ErrorCode : uint8_t {
   None,
@@ -260,6 +280,9 @@ struct StatusFields {
   // Adds "mic_enabled" (the privacy switch) when set.
   bool mic_state = false;
   bool mic_enabled = true;
+  // Adds "screen_style" and "screen_styles" when set.
+  bool screen_style_state = false;
+  uint8_t screen_style = 0;
 };
 
 // Appends ,"<key>":[...] for the ids in mask. Returns false when it does not
@@ -305,6 +328,20 @@ inline size_t buildStatusJson(char* out, size_t size, const StatusFields& fields
                        fields.mic_enabled ? "true" : "false");
     if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
     used += static_cast<size_t>(written);
+  }
+  if (fields.screen_style_state) {
+    const uint8_t style = fields.screen_style < kScreenStyleCount ? fields.screen_style : 0;
+    written = snprintf(out + used, size - used, ",\"screen_style\":\"%s\",\"screen_styles\":[",
+                       kScreenStyleIds[style]);
+    if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
+    used += static_cast<size_t>(written);
+    for (size_t i = 0; i < kScreenStyleCount; ++i) {
+      written = snprintf(out + used, size - used, "%s\"%s\"", i ? "," : "", kScreenStyleIds[i]);
+      if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
+      used += static_cast<size_t>(written);
+    }
+    if (used + 1 >= size) return 0;
+    out[used++] = ']';
   }
   if (used + 2 > size) return 0;
   out[used++] = '}';
