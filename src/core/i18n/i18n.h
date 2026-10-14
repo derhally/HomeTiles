@@ -688,6 +688,17 @@ struct Strings {
   const char* admin_folders;
   // Wi-Fi popup line under the connection status: the station MAC address.
   const char* wifi_mac_label;
+  // On-panel Assist screen after a wake word: listening, Home Assistant
+  // working on the answer, and the answer playing.
+  const char* assist_listening;
+  const char* assist_thinking;
+  const char* assist_answering;
+  // Settings Audio row choosing the Assist screen look: label, the four
+  // style names as dropdown options (speaker::AssistScreenStyle order) and
+  // the button that previews the chosen look.
+  const char* assist_style_label;
+  const char* assist_style_options;
+  const char* assist_preview_btn;
   // Settings Audio tile and popup (panels with a speaker).
   const char* audio_label;
   const char* settings_tile_desc_audio;
