@@ -57,6 +57,15 @@ void NetworkTransportManager::update() {
         connected ? static_cast<uint32_t>(WiFi.gatewayIP()) : 0);
     wifi_dns_.store(
         connected ? static_cast<uint32_t>(WiFi.dnsIP(0)) : 0);
+    if (connected && wifi_mac_.load() == 0) {
+      // The station MAC does not change; on ESP-Hosted boards reading it is a
+      // radio RPC, so it is read once.
+      uint8_t mac[6] = {};
+      WiFi.macAddress(mac);
+      uint64_t packed = 0;
+      for (uint8_t byte : mac) packed = (packed << 8) | byte;
+      wifi_mac_.store(packed);
+    }
   }
   if (usbEthernetBackend.isStarted() &&
       static_cast<int32_t>(now - usb_poll_at_) >= 0) {
@@ -157,6 +166,17 @@ IPAddress NetworkTransportManager::localIP() const {
     return IPAddress(state->local_ip.load());
   }
   return isWifiConnected() ? IPAddress(wifi_local_ip_.load()) : IPAddress();
+}
+
+bool NetworkTransportManager::activeMac(char* out, size_t len) const {
+  if (!out || len < 18) return false;
+  const uint64_t mac = wifi_mac_.load();
+  if (activeEthernetState() || !isWifiConnected() || mac == 0) return false;
+  snprintf(out, len, "%02X:%02X:%02X:%02X:%02X:%02X",
+           static_cast<unsigned>((mac >> 40) & 0xFF), static_cast<unsigned>((mac >> 32) & 0xFF),
+           static_cast<unsigned>((mac >> 24) & 0xFF), static_cast<unsigned>((mac >> 16) & 0xFF),
+           static_cast<unsigned>((mac >> 8) & 0xFF), static_cast<unsigned>(mac & 0xFF));
+  return true;
 }
 
 IPAddress NetworkTransportManager::gatewayIP() const {

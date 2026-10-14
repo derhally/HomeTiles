@@ -220,6 +220,9 @@ const WifiNetwork& wifi_network(uint8_t index);
 const char* wifi_saved_password(const char* ssid);
 void hotspot_details(char* ssid, size_t ssid_len, char* password, size_t password_len);
 bool static_address(char* buf, size_t len);
+// The WiFi station's MAC address ("AA:BB:CC:DD:EE:FF"); false until WiFi
+// reported it.
+bool wifi_mac(char* buf, size_t len);
 // Touches.
 void wifi_scan();
 void wifi_connect(const char* ssid, const char* password);

@@ -1719,6 +1719,12 @@ void build_wifi_page(lv_obj_t* page) {
     settings_parts::Row status = settings_parts::row(group, icon, name, "");
     connected_sub(status);
     wifi_button(status.row, s.wifi_disconnect_btn, WifiAction::Disconnect);
+    // The station MAC, as the router lists it, once WiFi reported it.
+    char mac[24];
+    if (settings_model::wifi_mac(mac, sizeof(mac))) {
+      settings_parts::Row address = settings_parts::row(group, "identifier", s.settings_mac_address);
+      settings_parts::trailing_text(address.row, mac, g_page_width / 2);
+    }
   } else if (!v.access_point) {
     settings_parts::row(group, "wifi-off", s.settings_not_connected,
                         v.connecting ? s.settings_connecting : s.settings_choose_network);

@@ -753,6 +753,7 @@ static const Strings kStringsDe = {
     "Punkt-Halo",
     "Sprach-Pillen",
     "Vorschau",
+    "MAC-Adresse",
 };
 
 static const Strings kStringsEn = {
@@ -1501,6 +1502,7 @@ static const Strings kStringsEn = {
     "Dot Halo",
     "Voice Pills",
     "Preview",
+    "MAC address",
 };
 
 static const Strings kStringsFr = {
@@ -2249,6 +2251,7 @@ static const Strings kStringsFr = {
     "Halo de points",
     "Pilules vocales",
     "Aperçu",
+    "Adresse MAC",
 };
 
 static const LocaleProfile kLocaleDe = {
@@ -3415,6 +3418,7 @@ static const Strings kStringsPl = {
     "Aureola z kropek",
     "Głosowe pigułki",
     "Podgląd",
+    "Adres MAC",
 };
 
 static const Strings kStringsCs = {
@@ -4133,6 +4137,7 @@ static const Strings kStringsCs = {
     "Tečkové halo",
     "Hlasové pilulky",
     "Náhled",
+    "MAC adresa",
 };
 
 static const Strings kStringsEs = {
@@ -4851,6 +4856,7 @@ static const Strings kStringsEs = {
     "Halo de puntos",
     "Píldoras de voz",
     "Vista previa",
+    "Dirección MAC",
 };
 
 static const Strings kStringsSk = {
@@ -5569,6 +5575,7 @@ static const Strings kStringsSk = {
     "Bodkové halo",
     "Hlasové pilulky",
     "Náhľad",
+    "MAC adresa",
 };
 
 static const Strings kStringsRu = {
