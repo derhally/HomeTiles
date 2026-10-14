@@ -687,6 +687,13 @@ static const Strings kStringsDe = {
     "Ich höre zu…",
     "Einen Moment…",
     "Antwort…",
+    "Assist",
+    "Anzeige",
+    "Atom",
+    "Reaktor",
+    "Punkt-Halo",
+    "Sprach-Pillen",
+    "Vorschau",
 };
 
 static const Strings kStringsEn = {
@@ -1369,6 +1376,13 @@ static const Strings kStringsEn = {
     "Listening…",
     "Thinking…",
     "Answering…",
+    "Assist",
+    "Screen style",
+    "Atom",
+    "Reactor",
+    "Dot Halo",
+    "Voice Pills",
+    "Preview",
 };
 
 static const Strings kStringsFr = {
@@ -2051,6 +2065,13 @@ static const Strings kStringsFr = {
     "J’écoute…",
     "Je réfléchis…",
     "Je réponds…",
+    "Assist",
+    "Style d’écran",
+    "Atome",
+    "Réacteur",
+    "Halo de points",
+    "Pilules vocales",
+    "Aperçu",
 };
 
 static const LocaleProfile kLocaleDe = {
@@ -3108,6 +3129,13 @@ static const Strings kStringsPl = {
     "Słucham…",
     "Chwileczkę…",
     "Odpowiadam…",
+    "Assist",
+    "Styl ekranu",
+    "Atom",
+    "Reaktor",
+    "Aureola z kropek",
+    "Głosowe pigułki",
+    "Podgląd",
 };
 
 static const Strings kStringsCs = {
@@ -3760,6 +3788,13 @@ static const Strings kStringsCs = {
     "Poslouchám…",
     "Okamžik…",
     "Odpovídám…",
+    "Assist",
+    "Zobrazení",
+    "Atom",
+    "Reaktor",
+    "Tečkové halo",
+    "Hlasové pilulky",
+    "Náhled",
 };
 
 static const Strings kStringsEs = {
@@ -4412,6 +4447,13 @@ static const Strings kStringsEs = {
     "Escuchando…",
     "Un momento…",
     "Respondiendo…",
+    "Assist",
+    "Pantalla",
+    "Átomo",
+    "Reactor",
+    "Halo de puntos",
+    "Píldoras de voz",
+    "Vista previa",
 };
 
 static const Strings kStringsSk = {
@@ -5064,6 +5106,13 @@ static const Strings kStringsSk = {
     "Počúvam…",
     "Moment…",
     "Odpovedám…",
+    "Assist",
+    "Zobrazenie",
+    "Atóm",
+    "Reaktor",
+    "Bodkové halo",
+    "Hlasové pilulky",
+    "Náhľad",
 };
 
 static const LocaleProfile kLocalePl = {

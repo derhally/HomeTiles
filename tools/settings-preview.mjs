@@ -125,7 +125,7 @@ const icons = ['cog', 'window-close', 'monitor', 'wifi', 'wifi-off', 'access-poi
   'backspace-outline', 'check-bold', 'shield-check', 'loading', 'cellphone-wireless', 'book-open-variant', 'qrcode',
   'view-grid-plus-outline', 'chevron-left', 'wifi-lock', 'wifi-strength-4-lock', 'wifi-strength-outline',
   'theme-light-dark', 'page-layout-header', 'tune-variant', 'volume-high', 'volume-off', 'microphone',
-  'microphone-off', 'microphone-settings'];
+  'microphone-off', 'microphone-settings', 'palette-outline', 'animation-play-outline', 'play'];
 const iconTable = icons.map(name => {
   const match = mdi.match(new RegExp(`\\{"${name}", (0x[0-9A-Fa-f]+)\\}`));
   if (!match) throw new Error(`MDI icon ${name} missing`);
@@ -290,6 +290,15 @@ unsigned mic_gain_tenths_db(int step) { return step <= 10 ? step * 30 : 330 + (s
 void volume_changed(int, bool) {}
 void mic_selected(bool) {}
 void mic_gain_changed(int, bool) {}
+uint8_t assist_style_count() { return 4; }
+const char* assist_style_name(uint8_t index) {
+  const char* const kNames[] = {text().assist_style_atom, text().assist_style_reactor, text().assist_style_dot_halo,
+                                text().assist_style_voice_pills};
+  return kNames[index < 4 ? index : 0];
+}
+uint8_t assist_style() { return 0; }
+void assist_style_selected(uint8_t) {}
+void assist_preview() {}
 uint8_t theme_index() { return 0; }
 uint8_t theme_choice() { return 0; }
 void theme_selected(uint8_t) {}

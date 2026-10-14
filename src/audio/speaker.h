@@ -103,6 +103,13 @@ void dismissAssistUi();
 uint16_t micPeakLevel();
 uint16_t outputPeakLevel();
 
+// Look of the on-panel Assist screen, stored (default Atom). Values are
+// stored in NVS by number: append new styles, never renumber.
+enum class AssistScreenStyle : uint8_t { Atom = 0, Reactor = 1, DotHalo = 2, VoicePills = 3 };
+constexpr uint8_t kAssistScreenStyleCount = 4;
+AssistScreenStyle assistScreenStyle();  // any task
+void setAssistScreenStyle(AssistScreenStyle style);  // loop task
+
 // "audio_output" flag in the Bridge capabilities: codec found and ready.
 bool bridgeCapability();
 // "audio_input" flag in the Bridge capabilities: microphone ADC answered.
