@@ -55,6 +55,10 @@ public:
   IPAddress localIP() const;
   IPAddress gatewayIP() const;
   IPAddress dnsIP(uint8_t index = 0) const;
+  // MAC address of the active transport as "AA:BB:CC:DD:EE:FF". Only Wi-Fi
+  // reports one (read once from the radio after it first connects); returns
+  // false otherwise.
+  bool activeMac(char* out, size_t len) const;
 
   // Backend hooks. A backend reports link/IP state here; the facade selects
   // the highest-priority usable transport and exposes it to the application.
@@ -89,6 +93,7 @@ private:
   std::atomic<uint32_t> wifi_local_ip_{0};
   std::atomic<uint32_t> wifi_gateway_{0};
   std::atomic<uint32_t> wifi_dns_{0};
+  std::atomic<uint64_t> wifi_mac_{0};
   EthernetState usb_;
   EthernetState native_;
 };

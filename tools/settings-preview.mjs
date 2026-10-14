@@ -130,7 +130,8 @@ const icons = ['cog', 'window-close', 'monitor', 'wifi', 'wifi-off', 'access-poi
   'backspace-outline', 'check-bold', 'shield-check', 'loading', 'cellphone-wireless', 'book-open-variant', 'qrcode',
   'view-grid-plus-outline', 'chevron-left', 'wifi-lock', 'wifi-strength-4-lock', 'wifi-strength-outline',
   'theme-light-dark', 'page-layout-header', 'tune-variant', 'volume-high', 'volume-off', 'microphone',
-  'microphone-off', 'microphone-settings', 'monitor-speaker', 'palette-outline', 'animation-play-outline', 'play'];
+  'microphone-off', 'microphone-settings', 'monitor-speaker', 'palette-outline', 'animation-play-outline',
+  'play', 'identifier'];
 const iconTable = icons.map(name => {
   const match = mdi.match(new RegExp(`\\{"${name}", (0x[0-9A-Fa-f]+)\\}`));
   if (!match) throw new Error(`MDI icon ${name} missing`);
@@ -413,6 +414,7 @@ void hotspot_details(char* ssid, size_t ssid_len, char* password, size_t passwor
   snprintf(password, password_len, "hometiles");
 }
 bool static_address(char*, size_t) { return false; }
+bool wifi_mac(char* buf, size_t len) { snprintf(buf, len, "3C:84:27:C1:5A:0E"); return true; }
 void wifi_scan() {}
 void wifi_connect(const char*, const char*) {}
 void wifi_disconnect() {}
