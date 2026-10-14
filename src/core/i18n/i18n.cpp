@@ -689,7 +689,8 @@ static const Strings kStringsDe = {
     "Reaktor",
     "Punkt-Halo",
     "Sprach-Pillen",
-    "Vorschau"};
+    "Vorschau",
+    "MAC-Adresse"};
 
 static const Strings kStringsEn = {
     "en",
@@ -1373,7 +1374,8 @@ static const Strings kStringsEn = {
     "Reactor",
     "Dot Halo",
     "Voice Pills",
-    "Preview"};
+    "Preview",
+    "MAC address"};
 
 static const Strings kStringsFr = {
     "fr",
@@ -2057,7 +2059,8 @@ static const Strings kStringsFr = {
     "Réacteur",
     "Halo de points",
     "Pilules vocales",
-    "Aperçu"};
+    "Aperçu",
+    "Adresse MAC"};
 
 static const LocaleProfile kLocaleDe = {
     "de",
@@ -3107,7 +3110,8 @@ static const Strings kStringsPl = {
     "Reaktor",
     "Aureola z kropek",
     "Głosowe pigułki",
-    "Podgląd"};
+    "Podgląd",
+    "Adres MAC"};
 
 static const LocaleProfile kLocalePl = {
     "pl",

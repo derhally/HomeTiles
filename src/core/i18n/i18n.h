@@ -851,6 +851,9 @@ struct Strings {
   const char* assist_style_dot_halo;
   const char* assist_style_voice_pills;
   const char* settings_assist_preview;
+  // Settings > WiFi row under the connected network: the station MAC address
+  // (as the router lists it).
+  const char* settings_mac_address;
 };
 
 // Locale-specific display rules and short runtime strings shared by
