@@ -509,13 +509,19 @@ inline bool fixed_color(const char* record, uint32_t& rgb) {
   return parse_color(begin, end, rgb);
 }
 
-// The "fill NN" tint strength in percent, 0 without one.
+// The "fill NN" tint strength in percent, 0 without one. A "card RRGGBB"
+// line left by an earlier zd build (a page tile's own card color, since
+// removed) counts as Fill at the editor's strength, so such a tile stays
+// colored; the next save writes "fill 20" instead.
+inline constexpr uint8_t kLegacyCardFill = 20;
 inline uint8_t fill_of(const char* record) {
   if (!record || !is_v2(record)) return 0;
+  bool legacy_card = false;
   for (const char* p = line_end(second_line(record)); *p == '\n';) {
     const char* begin = p + 1;
     const char* end = line_end(begin);
     p = end;
+    if (starts_with(begin, end, "card ")) legacy_card = true;
     if (!starts_with(begin, end, "fill ")) continue;
     const char* token = begin + 5;
     const char* stop = end;
@@ -528,7 +534,7 @@ inline uint8_t fill_of(const char* record) {
     }
     return clamp_tint(value);
   }
-  return 0;
+  return legacy_card ? kLegacyCardFill : 0;
 }
 
 // "From cover" of a Media tile (the "cover" line).
