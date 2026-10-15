@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Assist Sphere Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: one column of option rows, each a scaled 1024x600 panel preview beside its notes; one global phase switch on top. */
+:root {
+  --ground: #0B0E16;
+  --panel: #05070F;
+  --surface: #121725;
+  --line: #232B3E;
+  --text: #E4E9F4;
+  --muted: #8E98AE;
+  --accent: #67E8F9;
+  --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--text); font: 15px/1.55 var(--body); }
+.wrap { max-width: 1060px; margin: 0 auto; padding-inline: 20px; padding-block: 32px 56px; display: grid; gap: 28px; }
+header { display: grid; gap: 10px; }
+h1 { font: 600 clamp(26px, 4vw, 36px)/1.1 var(--display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 64ch; margin: 0; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2; background: var(--ground); padding-block: 12px; border-bottom: 1px solid var(--line); }
+.controls .label { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg button { font: 500 14px var(--body); color: var(--muted); background: transparent; border: 0; border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.now { font: 400 13px var(--mono); color: var(--accent); min-width: 11ch; }
+.options { display: grid; gap: 22px; }
+.option { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 22px; align-items: center; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+@media (max-width: 760px) { .option { grid-template-columns: minmax(0, 1fr); } }
+.stage { position: relative; width: 100%; aspect-ratio: 1024 / 600; background: var(--panel); border-radius: 10px; overflow: hidden; box-shadow: inset 0 0 0 1px #1A2133; }
+.stage .cap { position: absolute; left: 0; right: 0; bottom: 9%; text-align: center; font: 500 clamp(11px, 1.7vw, 15px) var(--body); color: #C8D2E6; pointer-events: none; }
+.notes { display: grid; gap: 8px; min-width: 0; }
+.tag { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.notes h2 { font: 600 22px/1.2 var(--display); margin: 0; }
+.notes p { margin: 0; color: var(--muted); }
+.notes dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 6px 0 0; font-size: 14px; }
+.notes dt { color: var(--muted); font: 400 12px/1.9 var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+.notes dd { margin: 0; }
+.dot, .arc, .pill { position: absolute; left: 0; top: 0; will-change: transform; }
+.dot { border-radius: 50%; }
+.pill { border-radius: 999px; }
+.arc { border-radius: 50%; --sweep: 70deg; --w: 3px; --c: #A5F3FC;
+  background: conic-gradient(var(--c) 0 var(--sweep), transparent var(--sweep));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + .5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + .5px)); }
+footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Assist Sphere Options</h1>
+    <p class="lede">Four looks for the Assist voice screen. Each preview is a 1024 × 600 panel, scaled down, with a simulated voice driving it. Every option is built only from circles, pills and arcs, so each one can run cheaply on the panel.</p>
+  </header>
+
+  <div class="controls" role="group" aria-label="Phase">
+    <span class="label">Phase</span>
+    <div class="seg" id="phaseSeg">
+      <button type="button" data-phase="auto" aria-pressed="true">Auto cycle</button>
+      <button type="button" data-phase="listening" aria-pressed="false">Listening</button>
+      <button type="button" data-phase="thinking" aria-pressed="false">Thinking</button>
+      <button type="button" data-phase="answering" aria-pressed="false">Answering</button>
+    </div>
+    <span class="now" id="now">Listening</span>
+  </div>
+
+  <section class="options">
+    <article class="option" data-opt="atom">
+      <div class="stage"><div class="cap"></div></div>
+      <div class="notes">
+        <span class="tag">Option A</span>
+        <h2>Atom</h2>
+        <p>Cyan, violet and magenta lobes swell with your voice. While thinking they gather into a small sphere and nine satellites circle it on three tilted orbits inside two counter-turning rings.</p>
+        <dl><dt>Feel</dt><dd>Colorful, scientific</dd><dt>Objects</dt><dd>19 circles, 2 arcs</dd></dl>
+      </div>
+    </article>
+
+    <article class="option" data-opt="reactor">
+      <div class="stage"><div class="cap"></div></div>
+      <div class="notes">
+        <span class="tag">Option B</span>
+        <h2>Reactor</h2>
+        <p>A bright core sends out sonar rings, faster and wider the louder you talk. While thinking, three broken rings spin at different speeds and directions like a HUD targeting reticle.</p>
+        <dl><dt>Feel</dt><dd>Sci-fi interface, cool blue</dd><dt>Objects</dt><dd>9 circles, 7 arcs</dd></dl>
+      </div>
+    </article>
+
+    <article class="option" data-opt="halo">
+      <div class="stage"><div class="cap"></div></div>
+      <div class="notes">
+        <span class="tag">Option C</span>
+        <h2>Dot Halo</h2>
+        <p>Thirty-two dots ring a soft core. Your voice pushes each dot outward by a different amount, so the ring becomes a living waveform. While thinking, a bright comet chases around the ring.</p>
+        <dl><dt>Feel</dt><dd>Minimal, precise</dd><dt>Objects</dt><dd>35 circles</dd></dl>
+      </div>
+    </article>
+
+    <article class="option" data-opt="bars">
+      <div class="stage"><div class="cap"></div></div>
+      <div class="notes">
+        <span class="tag">Option D</span>
+        <h2>Voice Pills</h2>
+        <p>Four colored dots stretch into pills that dance with each syllable. While thinking they circle each other, and while answering they bounce in a wave with the reply.</p>
+        <dl><dt>Feel</dt><dd>Friendly, familiar</dd><dt>Objects</dt><dd>4 pills, 1 glow</dd></dl>
+      </div>
+    </article>
+  </section>
+
+  <footer>Auto cycle runs 5 s listening, 3 s thinking and 4 s answering. On the panel the listening level comes from the microphone and the answering level from the speaker; here both are simulated.</footer>
+</div>
+
+<script>
+(() => {
+  const TAU = Math.PI * 2;
+  const CAPS = { listening: 'Listening…', thinking: 'Thinking…', answering: 'Answering…' };
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let chosen = 'auto';
+  const seg = document.getElementById('phaseSeg');
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    chosen = b.dataset.phase;
+    seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    cycleStart = performance.now();
+  });
+  let cycleStart = performance.now();
+  function phaseNow(now) {
+    if (chosen !== 'auto') return chosen;
+    const s = ((now - cycleStart) / 1000) % 12;
+    return s < 5 ? 'listening' : s < 8 ? 'thinking' : 'answering';
+  }
+
+  // Simulated speech: syllable bursts with pauses, eased like the firmware
+  // (fast attack, slow release).
+  let target = 0, level = 0, nextSyl = 0;
+  function voice(now, active) {
+    if (now > nextSyl) {
+      nextSyl = now + 110 + Math.random() * 170;
+      target = Math.random() < 0.22 ? 0 : 0.25 + Math.random() * 0.75;
+    }
+    const t = active ? target : 0;
+    level += (t - level) * (t > level ? 0.55 : 0.12);
+    return level;
+  }
+
+  const mk = (stage, cls, css) => {
+    const el = document.createElement('div');
+    el.className = cls; Object.assign(el.style, css || {});
+    stage.insertBefore(el, stage.querySelector('.cap'));
+    return el;
+  };
+  const place = (el, x, y, d, extra) => {
+    el.style.width = el.style.height = d + 'px';
+    el.style.transform = `translate(${x - d / 2}px, ${y - d / 2}px)` + (extra || '');
+  };
+  const placePill = (el, x, y, w, h) => {
+    el.style.width = w + 'px'; el.style.height = h + 'px';
+    el.style.transform = `translate(${x - w / 2}px, ${y - h / 2}px)`;
+  };
+  const grad = (a, b) => `linear-gradient(${a}, ${b})`;
+  const ease = (cur, tgt, k) => cur + (tgt - cur) * k;
+
+  // ---- A: Atom ----
+  function atom(stage) {
+    const glows = [0, 1, 2].map(i => mk(stage, 'dot', { opacity: [0.12, 0.07, 0.04][i] }));
+    const lobeC = [['#22D3EE', '#0E7490'], ['#7C3AED', '#4C1D95'], ['#DB2777', '#831843']];
+    const lobes = lobeC.map(c => mk(stage, 'dot', { background: grad(c[0], c[1]), opacity: 0.59 }));
+    const core = mk(stage, 'dot', { background: grad('#F0FDFF', '#67E8F9'), opacity: 0.75 });
+    const arc = mk(stage, 'arc'); const arcIn = mk(stage, 'arc');
+    arcIn.style.setProperty('--c', '#C4B5FD'); arcIn.style.setProperty('--w', '2px');
+    const satC = ['#67E8F9', '#C4B5FD', '#F9A8D4'];
+    const sats = [...Array(9)].map((_, i) => mk(stage, 'dot', { background: grad('#FFFFFF', satC[(i / 3) | 0]) }));
+    const speed = [0.9, -1.3, 1.7];
+    return (t, lv, m, W, H) => {
+      const cx = W / 2, cy = H * 0.45, r = H * 0.17;
+      const glow = m > 0.5 ? '#8B5CF6' : '#0EA5E9';
+      glows.forEach((g, i) => { g.style.background = glow; place(g, cx, cy, 2 * r * [1.3, 1.62, 2][i] * (1 + 0.04 * Math.sin(t * 1.6 + i)) * (1 + 0.28 * lv)); });
+      const orbitR = r * (1.45 + 0.15 * lv * m);
+      lobes.forEach((l, i) => {
+        const a = i * TAU / 3 + t * speed[i];
+        const off = r * (0.1 + 0.42 * lv) * (0.6 + 0.4 * Math.sin(t * 1.7 + i * 2.1));
+        const sL = 2 * r * (0.8 + 0.07 * Math.sin(t * 2.3 + i * 1.3) + 0.38 * lv * (0.7 + 0.3 * Math.sin(t * 9 + i * 2)));
+        const sO = r * (1.05 + 0.06 * Math.sin(t * 2 + i * 1.7) + 0.4 * lv);
+        const o = (1 - m) * off + m * r * 0.14;
+        place(l, cx + o * Math.cos(a), cy + o * Math.sin(a), (1 - m) * sL + m * sO);
+      });
+      place(core, cx, cy, (1 - m) * 2 * r * (0.48 + 0.22 * lv + 0.03 * Math.sin(t * 3.1)) + m * r * (0.62 + 0.08 * Math.sin(t * 4.2) + 0.3 * lv));
+      const tilt = [0, 1.0472, 2.0944];
+      sats.forEach((s, i) => {
+        const p = (i / 3) | 0, k = i % 3;
+        const a = t * 0.9 * (1 + 0.15 * p) + k * TAU / 3 + p * 0.6;
+        const ex = orbitR * m * Math.cos(a), ey = orbitR * m * 0.34 * Math.sin(a);
+        const depth = 0.5 + 0.5 * Math.sin(a);
+        const ct = Math.cos(tilt[p]), st = Math.sin(tilt[p]);
+        s.style.opacity = m < 0.03 ? 0 : m * (90 + 165 * depth) / 255;
+        place(s, cx + ex * ct - ey * st, cy + ex * st + ey * ct, r * (0.16 + 0.1 * lv) * (0.55 + 0.75 * depth));
+      });
+      arc.style.opacity = arcIn.style.opacity = m * 0.8;
+      arc.style.setProperty('--sweep', (70 + 40 * Math.sin(t * 1.9)) + 'deg');
+      place(arc, cx, cy, 2 * orbitR + r * 0.35, ` rotate(${t * 100}deg)`);
+      arcIn.style.setProperty('--sweep', '200deg');
+      place(arcIn, cx, cy, r * 1.75, ` rotate(${-t * 70}deg)`);
+    };
+  }
+
+  // ---- B: Reactor ----
+  function reactor(stage) {
+    const ripples = [...Array(4)].map(() => mk(stage, 'dot', { border: '2px solid #38BDF8', background: 'transparent' }));
+    const glow = mk(stage, 'dot', { background: '#0EA5E9', opacity: 0.12 });
+    const ringA = mk(stage, 'dot', { border: '2px solid #7DD3FC', opacity: 0.5 });
+    const core = mk(stage, 'dot', { background: 'radial-gradient(circle at 50% 40%, #FFFFFF, #7DD3FC 45%, #0369A1)' });
+    const inner = mk(stage, 'dot', { background: '#E0F2FE', opacity: 0.9 });
+    const segs = [];
+    const spec = [ // radius factor, count, sweep, speed deg/s, width
+      [1.25, 3, 70, 60, 3], [1.55, 2, 120, -40, 2], [1.85, 2, 40, 90, 4]];
+    spec.forEach(([rf, n, sw, sp, w], ring) => {
+      for (let k = 0; k < n; k++) {
+        const a = mk(stage, 'arc'); a.style.setProperty('--sweep', sw + 'deg'); a.style.setProperty('--w', w + 'px');
+        a.style.setProperty('--c', ring === 1 ? '#A78BFA' : '#7DD3FC');
+        segs.push({ el: a, rf, off: k * 360 / n, sp });
+      }
+    });
+    let emitted = 0;
+    const born = ripples.map(() => -10);
+    return (t, lv, m, W, H) => {
+      const cx = W / 2, cy = H * 0.45, r = H * 0.17;
+      // Sonar: a new ring every 0.7 s while listening, sized by the voice.
+      const period = 0.7 - 0.3 * lv;
+      if (m < 0.5 && t - Math.max(...born) > period) { born[emitted % 4] = t; emitted++; }
+      ripples.forEach((rp, i) => {
+        const age = t - born[i];
+        const life = Math.min(1, age / 1.6);
+        rp.style.opacity = age < 0 || life >= 1 ? 0 : (1 - life) * 0.7 * (1 - m);
+        place(rp, cx, cy, 2 * r * (0.7 + life * (1.4 + lv)));
+      });
+      place(glow, cx, cy, 2 * r * (1.6 + 0.4 * lv));
+      ringA.style.opacity = 0.5 * (1 - m);
+      place(ringA, cx, cy, 2 * r * (0.95 + 0.25 * lv));
+      const coreD = (1 - m) * 2 * r * (0.62 + 0.25 * lv) + m * 2 * r * (0.42 + 0.04 * Math.sin(t * 4) + 0.18 * lv);
+      place(core, cx, cy, coreD);
+      place(inner, cx, cy, coreD * 0.35);
+      segs.forEach(s => {
+        s.el.style.opacity = m * 0.9;
+        place(s.el, cx, cy, 2 * r * s.rf * (1 + 0.08 * lv * m) * (0.7 + 0.3 * m), ` rotate(${s.off + t * s.sp}deg)`);
+      });
+    };
+  }
+
+  // ---- C: Dot Halo ----
+  function halo(stage) {
+    const glow = mk(stage, 'dot', { background: '#22D3EE', opacity: 0.08 });
+    const core = mk(stage, 'dot', { background: 'radial-gradient(circle at 50% 40%, #ECFEFF, #22D3EE 60%, #0E7490)', opacity: 0.85 });
+    const coreGlow = mk(stage, 'dot', { background: '#67E8F9', opacity: 0.18 });
+    const N = 32;
+    const dots = [...Array(N)].map(() => mk(stage, 'dot', { background: '#A5F3FC' }));
+    const seeds = dots.map((_, i) => [Math.random() * TAU, 2 + Math.random() * 5]);
+    return (t, lv, m, W, H) => {
+      const cx = W / 2, cy = H * 0.45, r = H * 0.17;
+      place(glow, cx, cy, 2 * r * (1.9 + 0.3 * lv));
+      place(coreGlow, cx, cy, 2 * r * (0.85 + 0.2 * lv));
+      place(core, cx, cy, 2 * r * (0.5 + 0.12 * lv + 0.03 * Math.sin(t * 3)));
+      const R = r * 1.35;
+      const head = (t * 1.4) % TAU;
+      dots.forEach((d, i) => {
+        const a = i * TAU / N + t * 0.15;
+        const [ph, f] = seeds[i];
+        const wave = (0.5 + 0.5 * Math.sin(t * f + ph)) * (0.6 + 0.4 * Math.sin(a * 3 + t * 2));
+        const push = (1 - m) * lv * wave * r * 0.75 + m * lv * r * 0.2;
+        let diff = (head - (i * TAU / N)) % TAU; if (diff < 0) diff += TAU;
+        const trail = Math.max(0, 1 - diff / 2.2);
+        const opa = (1 - m) * (0.55 + 0.45 * wave * lv + 0.2) + m * (0.18 + 0.82 * trail);
+        d.style.opacity = Math.min(1, opa);
+        d.style.background = m > 0.5 && trail > 0.85 ? '#FFFFFF' : '#A5F3FC';
+        place(d, cx + (R + push) * Math.cos(a), cy + (R + push) * Math.sin(a), r * (0.075 + 0.05 * m * trail + 0.04 * (1 - m) * wave * lv));
+      });
+    };
+  }
+
+  // ---- D: Voice Pills ----
+  function bars(stage) {
+    const glow = mk(stage, 'dot', { background: '#818CF8', opacity: 0.1 });
+    const cols = ['#22D3EE', '#A78BFA', '#F472B6', '#FBBF24'];
+    const pills = cols.map(c => mk(stage, 'pill', { background: c }));
+    const lv4 = [0, 0, 0, 0];
+    return (t, lv, m, W, H) => {
+      const cx = W / 2, cy = H * 0.45, r = H * 0.17;
+      place(glow, cx, cy, 2 * r * (1.5 + 0.3 * lv));
+      const dot = r * 0.32, gap = r * 0.5;
+      pills.forEach((p, i) => {
+        // Listening: each pill takes its own share of the voice.
+        lv4[i] = ease(lv4[i], lv * (0.55 + 0.45 * Math.abs(Math.sin(t * (5 + i * 1.7) + i))), 0.5);
+        const hL = dot + lv4[i] * r * 1.5;
+        // Thinking: the dots circle around the center.
+        const a = t * 2.2 + i * TAU / 4;
+        const xO = cx + r * 0.55 * Math.cos(a), yO = cy + r * 0.55 * Math.sin(a);
+        // Answering: a bouncing wave scaled by the reply.
+        const bounce = Math.max(0, Math.sin(t * 7 - i * 0.9)) * r * (0.25 + 0.6 * lv);
+        const xL = cx + (i - 1.5) * gap;
+        const ans = phaseNow(performance.now()) === 'answering' ? 1 : 0;
+        const x = (1 - m) * xL + m * (ans ? xL : xO);
+        const y = (1 - m) * cy + m * (ans ? cy - bounce : yO);
+        placePill(p, x, y, dot, (1 - m) * hL + m * dot);
+      });
+    };
+  }
+
+  const builders = { atom, reactor, halo, bars };
+  const runs = [...document.querySelectorAll('.option')].map(opt => {
+    const stage = opt.querySelector('.stage');
+    return { stage, cap: stage.querySelector('.cap'), frame: builders[opt.dataset.opt](stage), m: 0 };
+  });
+  const nowEl = document.getElementById('now');
+  const t0 = performance.now();
+  let lastPhase = '';
+  function tick(now) {
+    const phase = phaseNow(now);
+    if (phase !== lastPhase) {
+      lastPhase = phase;
+      nowEl.textContent = CAPS[phase].replace('…', '');
+      runs.forEach(r => { r.cap.textContent = CAPS[phase]; });
+    }
+    const lv = voice(now, phase !== 'thinking');
+    const t = reduce ? 1.5 : (now - t0) / 1000;
+    runs.forEach(run => {
+      run.m = ease(run.m, phase === 'listening' ? 0 : 1, 0.12);
+      const W = run.stage.clientWidth, H = run.stage.clientHeight;
+      run.frame(t, reduce ? 0.3 : lv, run.m, W, H);
+    });
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
+
+</body>
+</html>
