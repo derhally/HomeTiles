@@ -12,6 +12,7 @@ album
 alert-circle
 alert-circle-outline
 animation
+animation-play-outline
 apple-keyboard-caps
 apple-keyboard-shift
 arrow-bottom-left
@@ -25,6 +26,7 @@ arrow-split-vertical
 arrow-top-right
 arrow-up
 arrow-up-box
+atom
 awning
 backspace
 backspace-outline
@@ -114,6 +116,7 @@ home
 home-analytics
 home-outline
 icon-name
+identifier
 image
 import
 ip
@@ -140,6 +143,8 @@ lock-outline
 login-variant
 magnify
 microphone
+microphone-off
+microphone-settings
 minus
 mirror
 monitor
@@ -163,6 +168,7 @@ package
 package-up
 page-layout-header
 palette
+palette-outline
 pause
 pencil-outline
 percent
@@ -310,9 +316,15 @@ window-shutter
 window-shutter-open
 
 # Default icons of the HomeTiles Bridge
+account-voice
+creation
 flash
 gauge
+ip-network
+memory
+network-outline
 phone-rotate-portrait
+restart-alert
 shield-off-outline
 toggle-switch
 view-dashboard
