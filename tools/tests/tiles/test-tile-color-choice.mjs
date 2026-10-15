@@ -55,6 +55,8 @@ const cases = [
   ['v2\nFF0000\nfill x', 'v2\nFF0000', 0],
   ['v2\nFF0000', 'v2\nFF0000', 0],
   ['v2\nFF0000\nsrc auto light.kitchen tile=30\nfill 20', 'v2\nFF0000\nfill 20\nsrc auto light.kitchen tile=30', 20],
+  // An earlier zd build's own card color falls back to Fill.
+  ['v2\nFF0000\ncard 336699', 'v2\nFF0000\nfill 20', 20],
 ];
 for (const [input, expected, fill] of cases) {
   assert.equal(js.normalizeIconColorRecord(input, false, false, true, false), expected, `JS normalize ${JSON.stringify(input)}`);
@@ -62,7 +64,8 @@ for (const [input, expected, fill] of cases) {
 }
 // fills(): "fill", a former cover tint and a former rule tint; nothing else.
 const fillRecords = [['v2\nFF0000\nfill 25', 20], ['v2\nFF0000', 0], ['v2\n\nsrc rules self tile=30\nhas F44336 6', 20],
-  ['v2\n\nsrc rules self\nhas F44336 6', 0], ['v2\n\ncover icon tile=20', 20], ['v2\n\ncover icon', 0]];
+  ['v2\n\nsrc rules self\nhas F44336 6', 0], ['v2\n\ncover icon tile=20', 20], ['v2\n\ncover icon', 0],
+  ['v2\nFF0000\ncard 336699', 20]];
 for (const [record, fill] of fillRecords) assert.equal(js.tileFillOf(record), fill, `preview fills ${JSON.stringify(record)}`);
 
 // Scenarios: [name, type, record, state, display, type color].

@@ -478,10 +478,11 @@
   }
 
   // tile_icon_colors::fill_of(): the "fill NN" tint of the fixed color in
-  // percent (clamped like the rule tint), 0 without one.
+  // percent (clamped like the rule tint), 0 without one; an earlier zd
+  // build's "card RRGGBB" line counts as Fill (20).
   function iconColorFillOf(lines) {
     const line = lines.find(candidate => candidate.startsWith('fill '));
-    if (line === undefined) return 0;
+    if (line === undefined) return lines.some(candidate => candidate.startsWith('card ')) ? 20 : 0;
     const text = iconColorTrim(line.slice(5));
     if (!/^[0-9]+$/.test(text) || text.length > 4) return 0;
     return Math.min(50, Math.max(10, Number(text)));
