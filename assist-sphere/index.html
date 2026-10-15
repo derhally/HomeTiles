@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Assist Sphere Options</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&family=VT323&display=swap">
 <style>
 /* Layout: one column of option rows, each a scaled 1024x600 panel preview beside its notes; one global phase switch on top. */
 :root {
@@ -38,6 +38,7 @@ h1 { font: 600 clamp(26px, 4vw, 36px)/1.1 var(--display); letter-spacing: .01em;
 .option { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 22px; align-items: center; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 @media (max-width: 760px) { .option { grid-template-columns: minmax(0, 1fr); } }
 .stage { position: relative; width: 100%; aspect-ratio: 1024 / 600; background: var(--panel); border-radius: 10px; overflow: hidden; box-shadow: inset 0 0 0 1px #1A2133; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .stage .cap { position: absolute; left: 0; right: 0; bottom: 9%; text-align: center; font: 500 clamp(11px, 1.7vw, 15px) var(--body); color: #C8D2E6; pointer-events: none; }
 .notes { display: grid; gap: 8px; min-width: 0; }
 .tag { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
@@ -61,7 +62,7 @@ footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
 <div class="wrap">
   <header>
     <h1>Assist Sphere Options</h1>
-    <p class="lede">Four looks for the Assist voice screen. Each preview is a 1024 × 600 panel, scaled down, with a simulated voice driving it. Every option is built only from circles, pills and arcs, so each one can run cheaply on the panel.</p>
+    <p class="lede">Nine looks for the Assist voice screen. Each preview is a 1024 × 600 panel, scaled down, with a simulated voice driving it. Options A to D are built only from circles, pills and arcs. Options E to I add lines, polylines and short number labels, still without per-pixel effects, so each can be drawn by LVGL on the ESP32-P4.</p>
   </header>
 
   <div class="controls" role="group" aria-label="Phase">
@@ -113,6 +114,56 @@ footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
         <h2>Voice Pills</h2>
         <p>Four colored dots stretch into pills that dance with each syllable. While thinking they circle each other, and while answering they bounce in a wave with the reply.</p>
         <dl><dt>Feel</dt><dd>Friendly, familiar</dd><dt>Objects</dt><dd>4 pills, 1 glow</dd></dl>
+      </div>
+    </article>
+
+    <article class="option" data-canvas="sentinel">
+      <div class="stage"><canvas aria-label="Sentinel preview"></canvas></div>
+      <div class="notes">
+        <span class="tag">Option E</span>
+        <h2>Sentinel</h2>
+        <p>A heads-up display. Seventy-two ticks around the core rise with the voice like a round spectrum, inside broken rings and a turning triangle. While thinking the rings spin up, an amber arc races around and a scan line sweeps. While answering the ticks pulse in waves, with number readouts on both sides.</p>
+        <dl><dt>Feel</dt><dd>Sci-fi HUD, cyan and amber</dd><dt>Objects</dt><dd>~110 lines, 12 arcs, 3 circles, 5 short number labels</dd><dt>Panel</dt><dd>The soft glow is a wider faint line under each bright one.</dd></dl>
+      </div>
+    </article>
+
+    <article class="option" data-canvas="phosphor">
+      <div class="stage"><canvas aria-label="Phosphor preview"></canvas></div>
+      <div class="notes">
+        <span class="tag">Option F</span>
+        <h2>Phosphor</h2>
+        <p>A green oscilloscope on a terminal. The voice draws the trace, with fading afterglow copies behind it. While thinking the trace goes flat with a travelling blip and number rows print in the corner. While answering the trace curls into a Lissajous figure that grows with the reply. The caption is a typed prompt with a block cursor.</p>
+        <dl><dt>Feel</dt><dd>1980s terminal, green phosphor</dd><dt>Objects</dt><dd>4 polylines of 128 points, ~60 grid dots, 6 labels</dd><dt>Panel</dt><dd>Afterglow is three older traces at lower opacity. No CRT scanlines or bloom, which would need per-pixel work.</dd></dl>
+      </div>
+    </article>
+
+    <article class="option" data-canvas="disc">
+      <div class="stage"><canvas aria-label="Light Disc preview"></canvas></div>
+      <div class="notes">
+        <span class="tag">Option G</span>
+        <h2>Light Disc</h2>
+        <p>A glowing disc on a dark grid. Eight segments of its ring light with the voice. While thinking the disc turns and two light trails, cyan and orange, race the grid in right angles behind it. While answering the disc rings pulse with the reply.</p>
+        <dl><dt>Feel</dt><dd>Neon grid world, cyan and orange</dd><dt>Objects</dt><dd>25 grid lines, 12 arcs, 2 trails of up to 12 points</dd><dt>Panel</dt><dd>The grid is static and can be drawn once. Trails are two polylines.</dd></dl>
+      </div>
+    </article>
+
+    <article class="option" data-canvas="lens">
+      <div class="stage"><canvas aria-label="Lens preview"></canvas></div>
+      <div class="notes">
+        <span class="tag">Option H</span>
+        <h2>Lens</h2>
+        <p>A calm red lens in a brushed-metal ring. The glow around the bright centre grows with the voice. While thinking it breathes slowly. While answering it brightens with each word. Nothing else moves.</p>
+        <dl><dt>Feel</dt><dd>Still, watchful, red and steel</dd><dt>Objects</dt><dd>10 filled circles, 4 rings, 2 highlight arcs</dd><dt>Panel</dt><dd>The soft red falloff is stacked circles at rising opacity instead of a gradient. The cheapest option here.</dd></dl>
+      </div>
+    </article>
+
+    <article class="option" data-canvas="iris">
+      <div class="stage"><canvas aria-label="Iris preview"></canvas></div>
+      <div class="notes">
+        <span class="tag">Option I</span>
+        <h2>Iris</h2>
+        <p>A close-up eye. The pupil opens with the voice. While thinking an inspection box hunts across the iris with crosshairs, a scan line and coordinates. While answering the pupil and fibers pulse with the reply.</p>
+        <dl><dt>Feel</dt><dd>Noir, teal and amber</dd><dt>Objects</dt><dd>90 fiber lines, 4 circles, 8 bracket lines, 2 labels</dd><dt>Panel</dt><dd>The fibers barely change and can be cached as one image, rotated only while thinking.</dd></dl>
       </div>
     </article>
   </section>
@@ -315,7 +366,7 @@ footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
   }
 
   const builders = { atom, reactor, halo, bars };
-  const runs = [...document.querySelectorAll('.option')].map(opt => {
+  const runs = [...document.querySelectorAll('.option[data-opt]')].map(opt => {
     const stage = opt.querySelector('.stage');
     return { stage, cap: stage.querySelector('.cap'), frame: builders[opt.dataset.opt](stage), m: 0 };
   });
@@ -335,6 +386,389 @@ footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
       run.m = ease(run.m, phase === 'listening' ? 0 : 1, 0.12);
       const W = run.stage.clientWidth, H = run.stage.clientHeight;
       run.frame(t, reduce ? 0.3 : lv, run.m, W, H);
+    });
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
+<script>
+// Canvas-drawn options (E to I). Drawn in panel pixels (1024x600) and scaled.
+// The phase follows the switch at the top through the shared #now label.
+(() => {
+  const TAU = Math.PI * 2;
+  const PW = 1024, PH = 600, CX = 512, CY = 270, R = 102;
+  const CAPS = { listening: 'Listening…', thinking: 'Thinking…', answering: 'Answering…' };
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const nowEl = document.getElementById('now');
+  const phaseNow = () => { const p = nowEl.textContent.trim().toLowerCase(); return CAPS[p] ? p : 'listening'; };
+
+  // Simulated speech: syllable bursts with pauses, fast attack, slow release.
+  let target = 0, level = 0, nextSyl = 0;
+  function voice(now, active) {
+    if (now > nextSyl) { nextSyl = now + 110 + Math.random() * 170; target = Math.random() < 0.22 ? 0 : 0.25 + Math.random() * 0.75; }
+    const tg = active ? target : 0;
+    level += (tg - level) * (tg > level ? 0.55 : 0.12);
+    return level;
+  }
+
+  // ---- drawing helpers, all in panel pixels ----
+  const line = (c, x1, y1, x2, y2) => { c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); };
+  const ring = (c, x, y, r, a0 = 0, a1 = TAU) => { c.beginPath(); c.arc(x, y, Math.max(0, r), a0, a1); c.stroke(); };
+  const poly = (c, pts, close) => {
+    if (!pts.length) return;
+    c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
+    if (close) c.closePath(); c.stroke();
+  };
+  // A bright stroke with a wide faint copy under it: the panel's cheap glow.
+  function glow(c, color, w, alpha, draw) {
+    if (alpha <= 0.01) return;
+    c.strokeStyle = color;
+    c.globalAlpha = alpha * 0.16; c.lineWidth = w * 4; draw();
+    c.globalAlpha = alpha; c.lineWidth = w; draw();
+    c.globalAlpha = 1;
+  }
+  const txt = (c, s, x, y, font, color, alpha = 1, align = 'left') => {
+    c.font = font; c.fillStyle = color; c.globalAlpha = alpha; c.textAlign = align; c.textBaseline = 'middle';
+    c.fillText(s, x, y); c.globalAlpha = 1;
+  };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const HEX = '0123456789ABCDEF';
+  const rhex = n => { let s = ''; for (let i = 0; i < n; i++) s += HEX[(Math.random() * 16) | 0]; return s; };
+  const pad = (n, w) => String(Math.round(n)).padStart(w, '0');
+
+  // ================= F: Sentinel (JARVIS-style HUD) =================
+  function sentinel() {
+    const CY_ = '#5CE1FF', AMB = '#FFB547', WHITE = '#E8FBFF';
+    const N = 72;
+    const seeds = [...Array(N)].map(() => [Math.random() * TAU, 3 + Math.random() * 6]);
+    let hexRows = [rhex(4), rhex(4), rhex(4), rhex(4)], hexAt = 0, peak = 0;
+    return (c, t, lv, m, a, cap) => {
+      const think = m - a;
+      c.lineCap = 'butt';
+      // Faint guide circles.
+      c.strokeStyle = CY_; c.lineWidth = 1; c.globalAlpha = 0.14;
+      ring(c, CX, CY, R * 2.3); ring(c, CX, CY, R * 1.66);
+      c.globalAlpha = 1;
+      // Tick spectrum.
+      const head = (t * 2.4) % TAU;
+      for (let i = 0; i < N; i++) {
+        const ang = i * TAU / N - Math.PI / 2;
+        const [ph, f] = seeds[i];
+        const wave = (0.5 + 0.5 * Math.sin(t * f + ph)) * (0.55 + 0.45 * Math.sin(ang * 4 + t * 3));
+        let diff = ((head - (ang + Math.PI / 2)) % TAU + TAU) % TAU;
+        const trail = Math.max(0, 1 - diff / 1.7);
+        const ansWave = 0.5 + 0.5 * Math.sin(ang * 6 - t * 8);
+        const len = 7 + (1 - m) * lv * wave * 56 + a * lv * ansWave * 36 + think * trail * 16;
+        const al = 0.3 + 0.7 * clamp((1 - m) * (wave * lv * 1.4 + 0.15) + think * trail + a * (0.3 + 0.7 * lv * ansWave), 0, 1);
+        const r0 = R * 1.9;
+        const col = (1 - m) * lv * wave > 0.62 ? AMB : (think * trail > 0.9 ? WHITE : CY_);
+        c.strokeStyle = col; c.globalAlpha = al; c.lineWidth = 3;
+        line(c, CX + r0 * Math.cos(ang), CY + r0 * Math.sin(ang), CX + (r0 + len) * Math.cos(ang), CY + (r0 + len) * Math.sin(ang));
+      }
+      c.globalAlpha = 1;
+      // Broken ring: four 62° arcs.
+      const rot1 = t * (0.18 + 1.6 * think) + a * Math.sin(t * 2) * 0.2;
+      glow(c, CY_, 3, 0.85, () => { for (let k = 0; k < 4; k++) { const s = rot1 + k * TAU / 4; ring(c, CX, CY, R * 1.45 * (1 + 0.06 * lv), s, s + 1.08); } });
+      // Dashed inner ring, counter-turning.
+      const rot2 = -t * (0.1 + 1.0 * think);
+      c.strokeStyle = CY_; c.lineWidth = 2; c.globalAlpha = 0.55;
+      for (let k = 0; k < 36; k++) { const s = rot2 + k * TAU / 36; ring(c, CX, CY, R * 1.18, s, s + 0.09); }
+      c.globalAlpha = 1;
+      // Amber racing arc while thinking.
+      const rot3 = t * 4.2;
+      glow(c, AMB, 4, think * 0.95, () => ring(c, CX, CY, R * 1.66, rot3, rot3 + 0.6));
+      glow(c, AMB, 2, think * 0.6, () => ring(c, CX, CY, R * 1.66, -rot3 * 0.7, -rot3 * 0.7 + 0.35));
+      // Scan line while thinking.
+      glow(c, WHITE, 2, think * 0.7, () => line(c, CX + R * 0.7 * Math.cos(head - Math.PI / 2), CY + R * 0.7 * Math.sin(head - Math.PI / 2), CX + R * 1.85 * Math.cos(head - Math.PI / 2), CY + R * 1.85 * Math.sin(head - Math.PI / 2)));
+      // Core: outline, filled layers, rotating triangle.
+      const coreR = R * (0.62 + 0.1 * lv * (1 - think));
+      glow(c, CY_, 3, 0.9, () => ring(c, CX, CY, coreR));
+      c.fillStyle = CY_;
+      [[0.5, 0.12], [0.36, 0.22], [0.22, 0.5]].forEach(([f, o]) => {
+        c.globalAlpha = o + 0.25 * lv; c.beginPath(); c.arc(CX, CY, R * f * (1 + 0.45 * lv), 0, TAU); c.fill();
+      });
+      c.fillStyle = WHITE; c.globalAlpha = 0.9; c.beginPath(); c.arc(CX, CY, R * (0.1 + 0.08 * lv), 0, TAU); c.fill();
+      c.globalAlpha = 1;
+      const tri = t * (0.3 + 2.2 * think);
+      const tp = [0, 1, 2].map(k => [CX + R * 0.45 * Math.cos(tri + k * TAU / 3 - Math.PI / 2), CY + R * 0.45 * Math.sin(tri + k * TAU / 3 - Math.PI / 2)]);
+      glow(c, WHITE, 2, 0.8, () => poly(c, tp, true));
+      // Callouts and readouts (numbers only).
+      peak = Math.max(lv, peak * 0.985);
+      const lAng = Math.PI * 1.08, rAng = -Math.PI * 0.08;
+      c.strokeStyle = CY_; c.lineWidth = 1.5; c.globalAlpha = 0.6;
+      const lx = CX + R * 1.66 * Math.cos(lAng), ly = CY + R * 1.66 * Math.sin(lAng);
+      poly(c, [[lx, ly], [lx - 40, ly - 30], [190, ly - 30]]);
+      const rx = CX + R * 1.66 * Math.cos(rAng), ry = CY + R * 1.66 * Math.sin(rAng);
+      poly(c, [[rx, ry], [rx + 40, ry - 30], [834, ry - 30]]);
+      c.globalAlpha = 1;
+      // Left: level meter + big number.
+      const bx = 110, by = ly - 30;
+      for (let k = 0; k < 10; k++) {
+        const on = k < Math.round(lv * 10);
+        c.fillStyle = k >= 8 ? AMB : CY_; c.globalAlpha = on ? 0.9 : 0.15;
+        c.fillRect(bx + k * 8, by + 16, 5, 14);
+      }
+      txt(c, pad(lv * 100, 3), bx, by - 18, '600 34px "Chakra Petch", sans-serif', WHITE, 0.95);
+      txt(c, 'PK ' + pad(peak * 100, 3), bx + 72, by - 12, '400 13px "IBM Plex Mono", monospace', CY_, 0.7);
+      // Right: hex rows, faster while thinking.
+      hexAt += 1;
+      if (hexAt > (think > 0.5 ? 3 : 18)) { hexAt = 0; hexRows.shift(); hexRows.push(rhex(4)); }
+      hexRows.forEach((h, k) => txt(c, h.slice(0, 2) + ' ' + h.slice(2), 846, by - 30 + k * 18, '400 15px "IBM Plex Mono", monospace', k === 3 ? AMB : CY_, 0.45 + k * 0.15));
+      txt(c, 'T+' + (t % 100).toFixed(1).padStart(4, '0'), 846, by + 44, '400 13px "IBM Plex Mono", monospace', CY_, 0.55);
+      // Caption.
+      txt(c, cap.toUpperCase(), CX, 548, '600 22px "Chakra Petch", sans-serif', WHITE, 0.92, 'center');
+      c.strokeStyle = CY_; c.globalAlpha = 0.5; c.lineWidth = 1.5;
+      line(c, CX - 170, 548, CX - 120, 548); line(c, CX + 120, 548, CX + 170, 548);
+      c.globalAlpha = 1;
+    };
+  }
+
+  // ================= I: Phosphor (WarGames-style terminal scope) =================
+  function phosphor() {
+    const G = '#39FF7A', GD = '#1B7A3C';
+    const NPT = 128, X0 = 150, X1 = 874;
+    const hist = [];
+    let rows = [], rowAt = 0;
+    const seeds = [Math.random() * 6, Math.random() * 6, Math.random() * 6];
+    return (c, t, lv, m, a, cap, dt) => {
+      const think = m - a;
+      // Graticule: dotted grid, centre cross with ticks.
+      c.fillStyle = GD;
+      for (let gx = 0; gx <= 10; gx++) for (let gy = 0; gy <= 6; gy++) {
+        c.globalAlpha = 0.55; c.fillRect(X0 + gx * (X1 - X0) / 10 - 1.5, 90 + gy * 60 - 1.5, 3, 3);
+      }
+      c.strokeStyle = GD; c.lineWidth = 1; c.globalAlpha = 0.6;
+      line(c, X0, CY, X1, CY); line(c, CX, 90, CX, 450);
+      for (let k = 0; k <= 50; k++) { const x = X0 + k * (X1 - X0) / 50; line(c, x, CY - 4, x, CY + 4); }
+      c.strokeRect(X0, 90, X1 - X0, 360);
+      c.globalAlpha = 1;
+      // Trace: a waveform (listening), flat with a blip (thinking), Lissajous (answering).
+      const pts = [];
+      const blip = ((t * 0.6) % 1.2) - 0.1;
+      for (let i = 0; i < NPT; i++) {
+        const u = i / (NPT - 1);
+        const env = Math.sin(Math.PI * u);
+        const w = Math.sin(u * 22 + t * 9 + seeds[0]) * 0.6 + Math.sin(u * 47 - t * 13 + seeds[1]) * 0.3 + Math.sin(u * 91 + t * 21 + seeds[2]) * 0.15;
+        const lx = X0 + u * (X1 - X0);
+        const ly = CY - env * w * lv * 150;
+        const bd = (u - blip) / 0.03;
+        const ty = CY - Math.exp(-bd * bd) * 60 * Math.sin((u - blip) * 120);
+        const th = TAU * u;
+        const sz = 70 + 90 * lv;
+        const ax = CX + Math.sin(3 * th + t * 0.9) * sz * 1.5;
+        const ay = CY + Math.sin(2 * th) * sz;
+        const x = (1 - m) * lx + think * lx + a * ax;
+        const y = (1 - m) * ly + think * ty + a * ay;
+        pts.push([x, y]);
+      }
+      hist.unshift(pts); if (hist.length > 10) hist.pop();
+      // Afterglow: three older traces.
+      [[9, 0.1], [6, 0.18], [3, 0.3]].forEach(([k, al]) => { if (hist[k]) { c.strokeStyle = G; c.lineWidth = 2; c.globalAlpha = al; poly(c, hist[k]); } });
+      c.globalAlpha = 1;
+      c.lineJoin = 'round';
+      glow(c, G, 2.5, 1, () => poly(c, pts));
+      // Readouts above the scope (numbers only).
+      txt(c, 'CH1  ' + (lv * 2.5).toFixed(2) + ' V', X0, 66, '400 24px VT323, monospace', G, 0.85);
+      txt(c, (t % 1000).toFixed(1).padStart(6, '0') + ' S', X1, 66, '400 24px VT323, monospace', G, 0.85, 'right');
+      // Number rows printing while thinking.
+      rowAt += dt;
+      if (rowAt > 0.12) {
+        rowAt = 0;
+        if (think > 0.4) { rows.push(pad(Math.random() * 9999, 4) + '  ' + pad(Math.random() * 9999, 4) + '  ' + pad(Math.random() * 9999, 4)); if (rows.length > 5) rows.shift(); }
+        else if (m < 0.2 && rows.length) rows.shift();
+      }
+      c.fillStyle = '#020503'; c.globalAlpha = rows.length ? 0.85 : 0; c.fillRect(X0 + 10, 100, 200, 5 * 24 + 10); c.globalAlpha = 1;
+      rows.forEach((r, k) => txt(c, r, X0 + 18, 116 + k * 24, '400 24px VT323, monospace', G, 0.4 + k * 0.14));
+      // Caption as a typed prompt with a block cursor.
+      const shown = Math.min(cap.length, Math.floor((performance.now() - capStart) / 45));
+      const s = '> ' + cap.slice(0, shown);
+      c.font = '400 34px VT323, monospace';
+      txt(c, s, X0, 520, '400 34px VT323, monospace', G, 0.95);
+      const cw = c.measureText(s).width;
+      if (Math.floor(performance.now() / 500) % 2 === 0) { c.fillStyle = G; c.globalAlpha = 0.9; c.fillRect(X0 + cw + 4, 506, 14, 26); c.globalAlpha = 1; }
+    };
+  }
+
+  // Shared caption: centred text, optional plate behind it.
+  function caption(c, s, font, color, plate) {
+    if (plate) {
+      c.font = font; const w = c.measureText(s).width + 48;
+      c.fillStyle = plate; c.globalAlpha = 0.85; c.fillRect(CX - w / 2, 528, w, 40); c.globalAlpha = 1;
+    }
+    txt(c, s, CX, 549, font, color, 0.95, 'center');
+  }
+  const ellipse = (c, x, y, rx, ry, n = 24) => {
+    const pts = []; for (let i = 0; i <= n; i++) { const u = i * TAU / n; pts.push([x + rx * Math.cos(u), y + ry * Math.sin(u)]); }
+    poly(c, pts);
+  };
+
+  // ================= M: Light Disc (Tron-style) =================
+  function disc() {
+    const CYN = '#5FF4FF', ORG = '#FF9A2E', WHITE = '#EFFFFF';
+    const GS = 64;
+    const mkCycle = (x, y, dx, dy, col) => ({ x, y, dx, dy, col, tx: x + dx * GS, ty: y + dy * GS, trail: [[x, y]] });
+    const cycles = [mkCycle(128, 128, 1, 0, CYN), mkCycle(896, 448, -1, 0, ORG)];
+    let rot = 0;
+    const step = (cy, dist) => {
+      while (dist > 0) {
+        const rem = Math.abs(cy.tx - cy.x) + Math.abs(cy.ty - cy.y);
+        if (dist < rem) { cy.x += cy.dx * dist; cy.y += cy.dy * dist; return; }
+        cy.x = cy.tx; cy.y = cy.ty; dist -= rem;
+        // Turn at a grid node sometimes, or when the edge is near.
+        let ndx = cy.dx, ndy = cy.dy;
+        const out = (x, y) => x < GS || x > PW - GS || y < GS || y > PH - GS;
+        if (Math.random() < 0.3 || out(cy.x + ndx * GS, cy.y + ndy * GS)) {
+          const opts = [[cy.dy, -cy.dx], [-cy.dy, cy.dx]].filter(([dx, dy]) => !out(cy.x + dx * GS, cy.y + dy * GS));
+          const pick = opts.length ? opts[(Math.random() * opts.length) | 0] : [-cy.dx, -cy.dy];
+          if (pick[0] !== cy.dx || pick[1] !== cy.dy) cy.trail.push([cy.x, cy.y]);
+          [ndx, ndy] = pick;
+        }
+        cy.dx = ndx; cy.dy = ndy; cy.tx = cy.x + ndx * GS; cy.ty = cy.y + ndy * GS;
+      }
+    };
+    const trim = cy => {
+      const pts = [...cy.trail, [cy.x, cy.y]];
+      let len = 0;
+      for (let i = pts.length - 1; i > 0; i--) {
+        const sl = Math.abs(pts[i][0] - pts[i - 1][0]) + Math.abs(pts[i][1] - pts[i - 1][1]);
+        if (len + sl > 640) { const k = (640 - len) / sl; const p = [pts[i][0] + (pts[i - 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i - 1][1] - pts[i][1]) * k]; cy.trail = [p, ...cy.trail.slice(i)]; return [p, ...pts.slice(i)]; }
+        len += sl;
+      }
+      if (cy.trail.length > 12) cy.trail = cy.trail.slice(-12);
+      return pts;
+    };
+    return (c, t, lv, m, a, cap, dt) => {
+      const think = m - a;
+      // Static grid.
+      c.strokeStyle = CYN; c.lineWidth = 1; c.globalAlpha = 0.1;
+      for (let x = 0; x <= PW; x += GS) line(c, x, 0, x, PH);
+      for (let y = 0; y <= PH; y += GS) line(c, 0, y, PW, y);
+      c.globalAlpha = 1;
+      // Light cycles.
+      cycles.forEach(cy => {
+        if (m > 0.05) step(cy, dt * 380);
+        const pts = trim(cy);
+        glow(c, cy.col, 3, m, () => poly(c, pts));
+        c.fillStyle = WHITE; c.globalAlpha = m; c.fillRect(cy.x - 4, cy.y - 4, 8, 8); c.globalAlpha = 1;
+      });
+      // Disc, with a dark fill so trails pass behind it.
+      rot += dt * (0.2 + 2.4 * think);
+      const pulse = 1 + 0.08 * lv;
+      c.fillStyle = '#05070F'; c.beginPath(); c.arc(CX, CY, R * 1.62 * pulse, 0, TAU); c.fill();
+      glow(c, CYN, 6, 0.95, () => ring(c, CX, CY, R * 1.5 * pulse));
+      for (let k = 0; k < 8; k++) {
+        const band = 0.5 + 0.5 * Math.sin(t * (5 + k * 1.3) + k * 2);
+        const on = (1 - m) * clamp(lv * 1.4 * band, 0, 1) + think * (k === Math.floor(t * 6) % 8 ? 1 : 0.35) + a * (0.3 + 0.7 * lv * band);
+        const s = rot + k * TAU / 8;
+        glow(c, k % 2 ? CYN : WHITE, 8, 0.2 + 0.8 * on, () => ring(c, CX, CY, R * 1.12 * pulse, s + 0.06, s + TAU / 8 - 0.06));
+      }
+      glow(c, CYN, 3, 0.9, () => ring(c, CX, CY, R * 0.62 * pulse));
+      glow(c, ORG, 3, 0.3 + 0.6 * lv, () => ring(c, CX, CY, R * 0.32 * (1 + 0.4 * lv)));
+      caption(c, cap.toUpperCase(), '600 22px "Chakra Petch", sans-serif', WHITE, '#05070F');
+    };
+  }
+
+  // ================= O: Lens (2001-style red eye) =================
+  function lens() {
+    const L = [['#1A0303', 1.38], ['#3D0606', 1.18], ['#6E0B0A', 0.98], ['#A8120F', 0.78], ['#E2231B', 0.56], ['#FF5A32', 0.36], ['#FF9A55', 0.2], ['#FFE3A0', 0.09]];
+    return (c, t, lv, m, a, cap) => {
+      const think = m - a;
+      const g = (1 - m) * lv + think * (0.25 + 0.25 * Math.sin(t * 1.8)) + a * (0.15 + 0.85 * lv);
+      // Metal bezel: dark plate and graded rings.
+      c.fillStyle = '#0E1116'; c.beginPath(); c.arc(CX, CY, R * 1.75, 0, TAU); c.fill();
+      [['#5A626E', 1.72, 3], ['#9AA3AF', 1.64, 6], ['#C9D0D8', 1.57, 2], ['#3A4048', 1.5, 4]].forEach(([col, f, w]) => { c.strokeStyle = col; c.lineWidth = w; ring(c, CX, CY, R * f); });
+      // Red lens: stacked circles; inner ones grow with the glow.
+      L.forEach(([col, f], i) => {
+        const grow = i < 3 ? 1 : 1 + (0.15 + 0.12 * i / 8) * g * 2;
+        c.fillStyle = col; c.globalAlpha = i < 3 ? 1 : clamp(0.55 + 0.45 * g + (i > 5 ? 0.3 : 0), 0, 1);
+        c.beginPath(); c.arc(CX, CY, Math.min(R * 1.45, R * f * grow), 0, TAU); c.fill();
+      });
+      c.globalAlpha = 1;
+      // Fixed reflection.
+      c.strokeStyle = '#FFFFFF'; c.lineWidth = 5; c.globalAlpha = 0.22; ring(c, CX, CY, R * 1.22, Math.PI * 1.1, Math.PI * 1.38);
+      c.lineWidth = 3; c.globalAlpha = 0.12; ring(c, CX, CY, R * 1.05, Math.PI * 0.15, Math.PI * 0.3);
+      c.globalAlpha = 1;
+      c.font = '400 20px "IBM Plex Sans", sans-serif';
+      txt(c, cap.toUpperCase().split('').join(' '), CX, 549, '400 18px "IBM Plex Sans", sans-serif', '#B9C0CA', 0.85, 'center');
+    };
+  }
+
+  // ================= Q: Iris (Blade Runner-style eye scan) =================
+  function iris() {
+    const TEAL = '#3FD0C9', AMB = '#FF9D3C', WHITE = '#F2F6F7';
+    const NF = 90;
+    const fib = Array.from({ length: NF }, (_, i) => ({ a: i * TAU / NF + (Math.random() - 0.5) * 0.04, l: 0.75 + Math.random() * 0.25, c: Math.random() < 0.3 ? AMB : TEAL, o: 0.35 + Math.random() * 0.5 }));
+    let box = { x: CX, y: CY, tx: CX, ty: CY }, boxAt = 0, pup = 0.45;
+    return (c, t, lv, m, a, cap, dt) => {
+      const think = m - a;
+      const Ri = R * 1.6;
+      const tgtP = (1 - m) * (0.42 + 0.3 * lv) + think * 0.32 + a * (0.36 + 0.26 * lv);
+      pup += (tgtP - pup) * 0.2;
+      const rp = R * pup;
+      const rot = t * 0.4 * think;
+      fib.forEach(f => {
+        const pulse = a * lv * 0.25;
+        c.strokeStyle = f.c; c.lineWidth = 2; c.globalAlpha = clamp(f.o + pulse, 0, 1);
+        const r0 = rp + 4, r1 = rp + (Ri - rp) * f.l;
+        line(c, CX + r0 * Math.cos(f.a + rot), CY + r0 * Math.sin(f.a + rot), CX + r1 * Math.cos(f.a + rot), CY + r1 * Math.sin(f.a + rot));
+      });
+      c.globalAlpha = 1;
+      c.fillStyle = '#020304'; c.beginPath(); c.arc(CX, CY, rp, 0, TAU); c.fill();
+      c.strokeStyle = '#0B1A1C'; c.lineWidth = 8; ring(c, CX, CY, Ri + 2);
+      c.fillStyle = WHITE; c.globalAlpha = 0.85; c.beginPath(); c.arc(CX - rp * 0.45, CY - rp * 0.45, 7, 0, TAU); c.fill(); c.globalAlpha = 1;
+      // Outer brackets.
+      const bx = Ri + 30;
+      c.strokeStyle = AMB; c.lineWidth = 2; c.globalAlpha = 0.8;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sy]) => { const x = CX + sx * bx, y = CY + sy * bx * 0.85; line(c, x, y, x - sx * 30, y); line(c, x, y, x, y - sy * 30); });
+      c.globalAlpha = 1;
+      // Inspection box hunting while thinking.
+      boxAt += dt;
+      if (boxAt > 0.7) { boxAt = 0; const an = Math.random() * TAU, rr = Math.random() * Ri * 0.8; box.tx = CX + rr * Math.cos(an); box.ty = CY + rr * Math.sin(an); }
+      box.x += (box.tx - box.x) * 0.12; box.y += (box.ty - box.y) * 0.12;
+      if (think > 0.02) {
+        c.strokeStyle = WHITE; c.lineWidth = 1.5; c.globalAlpha = think * 0.9;
+        c.strokeRect(box.x - 40, box.y - 30, 80, 60);
+        line(c, box.x, CY - Ri - 10, box.x, CY + Ri + 10); line(c, CX - Ri - 10, box.y, CX + Ri + 10, box.y);
+        const sy = CY - Ri + ((t * 220) % (2 * Ri));
+        c.strokeStyle = TEAL; c.globalAlpha = think * 0.6; line(c, CX - Ri, sy, CX + Ri, sy);
+        c.globalAlpha = 1;
+        txt(c, pad(box.x, 4) + ' ' + pad(box.y, 4), box.x + 46, box.y - 24, '400 15px "IBM Plex Mono", monospace', WHITE, think * 0.9);
+      }
+      caption(c, cap, '500 22px "IBM Plex Sans", sans-serif', AMB, '#05070A');
+    };
+  }
+
+  const builders = { sentinel, phosphor, disc, lens, iris };
+  const runs = [...document.querySelectorAll('.option[data-canvas]')].map(opt => {
+    const cv = opt.querySelector('canvas');
+    return { cv, ctx: cv.getContext('2d'), frame: builders[opt.dataset.canvas](), m: 0, a: 0 };
+  });
+  let capStart = performance.now();
+  const t0 = performance.now();
+  let lastPhase = '', lastNow = performance.now();
+  function tick(now) {
+    const phase = phaseNow();
+    if (phase !== lastPhase) { lastPhase = phase; capStart = now; }
+    const lv = voice(now, phase !== 'thinking');
+    const dt = reduce ? 0 : Math.min(0.05, (now - lastNow) / 1000);
+    lastNow = now;
+    const t = reduce ? 1.5 : (now - t0) / 1000;
+    runs.forEach(run => {
+      const rect = run.cv.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.round(rect.width * dpr), h = Math.round(rect.height * dpr);
+      if (w !== run.cv.width || h !== run.cv.height) { run.cv.width = w; run.cv.height = h; }
+      if (rect.bottom < 0 || rect.top > innerHeight) return;
+      run.m += ((phase === 'listening' ? 0 : 1) - run.m) * 0.12;
+      run.a += ((phase === 'answering' ? 1 : 0) - run.a) * 0.12;
+      const c = run.ctx;
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, w, h);
+      c.setTransform(w / PW, 0, 0, h / PH, 0, 0);
+      c.globalAlpha = 1; c.lineCap = 'round'; c.lineJoin = 'miter';
+      run.frame(c, t, reduce ? 0.35 : lv, run.m, Math.min(run.a, run.m), CAPS[phase], dt);
     });
     requestAnimationFrame(tick);
   }
