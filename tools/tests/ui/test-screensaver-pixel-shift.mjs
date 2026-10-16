@@ -60,4 +60,10 @@ assert.ok(present.indexOf('advance_pixel_shift(st)') > 0 &&
 const timer = src.slice(src.indexOf('void global_screensaver_timer_cb('), src.indexOf('void on_global_screensaver_clicked('));
 assert.match(timer, /pixel_shift_due\(st, screensaver_pixel_shift::kMaxIntervalMs\)/,
   'the timer shifts without a new picture');
+// A shifted grid must not clip its card shadows a few pixels inside the
+// screen, and the timer's step must reach the S3 as one atomic frame.
+assert.match(src, /lv_obj_add_flag\(st->slot_grid, LV_OBJ_FLAG_OVERFLOW_VISIBLE\)/,
+  'shadows reach past the shifted grid');
+assert.match(timer, /displayBeginAtomicFrame\("screensaver-shift"\)/,
+  'the S3 shows the timer step as one frame');
 console.log('OK: screensaver pixel shift');
