@@ -48,6 +48,7 @@ float g_level = 0.0f;   // voice or answer loudness, 0..1
 float g_mode = 0.0f;    // 0 = listening look, 1 = thinking/answering look
 float g_appear = 0.0f;  // pop-in scale, 0..1
 float g_floor_db = -60.0f;
+float g_last_t = 0.0f;  // the previous frame's t, for the styles' dt
 // Simulated speech for the preview: syllable bursts with pauses.
 float g_sim_target = 0.0f;
 uint32_t g_sim_next_ms = 0;
@@ -124,6 +125,11 @@ void onFrame(lv_timer_t*) {
   frame.cx = w / 2.0f;
   frame.cy = h / 2.0f - h * 0.05f;
   frame.r = base_r * g_appear;
+  frame.w = static_cast<float>(w);
+  frame.h = static_cast<float>(h);
+  const float dt = t - g_last_t;
+  frame.dt = dt < 0.0f ? 0.0f : (dt > 0.05f ? 0.05f : dt);
+  g_last_t = t;
   assist_styles::frame(g_style, frame);
 
   // The label sits below the widest halo the styles reach.
@@ -175,10 +181,12 @@ void show(AssistUiPhase phase, AssistScreenStyle style) {
     assist_styles::create(style, g_stage);
     g_style = style;
     g_style_built = true;
+    lv_obj_set_style_text_color(g_label, lv_color_hex(assist_styles::labelColor(style)), 0);
   }
   g_started_tick = lv_tick_get();
   g_level = 0.0f;
   g_appear = 0.0f;
+  g_last_t = 0.0f;
   g_mode = phase == AssistUiPhase::Listening ? 0.0f : 1.0f;
   g_floor_db = -60.0f;
   lv_obj_remove_flag(g_overlay, LV_OBJ_FLAG_HIDDEN);

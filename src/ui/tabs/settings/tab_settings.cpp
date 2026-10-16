@@ -386,6 +386,16 @@ const char* assist_style_name(uint8_t index) {
       return s.assist_style_dot_halo;
     case speaker::AssistScreenStyle::VoicePills:
       return s.assist_style_voice_pills;
+    case speaker::AssistScreenStyle::Sentinel:
+      return s.assist_style_sentinel;
+    case speaker::AssistScreenStyle::Phosphor:
+      return s.assist_style_phosphor;
+    case speaker::AssistScreenStyle::LightDisc:
+      return s.assist_style_light_disc;
+    case speaker::AssistScreenStyle::Lens:
+      return s.assist_style_lens;
+    case speaker::AssistScreenStyle::Iris:
+      return s.assist_style_iris;
   }
   return "";
 }
