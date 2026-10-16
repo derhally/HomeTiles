@@ -7,7 +7,9 @@
 // (image retention on LCD panels). The picture behind them stays put. Each
 // step moves by unit pixels along the outline of a square with half side
 // radius, so a full orbit visits every x and y offset from -radius to
-// +radius. Pure arithmetic, no LVGL (tools/tests/ui/test-screensaver-pixel-shift.mjs).
+// +radius in steps of unit. Device only: the Web Admin preview shows the
+// placed positions. Pure arithmetic, no LVGL
+// (tools/tests/ui/test-screensaver-pixel-shift.mjs).
 namespace screensaver_pixel_shift {
 
 // Largest offset. Kept below half a grid gap so a tile one gap from the
