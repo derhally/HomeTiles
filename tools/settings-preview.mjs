@@ -275,11 +275,13 @@ unsigned mic_gain_tenths_db(int step) { return step <= 10 ? step * 30 : 330 + (s
 void volume_changed(int, bool) {}
 void mic_selected(bool) {}
 void mic_gain_changed(int, bool) {}
-uint8_t assist_style_count() { return 4; }
+uint8_t assist_style_count() { return 9; }
 const char* assist_style_name(uint8_t index) {
   const char* const kNames[] = {text().assist_style_atom, text().assist_style_reactor, text().assist_style_dot_halo,
-                                text().assist_style_voice_pills};
-  return kNames[index < 4 ? index : 0];
+                                text().assist_style_voice_pills, text().assist_style_sentinel,
+                                text().assist_style_phosphor, text().assist_style_light_disc,
+                                text().assist_style_lens, text().assist_style_iris};
+  return kNames[index < 9 ? index : 0];
 }
 uint8_t assist_style() { return 0; }
 void assist_style_selected(uint8_t) {}

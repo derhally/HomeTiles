@@ -1360,7 +1360,7 @@ void publishAssistStatus() {
   portEXIT_CRITICAL(&g_id_mux);
 #endif
   if (id[0]) fields.id = id;
-  char payload[384];
+  char payload[512];
   if (!assist::buildStatusJson(payload, sizeof(payload), fields)) return;
   networkManager.mqttEnqueuePublish(topic, payload, true);
 }

@@ -699,6 +699,11 @@ static const Strings kStringsDe = {
     "Reaktor",
     "Punkt-Halo",
     "Sprach-Pillen",
+    "Wächter",
+    "Phosphor",
+    "Lichtscheibe",
+    "Linse",
+    "Iris",
     "Vorschau",
     "MAC-Adresse"};
 
@@ -1394,6 +1399,11 @@ static const Strings kStringsEn = {
     "Reactor",
     "Dot Halo",
     "Voice Pills",
+    "Sentinel",
+    "Phosphor",
+    "Light Disc",
+    "Lens",
+    "Iris",
     "Preview",
     "MAC address"};
 
@@ -2089,6 +2099,11 @@ static const Strings kStringsFr = {
     "Réacteur",
     "Halo de points",
     "Pilules vocales",
+    "Sentinelle",
+    "Phosphore",
+    "Disque de lumière",
+    "Lentille",
+    "Iris",
     "Aperçu",
     "Adresse MAC"};
 
@@ -3150,6 +3165,11 @@ static const Strings kStringsPl = {
     "Reaktor",
     "Aureola z kropek",
     "Głosowe pigułki",
+    "Strażnik",
+    "Fosfor",
+    "Dysk światła",
+    "Soczewka",
+    "Tęczówka",
     "Podgląd",
     "Adres MAC"};
 
