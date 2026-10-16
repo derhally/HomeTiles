@@ -1791,6 +1791,10 @@ void rebuild_slot_grid(ScreensaverState* st) {
     lv_obj_set_grid_dsc_array(st->slot_grid, col_dsc, row_dsc);
     lv_obj_remove_flag(st->slot_grid, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(st->slot_grid, LV_OBJ_FLAG_CLICKABLE);
+    // Shifted by the pixel shift, the grid's edge lies a few pixels inside
+    // the screen: card shadows reach past it and are clipped by the overlay
+    // (the screen edge) as before, not by the grid.
+    lv_obj_add_flag(st->slot_grid, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
   }
 
   // The active layout's places (screensaver_places.h): a bar layout's own,
@@ -2015,12 +2019,22 @@ void global_screensaver_timer_cb(lv_timer_t* timer) {
   // Without a new picture for a while (black background, a long slide
   // duration, a picture that does not change) the clock and tiles still move
   // on, once the screen is left alone.
-  if (pixel_shift_due(st, screensaver_pixel_shift::kMaxIntervalMs) &&
+  // A slide due in this tick takes the step itself (present_picture).
+  const bool slide_due = config.use_wallpapers && st->active_wallpaper >= 0 &&
+                         static_cast<int32_t>(now - st->next_wallpaper_ms) >= 0;
+  if (!slide_due && pixel_shift_due(st, screensaver_pixel_shift::kMaxIntervalMs) &&
       static_cast<uint32_t>(now - displayManager.getLastActivityTime()) >=
           kInteractionSettleBeforeSlideMs) {
+    // Moving the full-screen tile grid invalidates the whole screen: present
+    // it as one frame like a slide change, never as visible bands.
+#if defined(DEVICE_ESP32_S3_RGB_480)
+    const bool atomic_redraw = DeviceImpl::displayBeginAtomicFrame("screensaver-shift");
+#endif
     advance_pixel_shift(st);
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
     present_composited_screensaver_frame(st);
+#elif defined(DEVICE_ESP32_S3_RGB_480)
+    if (atomic_redraw) lv_obj_invalidate(lv_screen_active());
 #endif
   }
   if (config.use_wallpapers && st->active_wallpaper >= 0 &&
