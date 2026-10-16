@@ -5,8 +5,8 @@
 // Screensaver pixel shift: the clock and tiles move together by a few pixels
 // now and then, so their edges never stand on the same pixels for hours
 // (image retention on LCD panels). The picture behind them stays put. Each
-// step moves by `unit` pixels along the outline of a square with half side
-// `radius`, so a full orbit visits every x and y offset from -radius to
+// step moves by unit pixels along the outline of a square with half side
+// radius, so a full orbit visits every x and y offset from -radius to
 // +radius. Pure arithmetic, no LVGL (tools/tests/ui/test-screensaver-pixel-shift.mjs).
 namespace screensaver_pixel_shift {
 
