@@ -126,11 +126,12 @@ int main() {
   fields.screen_style_state = true;
   fields.screen_style = 2;
   assert(status(fields) == "{\"v\":1,\"state\":\"idle\",\"screen_style\":\"dot_halo\","
-                           "\"screen_styles\":[\"atom\",\"reactor\",\"dot_halo\",\"voice_pills\"]}");
+                           "\"screen_styles\":[\"atom\",\"reactor\",\"dot_halo\",\"voice_pills\",\"sentinel\","
+                           "\"phosphor\",\"light_disc\",\"lens\",\"iris\"]}");
   fields.screen_style = 99;  // out of range reports the default
   assert(status(fields).find("\"screen_style\":\"atom\"") != std::string::npos);
   fields.screen_style_state = false;
-  assert(screenStyleIndex("voice_pills") == 3 && screenStyleIndex("sphere") == -1);
+  assert(screenStyleIndex("voice_pills") == 3 && screenStyleIndex("iris") == 8 && screenStyleIndex("sphere") == -1);
   fields.wake_words = true;
   assert(status(fields) == "{\"v\":1,\"state\":\"idle\",\"wake_words\":[],\"active_wake_words\":[]}");
   fields.available_wake_words = kAllWakeWordsMask;

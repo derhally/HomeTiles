@@ -2,106 +2,15 @@
 
 #include <math.h>
 
+#include "src/ui/assist/assist_styles_lines.h"
+#include "src/ui/assist/assist_styles_shared.h"
+
 namespace assist_styles {
 namespace {
 
 using speaker::AssistScreenStyle;
 
-constexpr float kTwoPi = 6.2831853f;
-
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
-lv_obj_t* createCircle(lv_obj_t* parent, uint32_t color, lv_opa_t opa) {
-  lv_obj_t* obj = lv_obj_create(parent);
-  lv_obj_remove_style_all(obj);
-  lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_radius(obj, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(obj, lv_color_hex(color), 0);
-  lv_obj_set_style_bg_opa(obj, opa, 0);
-  lv_obj_set_size(obj, 1, 1);
-  return obj;
-}
-
-// A circle lit from above: color on top fading to shade below.
-lv_obj_t* createOrb(lv_obj_t* parent, uint32_t color, uint32_t shade, lv_opa_t opa) {
-  lv_obj_t* obj = createCircle(parent, color, opa);
-  lv_obj_set_style_bg_grad_color(obj, lv_color_hex(shade), 0);
-  lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_VER, 0);
-  return obj;
-}
-
-// An outline-only circle.
-lv_obj_t* createRing(lv_obj_t* parent, uint32_t color, int32_t width) {
-  lv_obj_t* obj = createCircle(parent, color, LV_OPA_TRANSP);
-  lv_obj_set_style_border_color(obj, lv_color_hex(color), 0);
-  lv_obj_set_style_border_width(obj, width, 0);
-  return obj;
-}
-
-lv_obj_t* createSpinner(lv_obj_t* parent, int32_t width, uint32_t color) {
-  lv_obj_t* arc = lv_arc_create(parent);
-  lv_obj_remove_flag(arc, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_style_arc_opa(arc, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
-  lv_obj_set_style_pad_all(arc, 0, LV_PART_KNOB);
-  lv_obj_set_style_arc_width(arc, width, LV_PART_INDICATOR);
-  lv_obj_set_style_arc_color(arc, lv_color_hex(color), LV_PART_INDICATOR);
-  lv_obj_set_style_arc_rounded(arc, true, LV_PART_INDICATOR);
-  lv_arc_set_bg_angles(arc, 0, 360);
-  lv_obj_add_flag(arc, LV_OBJ_FLAG_HIDDEN);
-  return arc;
-}
-
-void place(lv_obj_t* obj, float cx, float cy, float diameter) {
-  const int32_t d = diameter < 2.0f ? 2 : static_cast<int32_t>(diameter);
-  lv_obj_set_size(obj, d, d);
-  lv_obj_set_pos(obj, static_cast<int32_t>(cx) - d / 2, static_cast<int32_t>(cy) - d / 2);
-}
-
-void placePill(lv_obj_t* obj, float cx, float cy, float w, float h) {
-  const int32_t iw = w < 2.0f ? 2 : static_cast<int32_t>(w);
-  const int32_t ih = h < 2.0f ? 2 : static_cast<int32_t>(h);
-  lv_obj_set_size(obj, iw, ih);
-  lv_obj_set_pos(obj, static_cast<int32_t>(cx) - iw / 2, static_cast<int32_t>(cy) - ih / 2);
-}
-
-lv_opa_t opa(float value) {
-  if (value <= 0.0f) return LV_OPA_TRANSP;
-  if (value >= 1.0f) return LV_OPA_COVER;
-  return static_cast<lv_opa_t>(value * 255.0f);
-}
-
-int32_t wrapDegrees(float degrees) {
-  const int32_t d = static_cast<int32_t>(degrees) % 360;
-  return d < 0 ? d + 360 : d;
-}
-
-// Shows a spinner as an arc of sweep degrees starting at start, or hides it
-// when it would be nearly invisible.
-void spin(lv_obj_t* arc, float cx, float cy, float diameter, float start, float sweep,
-          float alpha) {
-  if (alpha < 0.03f) {
-    lv_obj_add_flag(arc, LV_OBJ_FLAG_HIDDEN);
-    return;
-  }
-  lv_obj_remove_flag(arc, LV_OBJ_FLAG_HIDDEN);
-  place(arc, cx, cy, diameter);
-  lv_obj_set_style_arc_opa(arc, opa(alpha), LV_PART_INDICATOR);
-  const int32_t s = wrapDegrees(start);
-  lv_arc_set_angles(arc, s, wrapDegrees(start + sweep));
-}
-
-// Hides an object while it would be nearly invisible, so it costs no drawing.
-bool visible(lv_obj_t* obj, float alpha) {
-  if (alpha < 0.03f) {
-    lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-    return false;
-  }
-  lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
-  return true;
-}
+using namespace detail;
 
 // ---------------------------------------------------------------------------
 // Atom: cyan, violet and magenta lobes swell with the voice; while thinking
@@ -392,6 +301,11 @@ void create(AssistScreenStyle style, lv_obj_t* parent) {
     case AssistScreenStyle::Reactor: reactor::create(parent); return;
     case AssistScreenStyle::DotHalo: halo::create(parent); return;
     case AssistScreenStyle::VoicePills: pills::create(parent); return;
+    case AssistScreenStyle::Sentinel: sentinel::create(parent); return;
+    case AssistScreenStyle::Phosphor: phosphor::create(parent); return;
+    case AssistScreenStyle::LightDisc: disc::create(parent); return;
+    case AssistScreenStyle::Lens: lens::create(parent); return;
+    case AssistScreenStyle::Iris: iris::create(parent); return;
     case AssistScreenStyle::Atom: break;
   }
   atom::create(parent);
@@ -402,9 +316,29 @@ void frame(AssistScreenStyle style, const Frame& f) {
     case AssistScreenStyle::Reactor: reactor::frame(f); return;
     case AssistScreenStyle::DotHalo: halo::frame(f); return;
     case AssistScreenStyle::VoicePills: pills::frame(f); return;
+    case AssistScreenStyle::Sentinel: sentinel::frame(f); return;
+    case AssistScreenStyle::Phosphor: phosphor::frame(f); return;
+    case AssistScreenStyle::LightDisc: disc::frame(f); return;
+    case AssistScreenStyle::Lens: lens::frame(f); return;
+    case AssistScreenStyle::Iris: iris::frame(f); return;
     case AssistScreenStyle::Atom: break;
   }
   atom::frame(f);
+}
+
+uint32_t labelColor(AssistScreenStyle style) {
+  switch (style) {
+    case AssistScreenStyle::Sentinel: return 0xE8FBFF;
+    case AssistScreenStyle::Phosphor: return 0x39FF7A;
+    case AssistScreenStyle::LightDisc: return 0xEFFFFF;
+    case AssistScreenStyle::Lens: return 0xB9C0CA;
+    case AssistScreenStyle::Iris: return 0xFF9D3C;
+    case AssistScreenStyle::Atom:
+    case AssistScreenStyle::Reactor:
+    case AssistScreenStyle::DotHalo:
+    case AssistScreenStyle::VoicePills: break;
+  }
+  return 0xC8D2E6;
 }
 
 }  // namespace assist_styles
