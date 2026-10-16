@@ -105,8 +105,18 @@ uint16_t outputPeakLevel();
 
 // Look of the on-panel Assist screen, stored (default Atom). Values are
 // stored in NVS by number: append new styles, never renumber.
-enum class AssistScreenStyle : uint8_t { Atom = 0, Reactor = 1, DotHalo = 2, VoicePills = 3 };
-constexpr uint8_t kAssistScreenStyleCount = 4;
+enum class AssistScreenStyle : uint8_t {
+  Atom = 0,
+  Reactor = 1,
+  DotHalo = 2,
+  VoicePills = 3,
+  Sentinel = 4,
+  Phosphor = 5,
+  LightDisc = 6,
+  Lens = 7,
+  Iris = 8
+};
+constexpr uint8_t kAssistScreenStyleCount = 9;
 AssistScreenStyle assistScreenStyle();  // any task
 void setAssistScreenStyle(AssistScreenStyle style);  // loop task
 
