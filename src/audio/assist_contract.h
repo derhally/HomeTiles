@@ -105,7 +105,8 @@ constexpr size_t kMaxWakeWordListChars = kWakeWordCount * (kMaxWakeWordIdLength 
 
 // Assist screen styles in speaker::AssistScreenStyle order (stored by
 // number, so entries are only appended).
-constexpr const char* kScreenStyleIds[] = {"atom", "reactor", "dot_halo", "voice_pills"};
+constexpr const char* kScreenStyleIds[] = {"atom",     "reactor",    "dot_halo", "voice_pills", "sentinel",
+                                           "phosphor", "light_disc", "lens",     "iris"};
 constexpr size_t kScreenStyleCount = sizeof(kScreenStyleIds) / sizeof(kScreenStyleIds[0]);
 
 inline int screenStyleIndex(const char* id) {
