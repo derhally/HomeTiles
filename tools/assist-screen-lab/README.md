@@ -46,7 +46,7 @@ with the firmware's own drawing.
 | Controls | Auto (cycles the phases), Listening, Thinking, Answering; Built-in (switches a file screen to the built-in style with the same id, for comparison); Voice (simulated, or hold the mouse on the screen: higher means louder); `<` size `>` (1024x600, 1280x800, 800x480, 1280x720, 720x720, 480x800, 720x1280) |
 | Numbers | For a file: worst-case shapes and steps per frame, pixels redrawn per frame and time per frame on this computer; then the screen's shape (wide, square, tall) and whether the file has a layout for it ([FORMAT.md](FORMAT.md#layouts)), with a warning when the file needs a wide screen the panel would not offer it on. Redrawn pixels are the panel's main cost; time on this computer is only a rough guide. |
 
-Saving a screen file reloads it. Keys do the same as the buttons:
+Saving a screen file reloads it, and new, renamed or deleted files in the folder show up in the bar within two seconds, without a restart. Keys do the same as the buttons:
 
 | Key | Action |
 | --- | --- |
