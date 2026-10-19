@@ -2273,6 +2273,19 @@ bool cmdReaches(const Cmd& c, const lv_area_t& clip, int32_t ox, int32_t oy) {
   }
 }
 
+// An arc command's angles as lv_draw_arc takes them: 0 to 360 for a full ring,
+// else both in 0..359.
+void arcAngles(const Cmd& c, int32_t* start, int32_t* end) {
+  if (c.e - c.d >= 360.0f) {
+    *start = 0;
+    *end = 360;
+    return;
+  }
+  int32_t a0 = static_cast<int32_t>(c.d) % 360, a1 = static_cast<int32_t>(c.e) % 360;
+  *start = a0 < 0 ? a0 + 360 : a0;
+  *end = a1 < 0 ? a1 + 360 : a1;
+}
+
 void drawCmd(const Screen* s, const Cmd& c, lv_layer_t* layer, const lv_area_t& clip, int32_t ox, int32_t oy,
              const assist_raster::Target* fast) {
   if (!cmdReaches(c, clip, ox, oy)) return;
@@ -2296,13 +2309,8 @@ void drawCmd(const Screen* s, const Cmd& c, lv_layer_t* layer, const lv_area_t& 
                             color, c.opa, round);
       }
     } else {
-      int32_t a0 = 0, a1 = 360;
-      if (c.e - c.d < 360.0f) {
-        a0 = static_cast<int32_t>(c.d) % 360;
-        a1 = static_cast<int32_t>(c.e) % 360;
-        if (a0 < 0) a0 += 360;
-        if (a1 < 0) a1 += 360;
-      }
+      int32_t a0, a1;
+      arcAngles(c, &a0, &a1);
       assist_raster::arc(*fast, ox + static_cast<int32_t>(c.a), oy + static_cast<int32_t>(c.b),
                          static_cast<int32_t>(c.c), c.width, a0, a1, color, c.opa, round);
     }
@@ -2357,14 +2365,10 @@ void drawCmd(const Screen* s, const Cmd& c, lv_layer_t* layer, const lv_area_t& 
         dsc.center.x = ox + static_cast<int32_t>(c.a);
         dsc.center.y = oy + static_cast<int32_t>(c.b);
         dsc.radius = static_cast<uint16_t>(c.c);
-        if (c.e - c.d >= 360.0f) {
-          dsc.start_angle = 0;
-          dsc.end_angle = 360;
-        } else {
-          int32_t a0 = static_cast<int32_t>(c.d) % 360, a1 = static_cast<int32_t>(c.e) % 360;
-          dsc.start_angle = a0 < 0 ? a0 + 360 : a0;
-          dsc.end_angle = a1 < 0 ? a1 + 360 : a1;
-        }
+        int32_t a0, a1;
+        arcAngles(c, &a0, &a1);
+        dsc.start_angle = a0;
+        dsc.end_angle = a1;
         lv_draw_arc(layer, &dsc);
         break;
       }

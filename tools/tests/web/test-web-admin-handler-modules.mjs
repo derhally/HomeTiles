@@ -29,7 +29,7 @@ const owners = {
     'StartOtaInstall', 'GetOtaStatus', 'GithubUpdateCheck', 'GithubUpdateInstall',
     'GetGithubUpdateStatus'],
   'web_admin_diagnostics.cpp': ['CreateScreenshot', 'DownloadScreenshot',
-    'CoreDumpDownload', 'CoreDumpErase', 'CrashLogDownload', 'SdDiagnosticsDownload'],
+    'CoreDumpDownload', 'CoreDumpErase', 'CrashLogDownload', 'SdDiagnosticsDownload', 'AssistTiming', 'AssistTimingReset'],
   'web_admin.cpp': ['Root'],
   'web_admin_hardware_io.cpp': ['GetHardwareIo', 'SaveHardwareIo'],
   'web_admin_local_camera.cpp': ['LocalCamera'],

@@ -16,16 +16,16 @@ constexpr size_t kIdSize = 33;
 
 struct Stats {
   uint32_t frames;    // refreshes that drew
-  uint32_t draw_us;   // sum, refresh start to ready
+  uint64_t draw_us;   // sum, refresh start to ready
   uint32_t draw_max_us;
-  uint32_t copy_us;   // sum of the flush callback's time within those refreshes
+  uint64_t copy_us;   // sum of the flush callback's time within those refreshes
   uint64_t px;        // pixels flushed
   uint32_t late;      // refreshes longer than the frame period
   uint32_t ticks;     // overlay timer ticks
-  uint32_t work_us;   // the overlay's own work per tick
+  uint64_t work_us;   // the overlay's own work per tick
   uint32_t work_max_us;
   uint32_t gaps;      // intervals between ticks
-  uint32_t gap_us;
+  uint64_t gap_us;
   uint32_t gap_max_us;
   uint16_t hist[kBuckets];
 };
@@ -142,7 +142,7 @@ void appendU32(String& out, const char* key, uint32_t value) {
   out += String(value);
 }
 
-uint32_t average(uint32_t sum, uint32_t count) { return count ? sum / count : 0; }
+uint32_t average(uint64_t sum, uint32_t count) { return count ? static_cast<uint32_t>(sum / count) : 0; }
 
 }  // namespace
 

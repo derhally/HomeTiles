@@ -2,6 +2,15 @@
 
 #include <math.h>
 
+// The direct writes rely on LVGL executing every queued draw task before the
+// draw callback continues: one software draw unit, no threads, no PPA unit.
+// Another configuration keeps every shape on the lv_draw_* path.
+#if LV_USE_OS != LV_OS_NONE || LV_DRAW_SW_DRAW_UNIT_CNT > 1 || LV_USE_PPA
+#define ASSIST_RASTER_DIRECT 0
+#else
+#define ASSIST_RASTER_DIRECT 1
+#endif
+
 namespace assist_raster {
 namespace {
 
@@ -48,6 +57,9 @@ struct Row {
     if (t->wide) {
       uint32_t* p = reinterpret_cast<uint32_t*>(row) + i;
       *p = mix888(c32, *p, mix);
+    } else if (t->swapped) {
+      uint16_t* p = reinterpret_cast<uint16_t*>(row) + i;
+      *p = __builtin_bswap16(mix565(c16, __builtin_bswap16(*p), mix));
     } else {
       uint16_t* p = reinterpret_cast<uint16_t*>(row) + i;
       *p = mix565(c16, *p, mix);
@@ -80,13 +92,21 @@ inline bool span(float lo, float hi, int32_t clip_lo, int32_t clip_hi, int32_t* 
 }  // namespace
 
 bool target(const lv_layer_t* layer, Target* out) {
+#if !ASSIST_RASTER_DIRECT
+  (void)layer;
+  (void)out;
+  return false;
+#else
   if (!layer || !layer->draw_buf || !layer->draw_buf->data) return false;
   const lv_draw_buf_t* buf = layer->draw_buf;
   const lv_color_format_t cf = static_cast<lv_color_format_t>(buf->header.cf);
-  if (cf != LV_COLOR_FORMAT_RGB565 && cf != LV_COLOR_FORMAT_XRGB8888) return false;
+  if (cf != LV_COLOR_FORMAT_RGB565 && cf != LV_COLOR_FORMAT_RGB565_SWAPPED && cf != LV_COLOR_FORMAT_XRGB8888) {
+    return false;
+  }
   out->pixels = buf->data;
   out->stride = static_cast<int32_t>(buf->header.stride);
   out->wide = cf == LV_COLOR_FORMAT_XRGB8888;
+  out->swapped = cf == LV_COLOR_FORMAT_RGB565_SWAPPED;
   out->buf = layer->buf_area;
   // The clip within the buffer (lv_area_intersect is private in LVGL 9.6).
   const lv_area_t& c = layer->_clip_area;
@@ -96,6 +116,7 @@ bool target(const lv_layer_t* layer, Target* out) {
   out->clip.x2 = c.x2 < b.x2 ? c.x2 : b.x2;
   out->clip.y2 = c.y2 < b.y2 ? c.y2 : b.y2;
   return out->clip.x1 <= out->clip.x2 && out->clip.y1 <= out->clip.y2;
+#endif
 }
 
 void line(const Target& t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t width, lv_color_t color,
@@ -205,7 +226,8 @@ void arc(const Target& t, int32_t cx, int32_t cy, int32_t radius, int32_t width,
   // the radius radius + 0.5 around the pixel centre.
   const float cxf = static_cast<float>(cx) + 0.5f, cyf = static_cast<float>(cy) + 0.5f;
   const float ro = static_cast<float>(radius) + 0.5f;
-  const float ri = ro - static_cast<float>(width);
+  // A width of the radius fills the sector to its centre (no inner edge).
+  const float ri = width >= radius ? -1.0f : ro - static_cast<float>(width);
   const float ro1 = ro + 1.0f;                       // the anti-aliased outer edge's limit
   const float ri1 = ri > 1.0f ? ri - 1.0f : 0.0f;    // and the inner edge's
   const float sr = static_cast<float>(s) * kPi / 180.0f, er = static_cast<float>(e) * kPi / 180.0f;
