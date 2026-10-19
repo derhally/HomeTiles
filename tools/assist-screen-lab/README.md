@@ -29,12 +29,14 @@ The build finds LVGL 9.6.0 in this order: `LVGL_INCLUDE`, then
 ## Run
 
 ```sh
-build/assist-screen-lab/lab tools/assist-screen-lab/screens/sentinel.json
+build/assist-screen-lab/lab                      # every screen in tools/assist-screen-lab/screens
 build/assist-screen-lab/lab tools/assist-screen-lab/screens/iris.json --size=720x720
+build/assist-screen-lab/lab my-screens/          # every .json in a folder
 ```
 
 | Key | Action |
 | --- | --- |
+| `←` `→` (or `Tab`, `Shift+Tab`) | Previous or next screen; its name shows top right |
 | `1` `2` `3` | Listening, thinking, answering |
 | `A` | Cycle the phases automatically (default) |
 | `V` | Simulated voice on/off; when off, hold the mouse button, higher means louder |
@@ -54,7 +56,7 @@ The title bar shows the numbers that matter on the panel:
 Headless, without a window:
 
 ```sh
-lab <file> --png=out --compare --frames [--size=WxH]
+lab [file or folder ...] --png=out --compare --frames [--size=WxH]
 ```
 
 This writes one PNG per phase, with the built-in style on the right when
