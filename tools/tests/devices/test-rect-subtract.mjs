@@ -25,7 +25,9 @@ assert.match(display, /uint8_t DisplayManager::refreshAreas\(int32_t \(\*out\)\[
 assert.match(display, /lv_refr_get_disp_refreshing\(\)/);
 assert.match(display, /inv_area_joined\[i\]/);
 const device = read('src/devices/waveshare_touch_lcd_7b/device_waveshare_touch_lcd_7b.cpp');
-assert.match(device, /g_camera_presenter\.setUiRefreshAreas\(&DisplayManager::refreshAreas\);/);
+assert.match(device, /g_camera_presenter\.setUiRefreshAreas\(&refresh_areas_on_panel\);/);
+// The 180 degree rotation mirrors the bands, so the areas are mirrored too.
+assert.match(device, /uint8_t refresh_areas_on_panel\(int32_t \(\*out\)\[4\], uint8_t max\) \{[\s\S]*?if \(!\(g_rotation & 0x02\)\) return n;[\s\S]*?out\[i\]\[0\] = w - 1 - x2;/);
 
 // --- the subtraction itself ---
 const cxx = [process.env.CXX, 'clang++', 'g++'].filter(Boolean).find(c => spawnSync(c, ['--version']).status === 0);
