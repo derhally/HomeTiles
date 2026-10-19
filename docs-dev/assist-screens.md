@@ -10,7 +10,7 @@ builds are unchanged. Not yet measured on panel hardware.
 | --- | --- |
 | File format reference | `tools/assist-screen-lab/FORMAT.md` |
 | Engine (compile, frame, redraw, draw) | `src/ui/assist/assist_screen.*` |
-| Screen files, one per built-in style | `tools/assist-screen-lab/screens/*.json` |
+| Screen files, one per built-in style, plus examples (robot, retro_robot) | `tools/assist-screen-lab/screens/*.json` |
 | Built-in copies for the firmware (generated) | `src/ui/assist/assist_screen_files.h`, `tools/generate-assist-screens.mjs` |
 | Overlay integration (test builds) | `src/ui/assist/assist_overlay.cpp` |
 | Desktop lab (window and headless) | `tools/assist-screen-lab/lab.cpp`, `build.mjs`, `README.md` |
@@ -180,6 +180,32 @@ styles (Phosphor's noise, Light Disc's trail turns). Light Disc keeps each
 trail's last 9 corners (built-in: 12), so a trail that turns 10 times within
 its length is cut short. Circles snap to half pixels where the built-in
 objects use whole ones.
+
+## New screens
+
+Two screens show what a file can do beyond the built-in styles. They are
+examples for the lab and the microSD card, not built into the firmware.
+
+**Robot** (`robot.json`, 35 shapes / 1,403 steps per frame at most): a small
+robot in outline. Listening, it bobs, blinks, its ears glow and sound waves
+reach its head with the voice; thinking, its eyes wander, the antenna and
+chest light blink amber, a hand goes to its chin and three dots bounce above
+it; answering, its mouth moves with the reply, its eyes turn happy and it
+waves.
+
+![Robot: listening, thinking, answering](assist-screens/robot.png)
+
+**Retro Robot** (`retro_robot.json`, 34 shapes / 1,630 steps): a tall tin-can
+head with a dome, an antenna, a wide visor and a grille mouth. Listening, its
+eyes glance about and the antenna ball glows with the voice; thinking, its
+lids droop, its eyes roll up and a question mark bobs beside it; answering,
+the grille teeth part with each word.
+
+![Retro Robot: listening, thinking, answering](assist-screens/retro_robot.png)
+
+Each is one JSON file of about 5 KB, made in the lab in minutes. On a test
+build, a file shows in place of a built-in style when it is stored as that
+style's file, for example `/assist/atom.json` on the microSD card.
 
 ## On a panel (test builds)
 
