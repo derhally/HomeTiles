@@ -110,6 +110,8 @@ public:
   void handleCoreDumpErase();
   void handleCrashLogDownload();
   void handleSdDiagnosticsDownload();
+  void handleAssistTiming();
+  void handleAssistTimingReset();
   void handleAuthChallenge();
   void handleAuthLogin();
   void handleAuthLogout();
