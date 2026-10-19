@@ -26,6 +26,7 @@
 #include "src/core/display/dma2d_arbiter.h"
 #endif
 #include "src/web/server/handlers/web_admin_handler_utils.h"
+#include "src/ui/assist/assist_timing.h"
 
 using namespace web_admin_handlers;
 
@@ -633,4 +634,19 @@ void WebAdminServer::handleSdDiagnosticsDownload() {
   report += "The card completed mkdir/write/read/remove successfully.\n";
 
   send_report();
+}
+
+// Frame times of the Assist screen (assist_timing.h), per screen and phase.
+void WebAdminServer::handleAssistTiming() {
+  webAdminMarkActivity();
+  String json;
+  assist_timing::toJson(json);
+  server.sendHeader("Cache-Control", "no-store");
+  sendChunkedResponse(server, 200, "application/json", json);
+}
+
+void WebAdminServer::handleAssistTimingReset() {
+  webAdminMarkActivity();
+  assist_timing::reset();
+  server.send(200, "application/json", "{\"success\":true}");
 }

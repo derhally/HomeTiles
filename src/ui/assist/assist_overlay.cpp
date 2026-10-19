@@ -4,6 +4,7 @@
 #include <lvgl.h>
 #include <math.h>
 
+#include "src/audio/assist_contract.h"
 #include "src/audio/speaker.h"
 #include "src/core/config/config_manager.h"
 #include "src/core/display/display_manager.h"
@@ -14,12 +15,12 @@
 #include "src/ui/assist/assist_screen.h"
 #include "src/ui/assist/assist_style_catalog.h"
 #include "src/ui/assist/assist_styles.h"
+#include "src/ui/assist/assist_timing.h"
 
 #if HOMETILES_ASSIST_DATA_SCREENS
 #include <FS.h>
 #include <esp_heap_caps.h>
 
-#include "src/audio/assist_contract.h"
 #include "src/ui/assist/assist_screen_files.h"
 #include "src/ui/assist/assist_screen_store.h"
 
@@ -253,6 +254,7 @@ float simulatedLevel() {
 
 void onFrame(lv_timer_t*) {
   if (!g_overlay) return;
+  const uint32_t work_started = micros();
   const int32_t w = lv_obj_get_width(g_overlay);
   const int32_t h = lv_obj_get_height(g_overlay);
   float base_r = assist_styles::baseRadius(g_style, static_cast<float>(w), static_cast<float>(h));
@@ -318,6 +320,7 @@ void onFrame(lv_timer_t*) {
 
   // The label sits below the widest halo the styles reach (a screen file says where).
   lv_obj_set_y(g_label, static_cast<int32_t>(frame.cy + base_r * label_r));
+  assist_timing::noteFrame(micros() - work_started);
 }
 
 void onTap(lv_event_t*) {
@@ -398,6 +401,19 @@ void show(AssistUiPhase phase, AssistScreenStyle style) {
     g_skip_logged = false;
   }
 #endif
+  // Frame timing for the diagnostics page, per screen id (assist_timing.h).
+  const uint8_t style_index = static_cast<uint8_t>(style);
+  const char* timing_id = style_index < assist_contract::kScreenStyleCount
+                              ? assist_contract::kScreenStyleIds[style_index]
+                              : "unknown";
+#if HOMETILES_ASSIST_DATA_SCREENS
+  if (g_data) timing_id = assist_screen::info(g_screen).id;
+  assist_timing::attach();
+  assist_timing::begin(timing_id, g_data);
+#else
+  assist_timing::attach();
+  assist_timing::begin(timing_id, false);
+#endif
   g_started_tick = lv_tick_get();
   g_level = 0.0f;
   g_appear = 0.0f;
@@ -421,6 +437,7 @@ void hide() {
     g_timer = nullptr;
   }
   if (g_overlay) lv_obj_add_flag(g_overlay, LV_OBJ_FLAG_HIDDEN);
+  assist_timing::end();
   Serial.println("[Assist] Screen hidden");
 }
 
@@ -472,6 +489,9 @@ void service() {
   if (phase != g_shown) {
     g_shown = phase;
     lv_label_set_text(g_label, phaseText(phase));
+    assist_timing::setPhase(phase == AssistUiPhase::Answering  ? assist_timing::kAnswering
+                            : phase == AssistUiPhase::Thinking ? assist_timing::kThinking
+                                                               : assist_timing::kListening);
     // A popup opened meanwhile may have been raised above the screen.
     lv_obj_move_foreground(g_overlay);
   }

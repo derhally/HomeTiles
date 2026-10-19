@@ -100,6 +100,10 @@ void appendAdminScripts(String& html) {
   appendJsEntry("screenshotCreating", tr.js_screenshot_creating);
   appendJsEntry("screenshotSaved", tr.js_screenshot_saved);
   appendJsEntry("screenshotFailed", tr.js_screenshot_failed);
+  appendJsEntry("assistTimingEmpty", tr.assist_timing_empty);
+  appendJsEntry("assistListening", tr.assist_listening);
+  appendJsEntry("assistThinking", tr.assist_thinking);
+  appendJsEntry("assistAnswering", tr.assist_answering);
   appendJsEntry("otaSelectFile", tr.js_ota_select_file);
   appendJsEntry("otaUploading", tr.js_ota_uploading);
   appendJsEntry("otaInstalling", tr.js_ota_installing);

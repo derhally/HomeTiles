@@ -28,6 +28,9 @@
       window.setTimeout(loadFileManager, 0);
     }
     if (activeSettingsPage === 'io') window.setTimeout(initHardwareIo, 0);
+    if (activeSettingsPage === 'diagnostics' && typeof loadAssistTiming === 'function' && !assistTimingLoaded) {
+      window.setTimeout(loadAssistTiming, 0);
+    }
   }
 
   function showSettingsPage(page) {
