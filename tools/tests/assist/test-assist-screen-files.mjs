@@ -200,7 +200,7 @@ int main(int argc, char** argv) {
       return 1;
     }
   }
-  if (assist_screen_files::kFileCount != static_cast<size_t>(argc - 1)) { printf("FAIL: built-in copies\n"); return 1; }
+  if (assist_screen_files::kFileCount != 9) { printf("FAIL: built-in copies\n"); return 1; }
 
   // Names, format version, text and history rules.
   refused(file("{\"type\": \"line\", \"let\": {\"v\": 1}, \"x1\": 0, \"y1\": 0, \"x2\": 1, \"y2\": 1}",
@@ -279,13 +279,17 @@ const build = spawnSync(host.cxx, [...host.flags, '-std=c++17', '-O1', ...saniti
 assert.equal(build.status, 0, build.stdout + build.stderr);
 // One file per built-in style, in speaker::AssistScreenStyle order.
 const ids = ['atom', 'reactor', 'dot_halo', 'voice_pills', 'sentinel', 'phosphor', 'light_disc', 'lens', 'iris'];
-const screens = ids.map(id => path.join(lab, 'screens', `${id}.json`));
+// Every file in screens/ loads and runs: the built-in styles first, then
+// examples such as robot.json.
+const extra = fs.readdirSync(path.join(lab, 'screens')).filter(f => f.endsWith('.json'))
+  .map(f => f.replace('.json', '')).filter(id => !ids.includes(id)).sort();
+const screens = [...ids, ...extra].map(id => path.join(lab, 'screens', `${id}.json`));
 const run = spawnSync(binary, screens, {encoding: 'utf8', env: {...process.env, ASAN_OPTIONS: 'detect_leaks=0'}});
 assert.equal(run.status, 0, run.stdout + run.stderr);
 assert.ok(!/runtime error|AddressSanitizer/.test(run.stderr), run.stderr);
 const lines = run.stdout.trim().split('\n');
 assert.equal(lines.at(-1), 'limits ok');
-for (const id of ids) {
+for (const id of [...ids, ...extra]) {
   assert.ok(lines.some(line => line.startsWith(`${id} `)), `${id} ran`);
   assert.ok(lines.some(line => line.startsWith(`fuzz ${id} `)), `${id} fuzzed`);
 }
@@ -301,4 +305,4 @@ for (const id of ['sentinel', 'phosphor']) {
 assert.deepEqual(needs('light_disc'), ['tear_free']);
 for (const id of ['atom', 'reactor', 'dot_halo', 'voice_pills', 'lens', 'iris']) assert.deepEqual(needs(id), []);
 console.log(`assist screen files ok${sanitize.length ? ' (ASan/UBSan)' : ''}: ` +
-  lines.filter(line => ids.some(id => line.startsWith(`${id} `))).join(', '));
+  lines.filter(line => [...ids, ...extra].some(id => line.startsWith(`${id} `))).join(', '));
