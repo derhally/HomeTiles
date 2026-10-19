@@ -1339,6 +1339,8 @@ async function saveGestureEdge(select) {
   }
 
   function renderAssistTiming(rows, data) {
+    const band = document.getElementById('assist_timing_band');
+    if (band) band.textContent = typeof data?.band === 'string' ? data.band : '';
     const screens = Array.isArray(data?.screens) ? data.screens : [];
     const measured = screens.filter(screen => (screen.phases || []).some(p => p.frames > 0 || p.ticks > 0));
     if (!measured.length) {
