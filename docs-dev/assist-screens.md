@@ -261,8 +261,8 @@ on the direct link and on MQTT alike (Bridge `assist_screens.py`, firmware
 `src/audio/assist_contract.h`):
 
 1. Users put screen files (`*.json`, at most 24 KB) in
-   `<config>/hometiles/assist_screens/` and run the
-   `tab5_lvgl.reload_assist_screens` service (or restart Home Assistant). The
+   `<config>/hometiles/assist_screens/`; the Bridge checks the folder every
+   minute (the `tab5_lvgl.reload_assist_screens` service does it at once). The
    Bridge checks size, JSON, `id` (a-z, 0-9, _, never a built-in id) and
    `name`, logs each file it leaves out, and keeps at most 16, sorted by name.
 2. Every panel gets `{base}/assist/screens` retained
