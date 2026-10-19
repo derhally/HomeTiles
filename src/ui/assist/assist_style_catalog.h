@@ -21,6 +21,11 @@
 
 namespace assist_style_catalog {
 
+// Styles that exist only as screen files (assist_screen.h, built in through
+// assist_screen_files.h): Sentinel, Phosphor, Light Disc, Lens and Iris. A
+// build without screen files does not offer them.
+inline constexpr uint32_t kFileStyles = (1u << 4) | (1u << 5) | (1u << 6) | (1u << 7) | (1u << 8);
+
 enum Feature : uint8_t {
   // The shown screen is at least kWideAspect times as wide as tall
   // (landscape panels; not square, not upright).
