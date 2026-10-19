@@ -1,0 +1,48 @@
+{
+  "format": 1,
+  "id": "reactor",
+  "name": "Reactor",
+  "note": "A bright core sends out sonar rings, faster and wider the louder the voice; while thinking, three broken rings turn at different speeds and directions like a HUD reticle.",
+  "label_color": "#C8D2E6",
+  "colors": {"ripple": "#38BDF8", "glow": "#0EA5E9", "sky": "#7DD3FC", "violet": "#A78BFA",
+             "core": "#E0F2FE", "core_shade": "#0369A1", "inner": "#F0F9FF"},
+  "vars": {
+    "lv": "level",
+    "m": "mode",
+    "newest": "max(max(b0, b1), max(b2, b3))",
+    "spawn": "m < 0.5 && t - newest > 0.7 - 0.3 * lv",
+    "b0": {"init": -10, "next": "spawn && nx == 0 ? t : b0"},
+    "b1": {"init": -10, "next": "spawn && nx == 1 ? t : b1"},
+    "b2": {"init": -10, "next": "spawn && nx == 2 ? t : b2"},
+    "b3": {"init": -10, "next": "spawn && nx == 3 ? t : b3"},
+    "nx": {"init": 0, "next": "spawn ? mod(nx + 1, 4) : nx"},
+    "core_d": "(1 - m) * 2 * r * (0.62 + 0.25 * lv) + m * 2 * r * (0.42 + 0.04 * sin(t * 4) + 0.18 * lv)"
+  },
+  "items": [
+    {"type": "arc", "note": "sonar rings", "repeat": 4, "as": "i",
+     "let": {
+       "born": "i == 0 ? b0 : i == 1 ? b1 : i == 2 ? b2 : b3",
+       "life": "(t - born) / 1.6"
+     },
+     "x": "cx", "y": "cy", "radius": "r * (0.7 + life * (1.4 + lv))", "width": 2, "color": "ripple",
+     "alpha": "life >= 1 ? 0 : (1 - life) * 0.7 * (1 - m)"},
+    {"type": "disc", "note": "glow", "x": "cx", "y": "cy", "radius": "max(1, r * (1.6 + 0.4 * lv))", "color": "glow", "alpha": 0.118},
+    {"type": "arc", "note": "ring", "x": "cx", "y": "cy", "radius": "r * (0.95 + 0.25 * lv)", "width": 2,
+     "color": "sky", "alpha": "0.5 * (1 - m)"},
+    {"type": "disc", "note": "core", "x": "cx", "y": "cy", "radius": "max(1, core_d / 2)", "color": "core", "grad": "core_shade"},
+    {"type": "disc", "note": "inner", "x": "cx", "y": "cy", "radius": "max(1, core_d * 0.175)", "color": "inner", "alpha": 0.902},
+    {"type": "arc", "note": "broken rings while thinking", "repeat": 7, "as": "i",
+     "let": {
+       "sr": "i < 3 ? 1.25 : i < 5 ? 1.55 : 1.85",
+       "off": "i == 0 ? 0 : i == 1 ? 120 : i == 2 ? 240 : i == 3 ? 0 : i == 4 ? 180 : i == 5 ? 90 : 270",
+       "sweep": "i < 3 ? 70 : i < 5 ? 120 : 40",
+       "speed": "i < 3 ? 45 : i < 5 ? -30 : 55",
+       "start": "off + t * speed"
+     },
+     "x": "cx", "y": "cy", "radius": "r * sr * (1 + 0.08 * lv * m) * (0.7 + 0.3 * m)",
+     "start": "start", "end": "start + sweep",
+     "width": "i < 3 ? 3 : i < 5 ? 2 : 4",
+     "color": "i >= 3 && i < 5 ? violet : sky",
+     "alpha": "m * 0.9"}
+  ]
+}
