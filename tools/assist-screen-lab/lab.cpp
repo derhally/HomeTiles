@@ -5,8 +5,10 @@
 //   lab [screen.json | folder ...] [--size=1024x600] [--png=DIR] [--compare] [--frames]
 //
 // Without a path it opens every screen in tools/assist-screen-lab/screens.
+// The window lists those files and every built-in style without a file.
 //
-// Window keys:
+// The window has a button bar under the screen for everything below; the keys
+// do the same:
 //   Left Right previous / next screen (also Tab, Shift+Tab)
 //   1 2 3      listening / thinking / answering     A  auto cycle (default)
 //   V          simulated voice on/off (off: hold the mouse, higher = louder)
@@ -14,7 +16,7 @@
 //   [ ]        previous / next panel size           R  reload (also automatic)
 //   S          save a screenshot                    Esc quit
 //
-// The title bar shows the panel-side numbers that matter: shapes and
+// The bar's last row shows the panel-side numbers that matter: shapes and
 // expression steps per frame (worst case from the file), pixels redrawn per
 // frame, and the host's time per frame (only a rough guide to the panel).
 
@@ -59,6 +61,8 @@ namespace {
 
 const char* const kStyleIds[] = {"atom", "reactor", "dot_halo", "voice_pills", "sentinel",
                                  "phosphor", "light_disc", "lens", "iris"};
+const char* const kStyleNames[] = {"Atom", "Reactor", "Dot Halo", "Voice Pills", "Sentinel",
+                                   "Phosphor", "Light Disc", "Lens", "Iris"};
 const int kSizes[][2] = {{1024, 600}, {1280, 800}, {800, 480}, {1280, 720}, {720, 720}, {480, 800}, {720, 1280}};
 constexpr uint32_t kBackdrop = 0x05070F;
 const char* const kPhaseText[3] = {"Listening…", "Thinking…", "Answering…"};
@@ -195,7 +199,32 @@ struct Lab {
   bool loaded = false;
   bool show_builtin = false;
   int builtin_style = -1;
-  std::vector<std::string> paths;  // the screens to switch between
+  // The button bar under the screen: its own LVGL display and pixels.
+  lv_display_t* bar_display = nullptr;
+  int bar_w = 0;  // the window's width: the screen's, at least kBarMinW
+  std::vector<uint32_t> bar_fb;
+  std::vector<uint32_t> bar_band;
+  lv_obj_t* bar_screens = nullptr;  // one button per screen
+  lv_obj_t* bar_phase[4] = {};      // auto, listening, thinking, answering
+  lv_obj_t* bar_builtin = nullptr;
+  lv_obj_t* bar_voice = nullptr;
+  lv_obj_t* bar_size = nullptr;     // its label
+  lv_obj_t* bar_stats = nullptr;
+  int mouse_x = 0, mouse_y = 0;
+  bool mouse_down = false;
+  // What a key or a button asked for; the window loop carries it out.
+  int want_screen = -1, want_phase = -1, want_size_step = 0;  // want_phase 3 = auto
+  bool want_builtin = false, want_voice = false;
+  std::vector<std::string> paths;  // the screen files
+  // What the window switches between: every screen file, and every built-in
+  // style without a file yet (path empty), in the panel's style order.
+  struct Entry {
+    std::string path;
+    int style;  // built-in style, -1 none
+    std::string name;
+  };
+  std::vector<Entry> entries;
+  bool builtin_only = false;  // showing a built-in style that has no file
   int current = 0;
   std::string path;                // paths[current]
   long mtime = 0;
@@ -428,6 +457,7 @@ int headless(Lab& lab, const std::string& dir, bool compare, bool timing) {
   double ms[2][3] = {};
   uint64_t px[2][3] = {};
   for (int pass = 0; pass < (both ? 2 : 1); ++pass) {
+    setPhase(lab, 0);  // restart() eases from the listening look
     showBuiltin(lab, pass == 1);
     lab.now = 0;
     lab.seed = 12345;
@@ -478,6 +508,211 @@ int headless(Lab& lab, const std::string& dir, bool compare, bool timing) {
   return 0;
 }
 
+
+// The window's list: files in the panel's style order first, then other
+// files, with each built-in style that has no file in its place.
+void buildEntries(Lab& lab) {
+  std::vector<Lab::Entry> files;
+  for (const std::string& path : lab.paths) {
+    std::string text;
+    char error[200];
+    Lab::Entry e{path, -1, std::filesystem::path(path).stem().string()};
+    if (readFile(path, &text) && assist_screen::load(lab.screen, text.data(), text.size(), error, sizeof(error))) {
+      e.style = builtinIndex(assist_screen::info(lab.screen).id);
+      e.name = assist_screen::info(lab.screen).name;
+    }
+    files.push_back(e);
+  }
+  for (int i = 0; i < 9; ++i) {
+    bool found = false;
+    for (const Lab::Entry& f : files) {
+      if (f.style == i) {
+        lab.entries.push_back(f);
+        found = true;
+      }
+    }
+    if (!found) lab.entries.push_back(Lab::Entry{"", i, std::string(kStyleNames[i]) + " (built-in)"});
+  }
+  for (const Lab::Entry& f : files) {
+    if (f.style < 0) lab.entries.push_back(f);
+  }
+}
+
+void loadEntry(Lab& lab, int index) {
+  const Lab::Entry& e = lab.entries[index];
+  lab.current = index;
+  // Comparing stays on from one file to the next, not from a built-in-only style.
+  const bool was_builtin = lab.show_builtin && !lab.builtin_only;
+  if (!e.path.empty()) {
+    lab.builtin_only = false;
+    lab.path = e.path;
+    loadScreen(lab);
+    // Keep comparing when the next screen has a built-in style too.
+    showBuiltin(lab, was_builtin && lab.builtin_style >= 0);
+  } else {
+    lab.builtin_only = true;
+    lab.path.clear();
+    lab.loaded = false;
+    lab.builtin_style = e.style;
+    showMessage(lab, "");
+    lv_obj_set_style_text_color(lab.label, lv_color_hex(assist_styles::labelColor(static_cast<AssistScreenStyle>(e.style))), 0);
+    showBuiltin(lab, true);
+  }
+  lv_obj_invalidate(lv_screen_active());
+}
+
+#if !defined(LAB_NO_SDL)
+// ---- The button bar under the screen ----
+constexpr int kBarH = 118;
+constexpr int kBarMinW = 900;  // narrow and upright screens sit centred above the bar
+constexpr uint32_t kBarBg = 0x11151D;
+
+void barFlush(lv_display_t* d, const lv_area_t* area, uint8_t* data) {
+  Lab& lab = *static_cast<Lab*>(lv_display_get_user_data(d));
+  auto* source = reinterpret_cast<uint32_t*>(data);
+  for (int y = area->y1; y <= area->y2; ++y) {
+    for (int x = area->x1; x <= area->x2; ++x) lab.bar_fb[y * lab.bar_w + x] = *source++;
+  }
+  lv_display_flush_ready(d);
+}
+
+// The mouse, while it is over the bar.
+void barRead(lv_indev_t* indev, lv_indev_data_t* data) {
+  const Lab& lab = *static_cast<const Lab*>(lv_indev_get_user_data(indev));
+  static lv_point_t last;
+  if (lab.mouse_y >= lab.h) {
+    last.x = lab.mouse_x;  // the bar spans the window
+    last.y = lab.mouse_y - lab.h;
+    data->state = lab.mouse_down ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+  } else {
+    data->state = LV_INDEV_STATE_RELEASED;
+  }
+  data->point = last;
+}
+
+// Button codes: 0.. screens, 100.. phases (100 = auto), 200 built-in,
+// 201 voice, 202/203 size down/up.
+void onBarButton(lv_event_t* e) {
+  Lab& lab = *g_lab;
+  const int code = static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
+  if (code < 100) lab.want_screen = code;
+  else if (code == 100) lab.want_phase = 3;
+  else if (code < 200) lab.want_phase = code - 101;
+  else if (code == 200) lab.want_builtin = true;
+  else if (code == 201) lab.want_voice = true;
+  else lab.want_size_step = code == 203 ? 1 : -1;
+}
+
+lv_obj_t* barButton(lv_obj_t* parent, const char* text, int code, bool checkable = true) {
+  lv_obj_t* b = lv_button_create(parent);
+  lv_obj_remove_style_all(b);
+  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(b, lv_color_hex(0x262D3A), 0);
+  lv_obj_set_style_bg_color(b, lv_color_hex(0x34405A), LV_STATE_PRESSED);
+  lv_obj_set_style_bg_color(b, lv_color_hex(0x2F6FE4), LV_STATE_CHECKED);
+  lv_obj_set_style_bg_opa(b, LV_OPA_40, LV_STATE_DISABLED);
+  lv_obj_set_style_radius(b, 6, 0);
+  lv_obj_set_style_pad_hor(b, 12, 0);
+  lv_obj_set_style_pad_ver(b, 6, 0);
+  if (checkable) lv_obj_add_flag(b, LV_OBJ_FLAG_CHECKABLE);
+  lv_obj_add_event_cb(b, onBarButton, LV_EVENT_CLICKED, reinterpret_cast<void*>(static_cast<intptr_t>(code)));
+  lv_obj_t* l = lv_label_create(b);
+  lv_obj_set_style_text_font(l, &ui_font_16, 0);
+  lv_obj_set_style_text_color(l, lv_color_hex(0xE6EAF2), 0);
+  lv_label_set_text(l, text);
+  lv_obj_center(l);
+  return b;
+}
+
+lv_obj_t* barRow(lv_obj_t* parent) {
+  lv_obj_t* row = lv_obj_create(parent);
+  lv_obj_remove_style_all(row);
+  lv_obj_set_size(row, LV_PCT(100), 34);
+  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(row, 6, 0);
+  lv_obj_set_scroll_dir(row, LV_DIR_HOR);
+  lv_obj_set_scrollbar_mode(row, LV_SCROLLBAR_MODE_OFF);
+  return row;
+}
+
+void setBarSize(Lab& lab) {
+  lab.bar_w = lab.w > kBarMinW ? lab.w : kBarMinW;
+  lab.bar_fb.assign(static_cast<size_t>(lab.bar_w) * kBarH, kBarBg);
+  lab.bar_band.assign(static_cast<size_t>(lab.bar_w) * 32, 0);
+  lv_display_set_resolution(lab.bar_display, lab.bar_w, kBarH);
+  lv_display_set_buffers(lab.bar_display, lab.bar_band.data(), nullptr, lab.bar_band.size() * 4,
+                         LV_DISPLAY_RENDER_MODE_PARTIAL);
+  lv_obj_invalidate(lv_display_get_screen_active(lab.bar_display));
+}
+
+void buildBar(Lab& lab) {
+  lab.bar_display = lv_display_create(lab.w, kBarH);
+  lv_display_set_default(lab.display);  // the screen stays the default display
+  lv_display_set_color_format(lab.bar_display, LV_COLOR_FORMAT_XRGB8888);
+  lv_display_set_user_data(lab.bar_display, &lab);
+  lv_display_set_flush_cb(lab.bar_display, barFlush);
+  setBarSize(lab);
+  lv_indev_t* mouse = lv_indev_create();
+  lv_indev_set_type(mouse, LV_INDEV_TYPE_POINTER);
+  lv_indev_set_user_data(mouse, &lab);
+  lv_indev_set_read_cb(mouse, barRead);
+  lv_indev_set_display(mouse, lab.bar_display);
+
+  lv_obj_t* scr = lv_display_get_screen_active(lab.bar_display);
+  lv_obj_set_style_bg_color(scr, lv_color_hex(kBarBg), 0);
+  lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+  lv_obj_set_style_pad_all(scr, 8, 0);
+  lv_obj_set_style_pad_row(scr, 8, 0);
+  lv_obj_set_flex_flow(scr, LV_FLEX_FLOW_COLUMN);
+  lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+
+  // Row 1: the screens.
+  lab.bar_screens = barRow(scr);
+  for (size_t i = 0; i < lab.entries.size() && i < 100; ++i) {
+    const Lab::Entry& e = lab.entries[i];
+    lv_obj_t* b = barButton(lab.bar_screens, e.path.empty() ? kStyleNames[e.style] : e.name.c_str(), static_cast<int>(i));
+    // Built-in styles without a file are dimmer (the numbers row says so too).
+    if (lab.entries[i].path.empty()) lv_obj_set_style_text_color(lv_obj_get_child(b, 0), lv_color_hex(0x9AA3B5), 0);
+  }
+  // Row 2: phase, built-in, voice, size and the numbers.
+  lv_obj_t* row = barRow(scr);
+  const char* phases[4] = {"Auto", "Listening", "Thinking", "Answering"};
+  for (int i = 0; i < 4; ++i) lab.bar_phase[i] = barButton(row, phases[i], 100 + i);
+  lab.bar_builtin = barButton(row, "Built-in", 200);
+  lab.bar_voice = barButton(row, "Voice: simulated", 201, false);
+  barButton(row, "<", 202, false);
+  lab.bar_size = lv_label_create(row);
+  lv_obj_set_style_text_font(lab.bar_size, &ui_font_16, 0);
+  lv_obj_set_style_text_color(lab.bar_size, lv_color_hex(0xE6EAF2), 0);
+  barButton(row, ">", 203, false);
+  // Row 3: the numbers.
+  lab.bar_stats = lv_label_create(scr);
+  lv_obj_set_style_text_font(lab.bar_stats, &ui_font_16, 0);
+  lv_obj_set_style_text_color(lab.bar_stats, lv_color_hex(0x8A93A6), 0);
+  lv_obj_set_style_pad_left(lab.bar_stats, 2, 0);
+  lv_label_set_text(lab.bar_stats, "");
+}
+
+void setChecked(lv_obj_t* obj, bool on) {
+  if (on) lv_obj_add_state(obj, LV_STATE_CHECKED);
+  else lv_obj_remove_state(obj, LV_STATE_CHECKED);
+}
+
+// The buttons show the state, whichever way it changed.
+void syncBar(Lab& lab, bool autocycle) {
+  const uint32_t n = lv_obj_get_child_count(lab.bar_screens);
+  for (uint32_t i = 0; i < n; ++i) setChecked(lv_obj_get_child(lab.bar_screens, i), static_cast<int>(i) == lab.current);
+  if (lab.current < static_cast<int>(n)) lv_obj_scroll_to_view(lv_obj_get_child(lab.bar_screens, lab.current), LV_ANIM_OFF);
+  for (int i = 0; i < 4; ++i) setChecked(lab.bar_phase[i], autocycle ? i == 0 : i == lab.phase + 1);
+  setChecked(lab.bar_builtin, lab.show_builtin);
+  if (lab.builtin_style >= 0 && !lab.builtin_only) lv_obj_remove_state(lab.bar_builtin, LV_STATE_DISABLED);
+  else lv_obj_add_state(lab.bar_builtin, LV_STATE_DISABLED);
+  lv_label_set_text(lv_obj_get_child(lab.bar_voice, 0), lab.simulate ? "Voice: simulated" : "Voice: hold mouse");
+  lv_label_set_text_fmt(lab.bar_size, "%dx%d", lab.w, lab.h);
+}
+#endif
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -522,21 +757,37 @@ int main(int argc, char** argv) {
     return status;
   }
   lab.path = lab.paths[0];
+#if defined(LAB_NO_SDL)
   const bool ok = loadScreen(lab);
+#endif
 #if defined(LAB_NO_SDL)
   fprintf(stderr, "Built without SDL2: use --png=DIR\n");
   return ok ? 0 : 1;
 #else
-  (void)ok;
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     fprintf(stderr, "SDL: %s\n", SDL_GetError());
     return 1;
   }
-  SDL_Window* window = SDL_CreateWindow("Assist Screen Lab", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, lab.w,
-                                        lab.h, SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
+  buildEntries(lab);
+  // Open on the first screen given (or the first file).
+  int first = 0;
+  for (size_t i = 0; i < lab.entries.size(); ++i) {
+    if (lab.entries[i].path == lab.paths[0]) first = static_cast<int>(i);
+  }
+  loadEntry(lab, first);
+  buildBar(lab);
+  SDL_Window* window = SDL_CreateWindow("Assist Screen Lab", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                        lab.bar_w, lab.h + kBarH, SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
   SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0);
-  SDL_Texture* texture =
-      SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, lab.w, lab.h);
+  auto makeTexture = [&]() {
+    SDL_Texture* t =
+        SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, lab.bar_w, lab.h + kBarH);
+    // Beside a narrow screen: the bar's colour.
+    std::vector<uint32_t> blank(static_cast<size_t>(lab.bar_w) * (lab.h + kBarH), kBarBg);
+    SDL_UpdateTexture(t, nullptr, blank.data(), lab.bar_w * 4);
+    return t;
+  };
+  SDL_Texture* texture = makeTexture();
   bool running = true, autocycle = true;
   int size_index = 0;
   for (int i = 0; i < 7; ++i) {
@@ -547,14 +798,15 @@ int main(int argc, char** argv) {
   auto announce = [&]() {
     char text[96];
     const assist_screen::Info& in = assist_screen::info(lab.screen);
-    snprintf(text, sizeof(text), "%s  %d/%d", lab.loaded ? in.name : "(error)", lab.current + 1,
-             static_cast<int>(lab.paths.size()));
+    snprintf(text, sizeof(text), "%s  %d/%d",
+             lab.builtin_only ? lab.entries[lab.current].name.c_str() : (lab.loaded ? in.name : "(error)"),
+             lab.current + 1, static_cast<int>(lab.entries.size()));
     lv_label_set_text(lab.name, text);
     lv_obj_remove_flag(lab.name, LV_OBJ_FLAG_HIDDEN);
     name_until = SDL_GetTicks() + 2500;
     last_title = 0;
   };
-  if (lab.paths.size() > 1) announce();
+  syncBar(lab, autocycle);
   double ms_sum = 0;
   uint64_t px_sum = 0;
   int frames = 0;
@@ -565,57 +817,82 @@ int main(int argc, char** argv) {
       if (ev.type == SDL_QUIT) running = false;
       if (ev.type == SDL_KEYDOWN) {
         const SDL_Keycode k = ev.key.keysym.sym;
+        const int n = static_cast<int>(lab.entries.size());
         if (k == SDLK_ESCAPE) running = false;
-        if (k >= SDLK_1 && k <= SDLK_3) {
-          autocycle = false;
-          setPhase(lab, k - SDLK_1);
-        }
-        if (k == SDLK_a) {
-          autocycle = true;
-          cycle_start = lab.now;
-          setPhase(lab, 0);
-          restart(lab);
-        }
+        if (k >= SDLK_1 && k <= SDLK_3) lab.want_phase = k - SDLK_1;
+        if (k == SDLK_a) lab.want_phase = 3;
         const bool back = k == SDLK_LEFT || (k == SDLK_TAB && (ev.key.keysym.mod & KMOD_SHIFT));
-        if ((back || k == SDLK_RIGHT || k == SDLK_TAB) && lab.paths.size() > 1) {
-          const int n = static_cast<int>(lab.paths.size());
-          lab.current = (lab.current + (back ? n - 1 : 1)) % n;
-          lab.path = lab.paths[lab.current];
-          const bool was_builtin = lab.show_builtin;
-          loadScreen(lab);
-          // Keep comparing when the next screen has a built-in style too.
-          showBuiltin(lab, was_builtin && lab.builtin_style >= 0);
-          lv_obj_invalidate(lv_screen_active());
-          announce();
-        }
-        if (k == SDLK_v) lab.simulate = !lab.simulate;
-        if (k == SDLK_b) showBuiltin(lab, !lab.show_builtin);
-        if (k == SDLK_r) loadScreen(lab);
+        if (back || k == SDLK_RIGHT || k == SDLK_TAB) lab.want_screen = (lab.current + (back ? n - 1 : 1)) % n;
+        if (k == SDLK_v) lab.want_voice = true;
+        if (k == SDLK_b) lab.want_builtin = true;
+        if (k == SDLK_r && !lab.builtin_only) loadScreen(lab);
         if (k == SDLK_s) {
           char file[256];
           snprintf(file, sizeof(file), "lab-shot-%u.png", ++shot_no);
           writePng(file, lab.w, lab.h, lab.fb.data());
           printf("Saved %s\n", file);
         }
-        if (k == SDLK_LEFTBRACKET || k == SDLK_RIGHTBRACKET) {
-          size_index = (size_index + (k == SDLK_RIGHTBRACKET ? 1 : 6)) % 7;
-          setSize(lab, kSizes[size_index][0], kSizes[size_index][1]);
-          SDL_SetWindowSize(window, lab.w, lab.h);
-          SDL_DestroyTexture(texture);
-          texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, lab.w, lab.h);
-        }
+        if (k == SDLK_LEFTBRACKET || k == SDLK_RIGHTBRACKET) lab.want_size_step = k == SDLK_RIGHTBRACKET ? 1 : -1;
       }
     }
-    int mx, my;
-    const uint32_t buttons = SDL_GetMouseState(&mx, &my);
-    lab.manual_level = (buttons & SDL_BUTTON_LMASK) ? 1.0f - static_cast<float>(my) / lab.h : 0.0f;
+    // Keys and buttons ask; this carries it out.
+    bool changed = false;
+    if (lab.want_screen >= 0) {
+      if (lab.want_screen != lab.current) {
+        loadEntry(lab, lab.want_screen);
+        announce();
+      }
+      lab.want_screen = -1;
+      changed = true;
+    }
+    if (lab.want_phase >= 0) {
+      if (lab.want_phase == 3) {
+        autocycle = true;
+        cycle_start = lab.now;
+        setPhase(lab, 0);
+        restart(lab);
+      } else {
+        autocycle = false;
+        setPhase(lab, lab.want_phase);
+      }
+      lab.want_phase = -1;
+      changed = true;
+    }
+    if (lab.want_builtin) {
+      if (!lab.builtin_only) showBuiltin(lab, !lab.show_builtin);
+      lab.want_builtin = false;
+      changed = true;
+    }
+    if (lab.want_voice) {
+      lab.simulate = !lab.simulate;
+      lab.want_voice = false;
+      changed = true;
+    }
+    if (lab.want_size_step) {
+      size_index = (size_index + (lab.want_size_step > 0 ? 1 : 6)) % 7;
+      lab.want_size_step = 0;
+      setSize(lab, kSizes[size_index][0], kSizes[size_index][1]);
+      setBarSize(lab);
+      SDL_SetWindowSize(window, lab.bar_w, lab.h + kBarH);
+      SDL_DestroyTexture(texture);
+      texture = makeTexture();
+      changed = true;
+    }
+    if (changed) syncBar(lab, autocycle);
+    const uint32_t buttons = SDL_GetMouseState(&lab.mouse_x, &lab.mouse_y);
+    lab.mouse_down = (buttons & SDL_BUTTON_LMASK) != 0;
+    // Holding the mouse on the screen (not the bar) is the voice when not simulated.
+    lab.manual_level = lab.mouse_down && lab.mouse_y < lab.h ? 1.0f - static_cast<float>(lab.mouse_y) / lab.h : 0.0f;
     // Auto cycle: 5 s listening, 3 s thinking, 4 s answering.
     if (autocycle) {
       const uint32_t at = (lab.now - cycle_start) % 12000;
       setPhase(lab, at < 5000 ? 0 : (at < 8000 ? 1 : 2));
     }
     // Reload when the file changes on disk.
-    if (lab.now % 495 == 0 && mtimeOf(lab.path) != lab.mtime) loadScreen(lab);
+    if (!lab.builtin_only && lab.now % 495 == 0 && mtimeOf(lab.path) != lab.mtime) {
+      loadScreen(lab);
+      syncBar(lab, autocycle);
+    }
     if (name_until && SDL_GetTicks() > name_until) {
       lv_obj_add_flag(lab.name, LV_OBJ_FLAG_HIDDEN);
       name_until = 0;
@@ -624,7 +901,9 @@ int main(int argc, char** argv) {
     ms_sum += step(lab);
     px_sum += lab.redrawn_px;
     ++frames;
-    SDL_UpdateTexture(texture, nullptr, lab.fb.data(), lab.w * 4);
+    const SDL_Rect screen_rect{(lab.bar_w - lab.w) / 2, 0, lab.w, lab.h}, bar_rect{0, lab.h, lab.bar_w, kBarH};
+    SDL_UpdateTexture(texture, &screen_rect, lab.fb.data(), lab.w * 4);
+    SDL_UpdateTexture(texture, &bar_rect, lab.bar_fb.data(), lab.bar_w * 4);
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, texture, nullptr, nullptr);
     SDL_RenderPresent(renderer);
@@ -632,13 +911,20 @@ int main(int argc, char** argv) {
       last_title = SDL_GetTicks();
       char title[256];
       const assist_screen::Info& in = assist_screen::info(lab.screen);
-      snprintf(title, sizeof(title), "%s%s %d/%d %dx%d | %s | %s | %lu shapes max, %lu steps max | %.0f px/frame | %.2f ms/frame here",
-               lab.show_builtin ? "BUILT-IN " : "", lab.loaded ? in.name : "(error)", lab.current + 1,
-               static_cast<int>(lab.paths.size()), lab.w, lab.h,
-               kPhaseText[lab.phase], lab.simulate ? "simulated voice" : "mouse voice",
-               static_cast<unsigned long>(in.frame_cmds), static_cast<unsigned long>(in.frame_ops),
-               static_cast<double>(px_sum) / frames, ms_sum / frames);
+      snprintf(title, sizeof(title), "Assist Screen Lab | %s", lab.entries[lab.current].name.c_str());
       SDL_SetWindowTitle(window, title);
+      // snprintf: LVGL's own printf has no %f.
+      char stats[128];
+      if (lab.show_builtin) {
+        snprintf(stats, sizeof(stats), "%s: %.0fk px/frame  %.2f ms here",
+                 lab.builtin_only ? "Built-in style, no screen file yet" : "Built-in style", static_cast<double>(px_sum) / frames / 1000.0,
+                 ms_sum / frames);
+      } else {
+        snprintf(stats, sizeof(stats), "Screen file: %lu shapes, %lu steps max  %.0fk px/frame  %.2f ms here",
+                 static_cast<unsigned long>(in.frame_cmds), static_cast<unsigned long>(in.frame_ops),
+                 static_cast<double>(px_sum) / frames / 1000.0, ms_sum / frames);
+      }
+      lv_label_set_text(lab.bar_stats, stats);
       ms_sum = 0;
       px_sum = 0;
       frames = 0;
