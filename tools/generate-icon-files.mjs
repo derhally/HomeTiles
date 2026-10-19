@@ -358,7 +358,8 @@ export function firmwareIconNames(names = iconNameTable()) {
   const files = [
     path.join(root, 'HomeTiles.ino'),
     ...sourceFiles(path.join(root, 'src'), ['.cpp', '.h', '.c', '.ino', '.js'],
-      ['src/fonts', 'src/web/generated']),
+      // Assist screen engine keywords and screen data ("disc", "alpha") are no icon names.
+      ['src/fonts', 'src/web/generated', 'src/ui/assist/assist_screen.cpp', 'src/ui/assist/assist_screen_files.h']),
   ];
   const found = new Set();
   const patterns = new Set();
