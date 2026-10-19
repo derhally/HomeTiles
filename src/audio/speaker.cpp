@@ -1928,12 +1928,10 @@ void publishAssistStatus() {
   fields.available_screen_styles = g_screen_styles.load();
   fields.file_styles = assist_screen_store::ids();
   fields.file_style_count = assist_screen_store::count();
-  // A chosen file the Bridge no longer offers is not reported as the style.
-  const char* chosen = assist_screen_store::chosen();
-  if (chosen && assist_screen_store::indexOf(chosen) >= 0) {
-    fields.chosen_file = chosen;
-    fields.screen_error = assist_screen_store::error();
-  }
+  // The chosen file is the style even while the Bridge does not offer it
+  // (before its catalog arrives after a restart): the panel shows its kept copy.
+  fields.chosen_file = assist_screen_store::chosen();
+  fields.screen_error = assist_screen_store::error();
   char id[assist::kMaxRequestIdLength + 1] = {};
 #if defined(HOMETILES_SPEAKER)
   portENTER_CRITICAL(&g_id_mux);
@@ -2217,12 +2215,12 @@ void handleAssistCommandPayload(const uint8_t* payload, size_t length, bool seal
       }
       return;
     }
-    assist_screen_store::choose(nullptr);
     if (!(g_screen_styles.load() & (1u << command.screen_style))) {
       Serial.printf("%s Assist screen style %s refused: not offered on this panel\n", kLogPrefix,
                     assist::kScreenStyleIds[command.screen_style]);
       return;
     }
+    assist_screen_store::choose(nullptr);
     setAssistScreenStyle(static_cast<AssistScreenStyle>(command.screen_style));
     Serial.printf("%s Assist screen style: %s\n", kLogPrefix,
                   assist::kScreenStyleIds[command.screen_style]);

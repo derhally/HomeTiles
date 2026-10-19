@@ -589,6 +589,7 @@ const requestProgram = String.raw`
 #include "src/audio/assist_request.h"
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 using namespace assist_contract;
@@ -650,10 +651,15 @@ int main() {
   assert(parse("{\"v\":1,\"op\":\"mic\",\"enabled\":1}").status == CommandStatus::InvalidValue);
   assert(parse("{\"v\":1,\"op\":\"mic\",\"enabled\":\"false\"}").status ==
          CommandStatus::InvalidValue);
-  // Assist screen style: a known id only.
+  // Assist screen style: a built-in id by index, any other valid id names a screen file.
   c = parse("{\"v\":1,\"op\":\"screen_style\",\"style\":\"reactor\"}");
   assert(c.kind == CommandKind::ScreenStyle && c.status == CommandStatus::Ok && c.screen_style == 1);
-  assert(parse("{\"v\":1,\"op\":\"screen_style\",\"style\":\"sphere\"}").status ==
+  c = parse("{\"v\":1,\"op\":\"screen_style\",\"style\":\"sphere\"}");
+  assert(c.kind == CommandKind::ScreenStyle && c.status == CommandStatus::Ok &&
+         c.screen_style == assist_contract::kFileScreenStyle && strcmp(c.screen_file, "sphere") == 0);
+  assert(parse("{\"v\":1,\"op\":\"screen_style\",\"style\":\"Sphere!\"}").status ==
+         CommandStatus::InvalidValue);
+  assert(parse("{\"v\":1,\"op\":\"screen_style\",\"style\":\"\"}").status ==
          CommandStatus::InvalidValue);
   assert(parse("{\"v\":1,\"op\":\"screen_style\",\"style\":1}").status ==
          CommandStatus::InvalidValue);

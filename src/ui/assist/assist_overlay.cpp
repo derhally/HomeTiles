@@ -144,6 +144,19 @@ bool ensureScreenMemory() {
   return true;
 }
 
+// A loaded screen asks only for features this panel has (its "needs",
+// assist_style_catalog.h); otherwise why goes to reason.
+bool panelMeetsNeeds(char* reason, size_t size) {
+  const uint8_t needs = assist_screen::info(g_screen).needs;
+  const uint8_t have = assist_style_catalog::features(g_offer_w, g_offer_h, g_tear_free);
+  const uint8_t missing = needs & ~have;
+  if (!missing) return true;
+  snprintf(reason, size, "needs %s%s%s", (missing & assist_screen::kNeedWide) ? "wide" : "",
+           (missing & assist_screen::kNeedWide) && (missing & assist_screen::kNeedTearFree) ? " and " : "",
+           (missing & assist_screen::kNeedTearFree) ? "tear_free" : "");
+  return false;
+}
+
 // The screen file chosen in Home Assistant (assist_screen_store.h); false
 // when none is chosen, none was received yet, or it was refused (the reason
 // goes to the Assist status).
@@ -157,7 +170,8 @@ bool loadChosenFile() {
   }
   char error[160];
   const uint32_t started = millis();
-  if (!assist_screen::load(g_screen, g_file_text, length, error, sizeof(error))) {
+  if (!assist_screen::load(g_screen, g_file_text, length, error, sizeof(error)) ||
+      !panelMeetsNeeds(error, sizeof(error))) {
     Serial.printf("[Assist] Screen file %s (Home Assistant) refused, using the built-in style: %s\n", id, error);
     assist_screen_store::setError(error);
     return false;
@@ -210,6 +224,16 @@ bool loadScreenFile(AssistScreenStyle style) {
     if (file) file.close();
     if (!text) source = "built-in";
   }
+  char error[160];
+  uint32_t started = millis();
+  // A refused override (bad file, or needs this panel lacks) falls back to
+  // the built-in copy.
+  if (text && !(assist_screen::load(g_screen, text, length, error, sizeof(error)) &&
+                panelMeetsNeeds(error, sizeof(error)))) {
+    Serial.printf("[Assist] Screen file %s (%s) refused: %s\n", id, source, error);
+    text = nullptr;
+    source = "built-in";
+  }
   if (!text) {
     for (size_t i = 0; i < assist_screen_files::kFileCount; ++i) {
       if (!strcmp(assist_screen_files::kFiles[i].id, id)) {
@@ -217,13 +241,12 @@ bool loadScreenFile(AssistScreenStyle style) {
         length = assist_screen_files::kFiles[i].length;
       }
     }
-  }
-  if (!text) return false;
-  char error[160];
-  const uint32_t started = millis();
-  if (!assist_screen::load(g_screen, text, length, error, sizeof(error))) {
-    Serial.printf("[Assist] Screen file %s (%s) refused, using the built-in style: %s\n", id, source, error);
-    return false;
+    if (!text) return false;
+    started = millis();
+    if (!assist_screen::load(g_screen, text, length, error, sizeof(error))) {
+      Serial.printf("[Assist] Screen file %s (%s) refused, using the built-in style: %s\n", id, source, error);
+      return false;
+    }
   }
   const assist_screen::Info& in = assist_screen::info(g_screen);
   Serial.printf("[Assist] Screen file %s (%s) loaded in %lu ms: %lu shapes, %lu steps per frame at most\n", id, source,

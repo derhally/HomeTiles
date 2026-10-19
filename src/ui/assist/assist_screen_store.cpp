@@ -175,6 +175,14 @@ bool choose(const char* id) {
   if (id && indexOf(id) < 0) return false;
   const char* next = id ? id : "";
   if (strcmp(next, g_chosen) == 0) return true;
+  // Only the chosen file is kept: the previous one goes.
+  if (g_chosen[0] && Device::storageReady()) {
+    char path[64];
+    keptPath(g_chosen, path, sizeof(path));
+    Device::ScopedStorageWrite storage_write;
+    fs::FS& store = Device::storageFS();
+    if (store.exists(path)) store.remove(path);
+  }
   memcpy(g_chosen, next, strlen(next) + 1);
   g_hash = 0;
   g_error[0] = '\0';

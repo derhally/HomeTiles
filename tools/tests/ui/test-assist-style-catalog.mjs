@@ -78,10 +78,11 @@ int main() {
   // Landscape without the tear-free path (8-inch, 10.1, 4.3, Tab5 and V2 landscape): no Light Disc.
   assert(ids(offered(1280, 800, false)) == "atom,reactor,dot_halo,voice_pills,sentinel,phosphor,lens,iris");
   assert(ids(offered(800, 480, false)) == "atom,reactor,dot_halo,voice_pills,sentinel,phosphor,lens,iris");
-  // Square (4B) and upright screens: no Sentinel, Phosphor or Light Disc.
-  assert(ids(offered(720, 720, false)) == "atom,reactor,dot_halo,voice_pills,lens,iris");
-  assert(ids(offered(480, 800, false)) == "atom,reactor,dot_halo,voice_pills,lens,iris");
-  assert(ids(offered(720, 1280, false)) == "atom,reactor,dot_halo,voice_pills,lens,iris");
+  // Square (4B) and upright screens: no Light Disc (Sentinel and Phosphor
+  // have square and tall layouts in their files).
+  assert(ids(offered(720, 720, false)) == "atom,reactor,dot_halo,voice_pills,sentinel,phosphor,lens,iris");
+  assert(ids(offered(480, 800, false)) == "atom,reactor,dot_halo,voice_pills,sentinel,phosphor,lens,iris");
+  assert(ids(offered(720, 1280, false)) == "atom,reactor,dot_halo,voice_pills,sentinel,phosphor,lens,iris");
   // A board can take styles off; Atom stays.
   assert(c::available(c::features(1024, 600, true), 0x1FFu) == 1u);
   assert(ids(c::available(c::features(1024, 600, true), 1u << 5)) ==
@@ -89,12 +90,13 @@ int main() {
 
   // A stored style the panel does not offer shows as the first offered one.
   const uint32_t square = offered(720, 720, false);
-  assert(c::effective(5, square) == 0);
+  assert(c::effective(6, square) == 0);
+  assert(c::effective(5, square) == 5);
   assert(c::effective(7, square) == 7);
   assert(c::effective(200, square) == 0);
-  // Settings positions: lens is the fifth offered on a square screen.
-  assert(c::count(square) == 6);
-  assert(c::styleAt(4, square) == 7 && c::positionOf(7, square) == 4);
+  // Settings positions: lens is the seventh offered on a square screen.
+  assert(c::count(square) == 8);
+  assert(c::styleAt(6, square) == 7 && c::positionOf(7, square) == 6);
   for (uint8_t p = 0; p < c::count(square); ++p) assert(c::positionOf(c::styleAt(p, square), square) == p);
 
   // The status lists only the offered styles (the Bridge's select options).
@@ -104,7 +106,18 @@ int main() {
   fields.available_screen_styles = square;
   char json[512];
   assert(assist_contract::buildStatusJson(json, sizeof(json), fields) > 0);
-  assert(strstr(json, "\"screen_style\":\"lens\",\"screen_styles\":[\"atom\",\"reactor\",\"dot_halo\",\"voice_pills\",\"lens\",\"iris\"]"));
+  assert(strstr(json, "\"screen_style\":\"lens\",\"screen_styles\":[\"atom\",\"reactor\",\"dot_halo\",\"voice_pills\",\"sentinel\",\"phosphor\",\"lens\",\"iris\"]"));
+  // A chosen screen file is the style and an option even before the Bridge
+  // offers it (its catalog arrives after the status at boot), and listed once.
+  fields.chosen_file = "robot";
+  assert(assist_contract::buildStatusJson(json, sizeof(json), fields) > 0);
+  assert(strstr(json, "\"screen_style\":\"robot\",\"screen_styles\":[\"atom\""));
+  assert(strstr(json, "\"lens\",\"iris\",\"robot\"]"));
+  const char* offered_files[] = {"robot", "retro_robot"};
+  fields.file_styles = offered_files;
+  fields.file_style_count = 2;
+  assert(assist_contract::buildStatusJson(json, sizeof(json), fields) > 0);
+  assert(strstr(json, "\"iris\",\"robot\",\"retro_robot\"]"));
   // Every style by default (older callers).
   assist_contract::StatusFields all;
   all.screen_style_state = true;

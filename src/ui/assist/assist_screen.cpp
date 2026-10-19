@@ -1058,15 +1058,23 @@ bool compileTemplate(Screen* s, int node, uint16_t* first, uint16_t* count) {
     if (*p == '{') {
       const char* close = strchr(p, '}');
       if (!close) return fail(s, n.line, "'{' without '}' in \"%s\"", text);
-      // The format follows the last ':' that is not inside a ?: (none can be
-      // after the expression's own parts, so take the last ':' if the text
-      // after it looks like a format).
+      // The format follows the last ':' when it does not belong to a ?:
+      // ("{sel ? y : x}" has no format): every '?' before it already has
+      // its ':'.
       const char* colon = nullptr;
       for (const char* q = close - 1; q > p; --q) {
         if (*q == ':') {
           colon = q;
           break;
         }
+      }
+      if (colon) {
+        int open_ternaries = 0;
+        for (const char* q = p + 1; q < colon; ++q) {
+          if (*q == '?') ++open_ternaries;
+          if (*q == ':') --open_ternaries;
+        }
+        if (open_ternaries > 0) colon = nullptr;
       }
       const char* expr_end = close;
       if (colon) {
