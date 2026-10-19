@@ -9,6 +9,8 @@ The lab runs that engine on Linux, WSL or Windows with the firmware's own LVGL
 version, fonts and frame loop. It can also show the built-in style of the same
 id beside the file, for comparison.
 
+How it works, why, and the plan for the firmware: [docs-dev/assist-screens.md](../../docs-dev/assist-screens.md).
+
 Nothing here is in the firmware yet. The engine is written to move into
 `src/ui/assist/` unchanged: it has no Arduino, no allocation after `init()`,
 and LVGL draw calls only.
