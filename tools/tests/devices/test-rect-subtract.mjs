@@ -16,18 +16,13 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 // --- wiring ---
 const presenter = read('src/devices/common/p4_dsi_camera_presenter.cpp');
 assert.match(presenter, /#include "src\/devices\/common\/rect_subtract\.h"/);
-assert.match(presenter, /ui_refresh_areas_ \? ui_refresh_areas_\(cover_boxes, kMaxCovers\) : 0/);
-assert.match(presenter, /rect_subtract::outside\(/);
-const header = read('src/devices/common/p4_dsi_camera_presenter.h');
-assert.match(header, /void setUiRefreshAreas\(UiRefreshAreasFn fn\)/);
-const display = read('src/core/display/display_manager.cpp');
-assert.match(display, /uint8_t DisplayManager::refreshAreas\(int32_t \(\*out\)\[4\], uint8_t max\)/);
-assert.match(display, /lv_refr_get_disp_refreshing\(\)/);
-assert.match(display, /inv_area_joined\[i\]/);
-const device = read('src/devices/waveshare_touch_lcd_7b/device_waveshare_touch_lcd_7b.cpp');
-assert.match(device, /g_camera_presenter\.setUiRefreshAreas\(&refresh_areas_on_panel\);/);
-// The 180 degree rotation mirrors the bands, so the areas are mirrored too.
-assert.match(device, /uint8_t refresh_areas_on_panel\(int32_t \(\*out\)\[4\], uint8_t max\) \{[\s\S]*?if \(!\(g_rotation & 0x02\)\) return n;[\s\S]*?out\[i\]\[0\] = w - 1 - x2;/);
+// Before the swap, the shown frame's rectangles minus this frame's writes go
+// into the hidden framebuffer; the camera and flip-off paths copy in full.
+const commit = presenter.slice(presenter.indexOf('void Presenter::commitUi() {'));
+assert.match(commit, /rect_subtract::outside\(rect_subtract::Box\{r\.x1, r\.y1, r\.x2, r\.y2\},\s*written, ui_frame_count_, pieces, 32\)/);
+assert.ok(commit.indexOf('rect_subtract::outside(') < commit.indexOf('esp_lcd_panel_draw_bitmap(panel_, 0, 0, 1, 1, hidden)'), 'the copy precedes the swap');
+assert.equal((presenter.match(/finishUiSwap\(\);\s*syncHidden\(\);/g) || []).length, 3, 'begin, full frames and flip-off sync in full');
+assert.ok(!/ui_refresh_areas_/.test(presenter), 'no LVGL refresh areas needed');
 
 // --- the subtraction itself ---
 const cxx = [process.env.CXX, 'clang++', 'g++'].filter(Boolean).find(c => spawnSync(c, ['--version']).status === 0);

@@ -103,9 +103,10 @@ class Presenter {
   // Optional tear-free UI path, off unless a device enables it (Waveshare
   // 7B). While the camera path is idle, LVGL bands go into the hidden
   // framebuffer and commitUi() shows the finished frame at the next panel
-  // refresh, so the scanned picture never mixes two frames. The hidden
-  // framebuffer is then brought up to date with the changed rectangles only.
-  // During a camera preview the existing mirror path above applies.
+  // refresh, so the scanned picture never mixes two frames. Before each swap
+  // the hidden framebuffer is brought up to date with what the shown frame
+  // changed and this frame did not redraw. During a camera preview the
+  // existing mirror path above applies.
   void setUiFlip(bool enabled);
   // Framebuffer for the next UI write: the hidden one, synchronized with the
   // shown one, while the flip path is usable; otherwise the active one.
@@ -115,12 +116,6 @@ class Presenter {
   // Something wrote the shown framebuffer directly (a fill or clear); the
   // hidden one is copied in full before the next UI write.
   void invalidateUiBack() { ui_back_valid_ = false; }
-  // The areas the LVGL refresh now running draws, as x1, y1, x2, y2 boxes
-  // (inclusive), up to max; 0 outside a refresh or when they do not fit. The
-  // hidden framebuffer then skips the copy of what this refresh overwrites
-  // anyway (an animation redraws the same region every frame).
-  using UiRefreshAreasFn = uint8_t (*)(int32_t (*out)[4], uint8_t max);
-  void setUiRefreshAreas(UiRefreshAreasFn fn) { ui_refresh_areas_ = fn; }
 
  private:
   // covers_panel: the frame about to be presented fills the whole panel, so
@@ -138,7 +133,11 @@ class Presenter {
                       int32_t w, int32_t h);
   bool copyRect(uint16_t* to, const uint16_t* from, const Rect& rect) const;
   bool copyFullFrame(uint16_t* to, uint16_t* from) const;
+  // Waits until the panel scans the framebuffer commitUi() showed.
   void finishUiSwap();
+  // Copies the last frame's rectangles into the hidden framebuffer in full
+  // (the camera and the flip-off paths, which need the two equal).
+  void syncHidden();
   bool syncUiToInactive();
   bool faultCooldownActive();
   void noteFault(const PpaRuntime& runtime);
@@ -189,15 +188,18 @@ class Presenter {
   // The hidden framebuffer equals the shown one outside ui_frame_rects_.
   bool ui_back_valid_ = false;
   // commitUi() swapped; the panel may still scan the old (now hidden)
-  // framebuffer until the next refresh, and ui_sync_rects_ still have to be
-  // copied into it.
+  // framebuffer until the next refresh.
   bool ui_swap_pending_ = false;
   uint32_t ui_timeout_log_ms_ = 0;
+  // What LVGL wrote in the frame being rendered, and what the shown frame
+  // changed: the hidden framebuffer still lacks the latter, except where the
+  // frame being rendered wrote the same pixels again. The next commitUi()
+  // copies only the rest over before the swap (an animation redraws the same
+  // region every frame, so nearly nothing is copied).
   Rect ui_frame_rects_[kMaxUiRects] = {};
   uint8_t ui_frame_count_ = 0;
   Rect ui_sync_rects_[kMaxUiRects] = {};
   uint8_t ui_sync_count_ = 0;
-  UiRefreshAreasFn ui_refresh_areas_ = nullptr;
 };
 
 }  // namespace p4_dsi_camera_presenter
