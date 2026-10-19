@@ -275,7 +275,7 @@ const probe = spawnSync(host.cxx, ['-fsanitize=address,undefined,float-cast-over
   {input: 'int main() { return 0; }', encoding: 'utf8'});
 const sanitize = probe.status === 0 ? ['-fsanitize=address,undefined,float-cast-overflow', '-fno-sanitize-recover=all', '-fno-omit-frame-pointer'] : [];
 const build = spawnSync(host.cxx, [...host.flags, '-std=c++17', '-O1', ...sanitize, '-I', lab, source,
-  '-DHOMETILES_ASSIST_DATA_SCREENS=1', path.join(root, 'src/ui/assist/assist_screen.cpp'), host.archive, '-lm', '-o', binary], {encoding: 'utf8'});
+  '-DHOMETILES_ASSIST_DATA_SCREENS=1', path.join(root, 'src/ui/assist/assist_screen.cpp'), path.join(root, 'src/ui/assist/assist_raster.cpp'), host.archive, '-lm', '-o', binary], {encoding: 'utf8'});
 assert.equal(build.status, 0, build.stdout + build.stderr);
 // One file per built-in style, in speaker::AssistScreenStyle order.
 const ids = ['atom', 'reactor', 'dot_halo', 'voice_pills', 'sentinel', 'phosphor', 'light_disc', 'lens', 'iris'];

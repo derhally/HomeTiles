@@ -48,7 +48,7 @@ if (sdl.status !== 0) console.log('SDL2 not found (pkg-config sdl2): building th
 const binary = path.join(out, process.platform === 'win32' ? 'lab.exe' : 'lab');
 const args = [...host.flags, '-std=c++17', '-O2', '-Wall', '-Wno-unused-function', '-Wno-missing-field-initializers', '-Wno-deprecated-declarations',
   '-I', stubs, '-I', here, '-DHOMETILES_ASSIST_DATA_SCREENS=1', `-DLAB_SCREENS_DIR="${path.join(here, 'screens').replace(/\\/g, '/')}"`,
-  path.join(here, 'lab.cpp'), path.join(root, 'src/ui/assist/assist_screen.cpp'), host.archive,
+  path.join(here, 'lab.cpp'), path.join(root, 'src/ui/assist/assist_screen.cpp'), path.join(root, 'src/ui/assist/assist_raster.cpp'), host.archive,
   ...sdlFlags, '-lm', '-o', binary];
 const build = spawnSync(host.cxx, args, {encoding: 'utf8'});
 if (build.status !== 0) {
