@@ -9,7 +9,8 @@
 //            lens iris (default: all)
 //   --frames also prints the host's draw time per frame of each phase, as a
 //            rough cost comparison between the styles
-//   --size   the screen, default 1024x600
+//   --size   the screen, default 1024x600; every style renders, also one the
+//            panel would not offer at that size (assist_style_catalog.h)
 //
 // Output: build/assist-preview/<style>-<phase>.png
 // Needs LVGL 9.6.0 and a host compiler (tools/lib/lvgl-host.mjs); prints SKIP
@@ -98,7 +99,7 @@ int main(int argc, char** argv) {
   lv_timer_handler();
 
   // The overlay's frame loop: 33 ms frames, eased level, mode and pop-in.
-  const float base_r = (kW < kH ? kW : kH) * 0.17f;
+  const float base_r = assist_styles::baseRadius(static_cast<AssistScreenStyle>(style), kW, kH);
   float level = 0, mode = 0, appear = 0, sim_target = 0, last_t = 0;
   uint32_t sim_next = 0, now = 0;
   const char* texts[3] = {"Listening…", "Thinking…", "Answering…"};

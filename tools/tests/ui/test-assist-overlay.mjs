@@ -43,7 +43,9 @@ for (const f of fields) assert.match(overlay, new RegExp(`tr\\(\\)\\.${f}`));
 // pick and previews; the page shows them as a dropdown row and a play row.
 const settings = read('src/ui/tabs/settings/tab_settings.cpp');
 for (const f of styleFields.slice(2, 11)) assert.match(settings, new RegExp(`return s\\.${f};`));
-assert.match(settings, /speaker::setAssistScreenStyle\(static_cast<speaker::AssistScreenStyle>\(index\)\);/);
+// The list holds only the styles this panel offers; an index is a position in it.
+assert.match(settings, /assist_style_catalog::styleAt\(index, offered\)\)\);/);
+assert.match(settings, /return assist_style_catalog::count\(speaker::availableAssistScreenStyles\(\)\);/);
 assert.match(settings, /void assist_preview\(\) \{ assist_overlay::preview\(\); \}/);
 const page = read('src/ui/tabs/settings/settings_screen.cpp');
 assert.match(page, /settings_parts::section\(page, s\.settings_assist, false\);/);

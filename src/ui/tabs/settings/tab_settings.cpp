@@ -38,6 +38,7 @@
 #include "src/ui/shared/theme_schedule.h"
 #include "src/audio/speaker.h"
 #include "src/ui/assist/assist_overlay.h"
+#include "src/ui/assist/assist_style_catalog.h"
 
 // The Settings tab: what its pages show and do (settings_model.h, drawn by
 // settings_screen.cpp) on the real configuration, and the sketch's calls into
@@ -373,11 +374,16 @@ void mic_gain_changed(int step, bool final) {
   if (final) speaker::setMicGainStep(static_cast<uint8_t>(step < 0 ? 0 : step));
 }
 
-uint8_t assist_style_count() { return speaker::kAssistScreenStyleCount; }
+// The list shows only the styles this panel offers (assist_style_catalog.h);
+// an index is a position in that list.
+uint8_t assist_style_count() {
+  return assist_style_catalog::count(speaker::availableAssistScreenStyles());
+}
 
 const char* assist_style_name(uint8_t index) {
   const i18n::Strings& s = tr();
-  switch (static_cast<speaker::AssistScreenStyle>(index)) {
+  const uint8_t style = assist_style_catalog::styleAt(index, speaker::availableAssistScreenStyles());
+  switch (static_cast<speaker::AssistScreenStyle>(style)) {
     case speaker::AssistScreenStyle::Atom:
       return s.assist_style_atom;
     case speaker::AssistScreenStyle::Reactor:
@@ -400,11 +406,16 @@ const char* assist_style_name(uint8_t index) {
   return "";
 }
 
-uint8_t assist_style() { return static_cast<uint8_t>(speaker::assistScreenStyle()); }
+uint8_t assist_style() {
+  return assist_style_catalog::positionOf(static_cast<uint8_t>(speaker::assistScreenStyle()),
+                                          speaker::availableAssistScreenStyles());
+}
 
 void assist_style_selected(uint8_t index) {
-  if (index < speaker::kAssistScreenStyleCount) {
-    speaker::setAssistScreenStyle(static_cast<speaker::AssistScreenStyle>(index));
+  const uint32_t offered = speaker::availableAssistScreenStyles();
+  if (index < assist_style_catalog::count(offered)) {
+    speaker::setAssistScreenStyle(
+        static_cast<speaker::AssistScreenStyle>(assist_style_catalog::styleAt(index, offered)));
   }
 }
 

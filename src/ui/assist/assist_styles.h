@@ -8,9 +8,11 @@
 // invalidate only the box that changed. The overlay (assist_overlay.cpp) owns
 // the parent, the timer, the label and the eased animation inputs.
 //
-// Motion stays at about 5 px per 33 ms frame: the 7B scans its DPI frame
-// buffer out while LVGL flushes partial bands, so a faster mover shows a tear
-// line where a band ends.
+// Sizes are fractions of the frame's base radius r (baseRadius(): 102 px at
+// 1024x600). Motion stays at about 5 px per 33 ms frame at that radius: a
+// panel that scans its DPI frame buffer out while LVGL flushes partial bands
+// shows a tear line where a band ends under a faster mover. The overlay slows
+// the clock on larger screens without the tear-free path (kTunedRadius).
 //
 // Loop task (LVGL) only.
 
@@ -29,6 +31,13 @@ struct Frame {
   float w, h;       // the screen's size
   float dt;         // seconds since the last frame (0 on the first)
 };
+
+// The radius the styles were tuned at (1024x600).
+inline constexpr float kTunedRadius = 102.0f;
+
+// The base radius on a w x h screen: 17 % of the shorter side, smaller when
+// the style's widest parts would leave the screen.
+float baseRadius(speaker::AssistScreenStyle style, float w, float h);
 
 // Builds the style's objects in parent (which the overlay cleans first).
 void create(speaker::AssistScreenStyle style, lv_obj_t* parent);

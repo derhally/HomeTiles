@@ -9,7 +9,9 @@
 #include "src/core/display/display_manager.h"
 #include "src/core/i18n/i18n.h"
 #include "src/core/power/power_manager.h"
+#include "src/devices/device.h"
 #include "src/fonts/ui_fonts.h"
+#include "src/ui/assist/assist_style_catalog.h"
 #include "src/ui/assist/assist_styles.h"
 
 namespace assist_overlay {
@@ -49,6 +51,10 @@ float g_mode = 0.0f;    // 0 = listening look, 1 = thinking/answering look
 float g_appear = 0.0f;  // pop-in scale, 0..1
 float g_floor_db = -60.0f;
 float g_last_t = 0.0f;  // the previous frame's t, for the styles' dt
+// The screen size the offered styles were last worked out for.
+int32_t g_offer_w = 0;
+int32_t g_offer_h = 0;
+bool g_tear_free = false;
 // Simulated speech for the preview: syllable bursts with pauses.
 float g_sim_target = 0.0f;
 uint32_t g_sim_next_ms = 0;
@@ -100,7 +106,14 @@ float simulatedLevel() {
 
 void onFrame(lv_timer_t*) {
   if (!g_overlay) return;
-  const float t = static_cast<float>(lv_tick_elaps(g_started_tick)) / 1000.0f;
+  const int32_t w = lv_obj_get_width(g_overlay);
+  const int32_t h = lv_obj_get_height(g_overlay);
+  const float base_r = assist_styles::baseRadius(g_style, static_cast<float>(w), static_cast<float>(h));
+  // Without the tear-free path a larger radius would move faster than the
+  // tuned ~5 px a frame: the clock runs slower instead.
+  const float pace =
+      g_tear_free || base_r <= assist_styles::kTunedRadius ? 1.0f : assist_styles::kTunedRadius / base_r;
+  const float t = static_cast<float>(lv_tick_elaps(g_started_tick)) / 1000.0f * pace;
 
   float target_level = 0.0f;
   if (g_shown == AssistUiPhase::Listening) {
@@ -114,9 +127,6 @@ void onFrame(lv_timer_t*) {
   g_mode += (target_mode - g_mode) * 0.12f;
   g_appear += (1.0f - g_appear) * 0.18f;
 
-  const int32_t w = lv_obj_get_width(g_overlay);
-  const int32_t h = lv_obj_get_height(g_overlay);
-  const float base_r = (w < h ? w : h) * 0.17f;
   assist_styles::Frame frame;
   frame.t = t;
   frame.level = g_level;
@@ -128,7 +138,7 @@ void onFrame(lv_timer_t*) {
   frame.w = static_cast<float>(w);
   frame.h = static_cast<float>(h);
   const float dt = t - g_last_t;
-  frame.dt = dt < 0.0f ? 0.0f : (dt > 0.05f ? 0.05f : dt);
+  frame.dt = dt < 0.0f ? 0.0f : (dt > 0.05f * pace ? 0.05f * pace : dt);
   g_last_t = t;
   assist_styles::frame(g_style, frame);
 
@@ -205,10 +215,31 @@ void hide() {
   Serial.println("[Assist] Screen hidden");
 }
 
+// Works out which styles this panel offers (assist_style_catalog.h) whenever
+// the shown screen's size changes, and hands them to the speaker, which lists
+// them to Settings and the Bridge.
+void offerStyles() {
+  lv_display_t* display = lv_display_get_default();
+  if (!display) return;
+  const int32_t w = lv_display_get_horizontal_resolution(display);
+  const int32_t h = lv_display_get_vertical_resolution(display);
+  if (w == g_offer_w && h == g_offer_h) return;
+  g_offer_w = w;
+  g_offer_h = h;
+  // The tear-free path only runs in the panel's native orientation.
+  g_tear_free = Device::kCapabilities.tear_free_ui && w == Device::kScreenWidth && h == Device::kScreenHeight;
+  const uint32_t offered =
+      assist_style_catalog::available(assist_style_catalog::features(w, h, g_tear_free));
+  speaker::setAvailableAssistScreenStyles(offered);
+  Serial.printf("[Assist] Screen styles offered at %ldx%ld%s: 0x%03lX\n", static_cast<long>(w),
+                static_cast<long>(h), g_tear_free ? " (tear-free)" : "", static_cast<unsigned long>(offered));
+}
+
 }  // namespace
 
 void service() {
   if (!speaker::supported()) return;
+  offerStyles();
   AssistUiPhase phase = speaker::assistUiPhase();
   // A real conversation always wins over a preview.
   if (phase != AssistUiPhase::Idle) g_preview = false;

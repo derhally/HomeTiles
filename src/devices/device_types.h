@@ -21,6 +21,10 @@ struct Capabilities {
   // Built-in MIPI-CSI camera with a verified board wiring. Profiles that do not
   // list it keep the default.
   bool has_builtin_camera = false;
+  // The UI is drawn into the hidden framebuffer and swapped in at the panel's
+  // refresh (p4_dsi_camera_presenter setUiFlip), so moving content does not
+  // tear. Only while the panel shows its native orientation.
+  bool tear_free_ui = false;
 };
 
 struct Profile {
