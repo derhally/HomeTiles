@@ -39,6 +39,7 @@ nav:
       - On-Device UI: device-ui.md
       - Tile Types: tiles.md
       - Screensaver: screensaver.md
+      - Assist Screens: assist-screens.md
       - Local Hardware I/O: hardware-io.md
   - Help:
       - Firmware Updates: updating.md
