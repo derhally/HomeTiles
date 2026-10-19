@@ -924,6 +924,23 @@ struct Strings {
   const char* assist_style_lens;
   const char* assist_style_iris;
   const char* settings_assist_preview;
+  // Web Admin > Settings > Diagnostics: the Assist screen's frame times
+  // measured on the panel (assist_timing.h): the card's title, its note, the
+  // Refresh and Reset buttons, the table's column headers and the empty note.
+  const char* assist_timing_title;
+  const char* assist_timing_note;
+  const char* assist_timing_refresh;
+  const char* assist_timing_reset;
+  const char* assist_timing_screen;
+  const char* assist_timing_phase;
+  const char* assist_timing_frames;
+  const char* assist_timing_draw;
+  const char* assist_timing_copy;
+  const char* assist_timing_pixels;
+  const char* assist_timing_engine;
+  const char* assist_timing_interval;
+  const char* assist_timing_late;
+  const char* assist_timing_empty;
   // Settings > WiFi row under the connected network: the station MAC address
   // (as the router lists it).
   const char* settings_mac_address;
