@@ -57,8 +57,9 @@
 //       (assist_screen.h format, at most 24 KB). The panel subscribes only to
 //       the chosen one and keeps a copy for when the Bridge is away.
 //   "screen_style":"<file id>" picks a file screen; the status then lists the
-//       file ids after the built-in styles in "screen_styles", names the file
-//       in "screen_style", and adds "screen_error":"<reason>" while the chosen
+//       file ids after the built-in styles in "screen_styles" (the chosen one
+//       also while the Bridge does not offer it), names the file in
+//       "screen_style", and adds "screen_error":"<reason>" while the chosen
 //       file was refused (the built-in style shows meanwhile).
 //   {base}/stat/assist_wake   panel -> Bridge, QoS0, not retained:
 //       {"v":1,"word":"okay_nabu","seq":<uint32 per boot>} on a detection.
@@ -380,11 +381,20 @@ inline size_t buildStatusJson(char* out, size_t size, const StatusFields& fields
       if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
       used += static_cast<size_t>(written);
     }
+    bool chosen_listed = !chosen;
     for (size_t i = 0; fields.file_styles && i < fields.file_style_count && i < kMaxFileScreens; ++i) {
       const char* id = fields.file_styles[i];
       if (!id || !isValidWakeWordId(id, strlen(id)) || screenStyleIndex(id) >= 0) continue;
+      if (chosen && strcmp(id, chosen) == 0) chosen_listed = true;
       written = snprintf(out + used, size - used, "%s\"%s\"", first ? "" : ",", id);
       first = false;
+      if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
+      used += static_cast<size_t>(written);
+    }
+    // The panel shows its kept copy of the chosen file even before (or after)
+    // the Bridge offers it, so the chosen file is always one of the options.
+    if (!chosen_listed) {
+      written = snprintf(out + used, size - used, "%s\"%s\"", first ? "" : ",", chosen);
       if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
       used += static_cast<size_t>(written);
     }
