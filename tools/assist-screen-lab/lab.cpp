@@ -167,7 +167,7 @@ long mtimeOf(const std::string& path) {
 }
 
 // A file as it is, a folder as its .json files in name order.
-bool addPaths(const std::string& path, std::vector<std::string>* out) {
+bool addPaths(const std::string& path, std::vector<std::string>* out, bool quiet = false) {
   std::error_code err;
   if (!std::filesystem::is_directory(path, err)) {
     out->push_back(path);
@@ -179,7 +179,7 @@ bool addPaths(const std::string& path, std::vector<std::string>* out) {
   }
   std::sort(found.begin(), found.end());
   if (found.empty()) {
-    fprintf(stderr, "No .json screens in %s\n", path.c_str());
+    if (!quiet) fprintf(stderr, "No .json screens in %s\n", path.c_str());
     return false;
   }
   out->insert(out->end(), found.begin(), found.end());
@@ -219,6 +219,7 @@ struct Lab {
   int want_screen = -1, want_phase = -1, want_size_step = 0;  // want_phase 3 = auto
   bool want_builtin = false, want_voice = false;
   std::vector<std::string> paths;  // the screen files
+  std::vector<std::string> sources;  // the files and folders given, watched for new screens
   // What the window switches between: every screen file, and every built-in
   // style without a file yet (path empty), in the panel's style order.
   struct Entry {
@@ -678,6 +679,41 @@ void setBarSize(Lab& lab) {
   lv_obj_invalidate(lv_display_get_screen_active(lab.bar_display));
 }
 
+// One button per screen (again after the screens folder changed).
+void fillScreenButtons(Lab& lab) {
+  lv_obj_clean(lab.bar_screens);
+  for (size_t i = 0; i < lab.entries.size() && i < 100; ++i) {
+    const Lab::Entry& e = lab.entries[i];
+    lv_obj_t* b = barButton(lab.bar_screens, e.path.empty() ? kStyleNames[e.style] : e.name.c_str(), static_cast<int>(i));
+    // Built-in styles without a file are dimmer (the numbers row says so too).
+    if (lab.entries[i].path.empty()) lv_obj_set_style_text_color(lv_obj_get_child(b, 0), lv_color_hex(0x9AA3B5), 0);
+  }
+}
+
+// New, renamed or deleted screen files show up without a restart. True when
+// the list changed (the current screen stays when it still exists).
+bool rescanScreens(Lab& lab) {
+  std::vector<std::string> paths;
+  for (const std::string& source : lab.sources) addPaths(source, &paths, true);
+  if (paths.empty() || paths == lab.paths) return false;
+  const std::string current = lab.entries.empty() ? "" : lab.entries[lab.current].path;
+  const int current_style = lab.entries.empty() ? -1 : lab.entries[lab.current].style;
+  lab.paths = paths;
+  lab.entries.clear();
+  buildEntries(lab);
+  int index = 0;
+  for (size_t i = 0; i < lab.entries.size(); ++i) {
+    const Lab::Entry& e = lab.entries[i];
+    if ((!current.empty() && e.path == current) || (current.empty() && e.path.empty() && e.style == current_style)) {
+      index = static_cast<int>(i);
+    }
+  }
+  loadEntry(lab, index);
+  fillScreenButtons(lab);
+  printf("Screens folder changed: %u screens\n", static_cast<unsigned>(lab.entries.size()));
+  return true;
+}
+
 void buildBar(Lab& lab) {
   lab.bar_display = lv_display_create(lab.w, kBarH);
   lv_display_set_default(lab.display);  // the screen stays the default display
@@ -701,12 +737,7 @@ void buildBar(Lab& lab) {
 
   // Row 1: the screens.
   lab.bar_screens = barRow(scr);
-  for (size_t i = 0; i < lab.entries.size() && i < 100; ++i) {
-    const Lab::Entry& e = lab.entries[i];
-    lv_obj_t* b = barButton(lab.bar_screens, e.path.empty() ? kStyleNames[e.style] : e.name.c_str(), static_cast<int>(i));
-    // Built-in styles without a file are dimmer (the numbers row says so too).
-    if (lab.entries[i].path.empty()) lv_obj_set_style_text_color(lv_obj_get_child(b, 0), lv_color_hex(0x9AA3B5), 0);
-  }
+  fillScreenButtons(lab);
   // Row 2: phase, built-in, voice, size and the numbers.
   lv_obj_t* row = barRow(scr);
   const char* phases[4] = {"Auto", "Listening", "Thinking", "Answering"};
@@ -773,10 +804,15 @@ int main(int argc, char** argv) {
       return 2;
     } else if (!addPaths(a, &lab.paths)) {
       return 2;
+    } else {
+      lab.sources.push_back(a);
     }
   }
 #if defined(LAB_SCREENS_DIR)
-  if (lab.paths.empty() && !addPaths(LAB_SCREENS_DIR, &lab.paths)) return 2;
+  if (lab.paths.empty()) {
+    if (!addPaths(LAB_SCREENS_DIR, &lab.paths)) return 2;
+    lab.sources.push_back(LAB_SCREENS_DIR);
+  }
 #endif
   if (lab.paths.empty()) {
     fprintf(stderr, "Usage: lab [screen.json | folder ...] [--size=WxH] [--png=DIR] [--compare] [--frames]\n");
@@ -828,7 +864,7 @@ int main(int argc, char** argv) {
   for (int i = 0; i < 7; ++i) {
     if (kSizes[i][0] == lab.w && kSizes[i][1] == lab.h) size_index = i;
   }
-  uint32_t cycle_start = 0, last_title = 0, shot_no = 0, name_until = 0;
+  uint32_t cycle_start = 0, last_title = 0, shot_no = 0, name_until = 0, last_scan = 0;
   // Shows the screen's name (and its place in the list) for a moment.
   auto announce = [&]() {
     char text[96];
@@ -922,6 +958,11 @@ int main(int argc, char** argv) {
     if (autocycle) {
       const uint32_t at = (lab.now - cycle_start) % 12000;
       setPhase(lab, at < 5000 ? 0 : (at < 8000 ? 1 : 2));
+    }
+    // New or removed screen files in the folder, every two seconds.
+    if (SDL_GetTicks() - last_scan > 2000) {
+      last_scan = SDL_GetTicks();
+      if (rescanScreens(lab)) syncBar(lab, autocycle);
     }
     // Reload when the file changes on disk.
     if (!lab.builtin_only && lab.now % 495 == 0 && mtimeOf(lab.path) != lab.mtime) {
