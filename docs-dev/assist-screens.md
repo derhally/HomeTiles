@@ -237,6 +237,19 @@ C++ code of those five styles is gone (-17.8 KB flash, -3 KB RAM).
   with the same easing, pacing and tear-free rules; the painter is one LVGL
   object whose areas are invalidated from `dirty()`.
 - A frame over the fill budget logs once per showing.
+- Lines, polylines and arcs are not handed to LVGL's draw tasks but drawn
+  straight into the band LVGL is rendering (`src/ui/assist/assist_raster.*`):
+  LVGL's software renderer runs masks over a skewed line's or an arc's whole
+  bounding box, so a diagonal line costs its box and a thin ring its disc,
+  while the rasterizer visits only the pixels along the shape, with coverage
+  from the distance to the edge for the anti-aliasing and LVGL's own RGB565
+  mixing. This is safe because LVGL's single software draw unit executes
+  every earlier draw task before the draw callback goes on, so the direct
+  write lands over the right pixels; a threaded LVGL, a second draw unit or
+  the PPA unit switch it off at compile time, and a band that is not RGB565,
+  byte-swapped RGB565 or XRGB8888 keeps LVGL's path. Dashed lines, discs,
+  rectangles and text stay LVGL draw tasks. Only edge pixels differ from
+  LVGL's drawing (`test-assist-raster.mjs`, `test-assist-screen-render.mjs`).
 
 ## Screens from Home Assistant
 
@@ -296,10 +309,44 @@ So the engine with the screen store costs about 49 KB of flash over C++ only,
 and saves 2.7 KB of static RAM (the line styles' state); the engine's 108 KB
 block comes from PSRAM at runtime. Panels without Assist do not compile it.
 
-Still needed on hardware: milliseconds per frame and per load on the S3 and
-the P4 for every file, internal/PSRAM minimum free while the screen shows, and
-whether the engine's hot data (slots, code, draw list) should sit in internal
-RAM on the S3 instead of PSRAM.
+### Frame times
+
+The panel measures its own frames (`src/ui/assist/assist_timing.*`): while
+the Assist screen shows, every LVGL refresh that drew is one frame with its
+draw time (refresh start to ready: rendering plus the copies into the display
+memory), the share spent in the flush callback (the copies), the pixels
+flushed and whether it ran over the 33 ms frame period; the overlay adds its
+own work per timer tick (the engine's frame, the invalidation) and the
+interval between ticks. Count, average, maximum and a 1 ms histogram for the
+95th percentile are kept per screen id and phase in a 7 KB PSRAM block; the
+opening frame (the whole screen) is kept apart. **Web Admin > Settings >
+Diagnostics > Assist screen drawing** shows the table (`/api/assist-timing`,
+Refresh, Reset); Preview in Settings > Audio plays every phase of a style.
+
+Desktop lab (1024x600, XRGB8888, this computer; the panel's figures are what
+count), time per frame of the file with LVGL's draw tasks against the direct
+rasterizer, listening / thinking / answering:
+
+| File | LVGL draw tasks | Direct rasterizer | Share |
+| --- | --- | --- | --- |
+| `iris.json` | 0.69 / 1.38 / 1.26 ms | 0.29 / 0.62 / 0.54 ms | 42-45 % |
+| `phosphor.json` | 0.82 / 0.39 / 1.17 ms | 0.44 / 0.25 / 0.57 ms | 49-64 % |
+| `reactor.json` | 0.87 / 0.65 / 0.58 ms | 0.52 / 0.42 / 0.47 ms | 60-81 % |
+| `sentinel.json` | 0.92 / 0.89 / 0.94 ms | 0.59 / 0.61 / 0.62 ms | 64-69 % |
+| `lens.json` | 0.71 / 0.66 / 0.74 ms | 0.51 / 0.46 / 0.52 ms | 70-72 % |
+| `atom.json` | 1.16 / 1.29 / 1.30 ms | 1.13 / 0.81 / 1.10 ms | 63-97 % |
+| `light_disc.json`, `dot_halo.json`, `voice_pills.json`, the robots | within 10 % (discs, no long lines) | | |
+
+The pictures differ in edge pixels only: at most 1.3 % of a screen's pixels
+by the render test's rule, the ring and axis-aligned lines pixel for pixel,
+thin diagonal lines slightly crisper (symmetric coverage where LVGL's mask
+leans to one side).
+
+Still needed on hardware: the 7B's before/after table from the diagnostics
+card for every style and phase (listening, thinking, answering), the S3,
+internal/PSRAM minimum free while the screen shows, and whether the engine's
+hot data (slots, code, draw list) should sit in internal RAM on the S3
+instead of PSRAM.
 
 ## The lab
 
