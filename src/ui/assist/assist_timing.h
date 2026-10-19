@@ -14,7 +14,7 @@
 // (listening, thinking, answering): count, sum, maximum and a 1 ms histogram
 // of the draw time for its 95th percentile.
 //
-// Cost: a few integer operations per refresh event, a 7 KB block allocated
+// Cost: a few integer operations per refresh event, a 17 KB block allocated
 // from PSRAM at the first showing. No logging, no allocation per frame.
 //
 // Loop task (LVGL) only.

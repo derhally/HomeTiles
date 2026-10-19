@@ -13,6 +13,7 @@
 #include "esp_heap_caps.h"
 #include "esp_cache.h"
 #include <Arduino.h>
+#include <lvgl_private.h>
 #include <cstdint>
 #include <cstring>
 
@@ -1007,6 +1008,25 @@ bool DisplayManager::init() {
 
 bool DisplayManager::isTouchHeld() {
   return g_touch_held;
+}
+
+uint8_t DisplayManager::refreshAreas(int32_t (*out)[4], uint8_t max) {
+  // Only during a refresh do the display's invalid areas name what is drawn;
+  // lv_refr_join_area has merged the overlapping ones by then.
+  lv_display_t* refreshing = lv_refr_get_disp_refreshing();
+  if (!refreshing || refreshing != disp) return 0;
+  uint8_t n = 0;
+  for (uint32_t i = 0; i < refreshing->inv_p; ++i) {
+    if (refreshing->inv_area_joined[i]) continue;
+    if (n >= max) return 0;
+    const lv_area_t& a = refreshing->inv_areas[i];
+    out[n][0] = a.x1;
+    out[n][1] = a.y1;
+    out[n][2] = a.x2;
+    out[n][3] = a.y2;
+    ++n;
+  }
+  return n;
 }
 
 void DisplayManager::resetActivityTimer() {

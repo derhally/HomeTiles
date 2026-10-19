@@ -16,6 +16,10 @@ public:
 
   lv_display_t* getDisplay() { return disp; }
   lv_indev_t* getInput() { return indev; }
+  // The areas the refresh now running draws, as x1, y1, x2, y2 boxes
+  // (inclusive, screen coordinates), up to max: 0 outside a refresh or when
+  // they would not fit. The tear-free UI path copies only what they miss.
+  static uint8_t refreshAreas(int32_t (*out)[4], uint8_t max);
 
   void resetActivityTimer();
   uint32_t getLastActivityTime() { return last_activity_time; }

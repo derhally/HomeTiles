@@ -115,6 +115,12 @@ class Presenter {
   // Something wrote the shown framebuffer directly (a fill or clear); the
   // hidden one is copied in full before the next UI write.
   void invalidateUiBack() { ui_back_valid_ = false; }
+  // The areas the LVGL refresh now running draws, as x1, y1, x2, y2 boxes
+  // (inclusive), up to max; 0 outside a refresh or when they do not fit. The
+  // hidden framebuffer then skips the copy of what this refresh overwrites
+  // anyway (an animation redraws the same region every frame).
+  using UiRefreshAreasFn = uint8_t (*)(int32_t (*out)[4], uint8_t max);
+  void setUiRefreshAreas(UiRefreshAreasFn fn) { ui_refresh_areas_ = fn; }
 
  private:
   // covers_panel: the frame about to be presented fills the whole panel, so
@@ -191,6 +197,7 @@ class Presenter {
   uint8_t ui_frame_count_ = 0;
   Rect ui_sync_rects_[kMaxUiRects] = {};
   uint8_t ui_sync_count_ = 0;
+  UiRefreshAreasFn ui_refresh_areas_ = nullptr;
 };
 
 }  // namespace p4_dsi_camera_presenter
