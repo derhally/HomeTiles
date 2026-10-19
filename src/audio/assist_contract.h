@@ -45,7 +45,7 @@
 //       Picks the on-panel Assist screen style; unknown ids are refused.
 //       Cosmetic, so accepted on the plain topic like wake_words. The status
 //       adds "screen_style":"<id>" and "screen_styles":[...] (every style
-//       this firmware draws, in catalog order).
+//       this panel offers, in catalog order; see assist_style_catalog.h).
 //   {base}/stat/assist_wake   panel -> Bridge, QoS0, not retained:
 //       {"v":1,"word":"okay_nabu","seq":<uint32 per boot>} on a detection.
 //       The panel then buffers up to 3 s of audio and sends it first when a
@@ -284,6 +284,9 @@ struct StatusFields {
   // Adds "screen_style" and "screen_styles" when set.
   bool screen_style_state = false;
   uint8_t screen_style = 0;
+  // The styles the panel offers (bit n = kScreenStyleIds[n]); the shown
+  // style is always listed.
+  uint32_t available_screen_styles = 0xFFFFFFFFu;
 };
 
 // Appends ,"<key>":[...] for the ids in mask. Returns false when it does not
@@ -332,12 +335,16 @@ inline size_t buildStatusJson(char* out, size_t size, const StatusFields& fields
   }
   if (fields.screen_style_state) {
     const uint8_t style = fields.screen_style < kScreenStyleCount ? fields.screen_style : 0;
+    const uint32_t offered = fields.available_screen_styles | (1u << style);
     written = snprintf(out + used, size - used, ",\"screen_style\":\"%s\",\"screen_styles\":[",
                        kScreenStyleIds[style]);
     if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
     used += static_cast<size_t>(written);
+    bool first = true;
     for (size_t i = 0; i < kScreenStyleCount; ++i) {
-      written = snprintf(out + used, size - used, "%s\"%s\"", i ? "," : "", kScreenStyleIds[i]);
+      if (!(offered & (1u << i))) continue;
+      written = snprintf(out + used, size - used, "%s\"%s\"", first ? "" : ",", kScreenStyleIds[i]);
+      first = false;
       if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
       used += static_cast<size_t>(written);
     }
