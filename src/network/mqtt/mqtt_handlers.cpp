@@ -40,6 +40,7 @@
 #include "src/web/server/web_admin.h"
 #include "src/video/local_camera/local_camera.h"
 #include "src/audio/speaker.h"
+#include "src/ui/assist/assist_screen_store.h"
 #include <WiFi.h>
 #include <esp_heap_caps.h>
 #include <esp_system.h>
@@ -2124,6 +2125,8 @@ static void processMqttMessage(char* topic, uint8_t* payload, unsigned int lengt
   // Speaker and Assist commands only validate and hand a clip or a capture
   // session to the audio worker.
   if (speaker::handleMqttMessage(topic, payload, length)) return;
+  // Assist screen files: the catalog and the chosen file are kept here.
+  if (assist_screen_store::handleMqttMessage(topic, payload, length)) return;
   if (editable_handle_ack(topic, reinterpret_cast<const char*>(payload), length)) return;
   const char* apply_topic = networkManager.getBridgeApplyTopic();
   if (apply_topic && strcmp(topic, apply_topic) == 0) {
@@ -2371,6 +2374,8 @@ void mqttSubscribeTopics() {
   // And {base}/cmnd/assist (microphone capture for Home Assistant Assist).
   if (const char* assist_topic = speaker::assistCommandTopic()) {
     if (networkManager.mqttEnqueueSubscribe(assist_topic)) ++queued;
+    // Assist screen files from the Bridge (test builds with screen files).
+    assist_screen_store::subscribeTopics();
   }
   Serial.printf("[%s] %u fixed subscriptions queued\n", networkManager.bridgeLogName(), queued);
 
