@@ -2,6 +2,7 @@
 
 #include <math.h>
 
+#include "src/ui/assist/assist_screen.h"
 #include "src/ui/assist/assist_styles_lines.h"
 #include "src/ui/assist/assist_styles_shared.h"
 
@@ -300,39 +301,33 @@ namespace {
 
 // How far a style reaches sideways from its centre: half_r * r, and for a
 // style with fixed-width readouts also side_r * r + side_px. Soft glows that
-// fade out may reach further.
-struct Reach {
-  float half_r;
-  float side_r;
-  float side_px;
-};
+// fade out may reach further. Screen files state the same (assist_screen.h).
+assist_screen::Reach makeReach(float half_r, float side_r = 0.0f, float side_px = 0.0f) {
+  assist_screen::Reach out;
+  out.half_r = half_r;
+  out.side_r = side_r;
+  out.side_px = side_px;
+  return out;
+}
 
-Reach reach(AssistScreenStyle style) {
+assist_screen::Reach reach(AssistScreenStyle style) {
   switch (style) {
-    case AssistScreenStyle::Sentinel: return {3.95f, 3.27f, 110.0f};  // number left, hex column right
-    case AssistScreenStyle::Phosphor: return {3.55f, 0.0f, 0.0f};    // the scope box
-    case AssistScreenStyle::LightDisc: return {1.75f, 0.0f, 22.0f};  // outer ring and its glow
-    case AssistScreenStyle::Lens: return {1.75f, 0.0f, 0.0f};        // the plate
-    case AssistScreenStyle::Iris: return {2.2f, 0.0f, 0.0f};         // the corner brackets
+    case AssistScreenStyle::Sentinel: return makeReach(3.95f, 3.27f, 110.0f);  // number left, hex column right
+    case AssistScreenStyle::Phosphor: return makeReach(3.55f);                // the scope box
+    case AssistScreenStyle::LightDisc: return makeReach(1.75f, 0.0f, 22.0f);  // outer ring and its glow
+    case AssistScreenStyle::Lens: return makeReach(1.75f);                    // the plate
+    case AssistScreenStyle::Iris: return makeReach(2.2f);                     // the corner brackets
     case AssistScreenStyle::Atom:
     case AssistScreenStyle::Reactor:
     case AssistScreenStyle::DotHalo:
     case AssistScreenStyle::VoicePills: break;
   }
-  return {2.0f, 0.0f, 0.0f};
+  return makeReach(2.0f);
 }
 
 }  // namespace
 
-float baseRadius(AssistScreenStyle style, float w, float h) {
-  constexpr float kEdgePx = 8.0f;
-  float r = (w < h ? w : h) * 0.17f;
-  const Reach out = reach(style);
-  const float half = w / 2.0f - kEdgePx;
-  r = fminf(r, (half - (out.side_r > 0.0f ? 0.0f : out.side_px)) / out.half_r);
-  if (out.side_r > 0.0f) r = fminf(r, (half - out.side_px) / out.side_r);
-  return r < 1.0f ? 1.0f : r;
-}
+float baseRadius(AssistScreenStyle style, float w, float h) { return assist_screen::baseRadius(reach(style), w, h); }
 
 void create(AssistScreenStyle style, lv_obj_t* parent) {
   switch (style) {

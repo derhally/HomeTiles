@@ -1,4 +1,6 @@
-#include "assist_screen.h"
+#include "src/ui/assist/assist_screen.h"
+
+#if HOMETILES_ASSIST_DATA_SCREENS
 
 #include <ctype.h>
 #include <math.h>
@@ -45,7 +47,7 @@ struct JNode {
 // ---------------------------------------------------------------------------
 enum Op : uint8_t {
   kConst, kLoad, kAdd, kSub, kMul, kDiv, kMod, kNeg, kNot, kLt, kLe, kGt, kGe, kEq, kNe, kAnd, kOr,
-  kJz, kJmp, kCall,
+  kJz, kJmp, kCall, kHist,
 };
 
 struct Code {
@@ -79,8 +81,8 @@ constexpr FnDef kFns[fFnCount] = {
 // ---------------------------------------------------------------------------
 // Elements and the draw list.
 // ---------------------------------------------------------------------------
-enum Kind : uint8_t { kLine, kArc, kDisc, kRect, kFrame, kPoly, kText, kLog, kGroup, kKindCount };
-constexpr const char* kKindNames[kKindCount] = {"line", "arc", "disc", "rect", "frame",
+enum Kind : uint8_t { kLine, kArc, kDisc, kRect, kOutline, kPoly, kText, kLog, kGroup, kKindCount };
+constexpr const char* kKindNames[kKindCount] = {"line", "arc", "disc", "rect", "outline",
                                                 "poly", "text", "log", "group"};
 
 // Properties by kind; their index is the element's p[] slot.
@@ -109,11 +111,11 @@ constexpr PropDef kProps[kKindCount][kMaxProps] = {
     // poly (x and y per generated point)
     {{"x", 0, false}, {"y", 0, false}, {"width", 1, false}, {"color", 0xFFFFFF, false}, {"alpha", 1, false}},
     // text
-    {{"x", 0, true}, {"y", 0, true}, {"color", 0xFFFFFF, false}, {"alpha", 1, false}, {"width", 200, false},
-     {"every", 1, false}},
+    {{"x", 0, true}, {"y", 0, true}, {"color", 0xFFFFFF, false}, {"alpha", 1, false}, {"box_width", 200, false},
+     {"frames", 1, false}},
     // log
-    {{"x", 0, true}, {"y", 0, true}, {"color", 0xFFFFFF, false}, {"alpha", 1, false}, {"width", 200, false},
-     {"every", 1, false}, {"line_height", 20, false}, {"push", 1, false}, {"pop", 0, false}},
+    {{"x", 0, true}, {"y", 0, true}, {"color", 0xFFFFFF, false}, {"alpha", 1, false}, {"box_width", 200, false},
+     {"frames", 1, false}, {"line_height", 20, false}, {"push", 1, false}, {"pop", 0, false}},
     // group
     {},
 };
@@ -121,7 +123,7 @@ enum { kL_X1, kL_Y1, kL_X2, kL_Y2, kL_W, kL_C, kL_A, kL_DASH, kL_GAP };
 enum { kA_X, kA_Y, kA_R, kA_S, kA_E, kA_W, kA_C, kA_A };
 enum { kD_X, kD_Y, kD_R, kD_C, kD_A, kD_G };
 enum { kR_X1, kR_Y1, kR_X2, kR_Y2, kR_C, kR_A, kR_RAD };
-enum { kF_X1, kF_Y1, kF_X2, kF_Y2, kF_W, kF_C, kF_A };
+enum { kO_X1, kO_Y1, kO_X2, kO_Y2, kO_W, kO_C, kO_A };
 enum { kP_X, kP_Y, kP_W, kP_C, kP_A };
 enum { kT_X, kT_Y, kT_C, kT_A, kT_W, kT_EVERY };
 enum { kG_X, kG_Y, kG_C, kG_A, kG_W, kG_EVERY, kG_LH, kG_PUSH, kG_POP };
@@ -161,6 +163,9 @@ struct Var {
   Expr next;     // state step (may be absent)
   Expr every;    // seconds between steps (may be absent)
   Expr alt[kShapeCount];  // a layout's own derived value (may be absent)
+  Expr record;      // keep: when non-zero at a step, the old value joins the history (absent = every step)
+  uint8_t keep;     // history values kept (0 = none)
+  int8_t history;   // row in Screen::history
   uint16_t frames;  // frames between steps (0: every frame)
   float acc;
 };
@@ -216,7 +221,11 @@ struct Screen {
   // Load-time only.
   const char* src;
   size_t src_len;
-  JNode json[kMaxJsonNodes];
+  // The JSON DOM is only needed while loading, the draw list only per frame.
+  union {
+    JNode json[kMaxJsonNodes];
+    Cmd cmds[kMaxFrameCmds];
+  };
   int json_count;
   char* error;
   size_t error_size;
@@ -252,9 +261,12 @@ struct Screen {
   char texts[kMaxTexts][kTextBytes];
   int text_count;
   bool text_ready[kMaxTexts];
-  // Per frame.
-  Cmd cmds[kMaxFrameCmds];
+  // Per frame (cmds share memory with json above).
   uint32_t cmd_count;
+  float history[kMaxHistoryVars][kMaxKeep];  // newest first
+  int history_count;
+  float fill_px, fill_limit;  // painted-area estimate this frame and its budget
+  uint32_t skipped;           // shapes left out this frame for the budget
   uint32_t frame_no;
   uint32_t rng;
   Region regions[kMaxRegions];
@@ -514,6 +526,11 @@ int addSlot(Screen* s, const char* name, int line, uint8_t kind) {
       fail(s, line, "'%s' is declared twice", name);
       return -1;
     }
+    if (s->slot_kind[found] == 2 || kind == 2) {
+      // A let or repeat index would write into the var every repeat.
+      fail(s, line, "'%s' is already a var", name);
+      return -1;
+    }
     return found;  // a let or index name reused by another element
   }
   if (s->slot_count >= kMaxSlots) {
@@ -666,6 +683,24 @@ bool parsePrimary(Lexer& L) {
     const char* name = L.name;
     const size_t len = L.name_len;
     if (!lex(L)) return false;
+    if (L.tok == tLParen && len == 4 && !strncmp(name, "prev", 4)) {
+      // prev(var, k): the var's value k changes ago (k = 0: now), from its history.
+      if (!lex(L)) return false;
+      const Var* var = nullptr;
+      if (L.tok == tName) {
+        const int slot = findSlot(L.s, L.name, L.name_len);
+        for (int k = 0; k < L.s->var_count && slot >= 0; ++k) {
+          if (L.s->vars[k].slot == slot) var = &L.s->vars[k];
+        }
+      }
+      if (!var || !var->keep) return fail(L.s, L.line, "prev() needs a state var with 'keep' first");
+      if (!lex(L) || L.tok != tComma) return fail(L.s, L.line, "prev(var, k) takes a var and a count");
+      if (!lex(L) || !parseExpr(L, 0)) return false;
+      if (L.tok != tRParen) return fail(L.s, L.line, "missing ')' after prev(");
+      ok = emit(L, kHist, static_cast<uint16_t>(var - L.s->vars)) && lex(L);
+      --L.nest;
+      return ok;
+    }
     if (L.tok == tLParen) {
       int fn = -1;
       for (int f = 0; f < fFnCount; ++f) {
@@ -812,6 +847,24 @@ bool compileNode(Screen* s, int node, Expr* out) {
   return compileText(s, s->src + n.str_off, n.str_len, n.line, out);
 }
 
+// What a step costs in the per-frame budget: transcendental functions are
+// software routines on the panel and weigh more than arithmetic.
+uint32_t stepWeight(const Code& c) {
+  if (c.op == kHist) return 2;
+  if (c.op != kCall) return 1;
+  switch (c.arg) {
+    case fSin: case fCos: case fTan: case fAsin: case fAcos: case fAtan: case fAtan2:
+    case fExp: case fPow: case fLog: case fSqrt: return 8;
+    default: return 2;
+  }
+}
+
+uint32_t weight(const Screen* s, const Expr& e) {
+  uint32_t w = 0;
+  for (int i = e.start; i < e.start + e.len; ++i) w += stepWeight(s->code[i]);
+  return w;
+}
+
 // ---------------------------------------------------------------------------
 // Evaluation
 // ---------------------------------------------------------------------------
@@ -822,6 +875,13 @@ uint32_t nextRand(Screen* s) {
   x ^= x << 5;
   s->rng = x ? x : 0x9E3779B9u;
   return s->rng;
+}
+
+// A formula's value as a whole number, without overflow whatever it is.
+int whole(float v) {
+  if (!(v > -1e6f)) return v > 0.0f ? 1000000 : -1000000;  // also NaN
+  if (v > 1e6f) return 1000000;
+  return static_cast<int>(v);
 }
 
 float callFn(Screen* s, uint8_t fn, const float* a) {
@@ -854,13 +914,13 @@ float callFn(Screen* s, uint8_t fn, const float* a) {
     case fLog: return a[0] > 0 ? logf(a[0]) : 0.0f;
     case fHash: {
       // The built-in styles' fixed per-index fraction (assist_styles_lines.cpp).
-      const int i = static_cast<int>(a[0]), salt = static_cast<int>(a[1]);
+      const int i = whole(a[0]), salt = whole(a[1]);
       int v = (i * 7 + salt * 13) % 23;
       if (v < 0) v += 23;
       return static_cast<float>(v) / 22.0f;
     }
     case fRand: {
-      int lo = static_cast<int>(a[0]), hi = static_cast<int>(a[1]);
+      int lo = whole(a[0]), hi = whole(a[1]);
       if (hi < lo) {
         const int t = lo;
         lo = hi;
@@ -914,6 +974,13 @@ float eval(Screen* s, const Expr& e, float fallback = 0.0f) {
         sp -= c.argc;
         stack[sp] = callFn(s, static_cast<uint8_t>(c.arg), stack + sp);
         ++sp;
+        break;
+      }
+      case kHist: {
+        const Var& v = s->vars[c.arg];
+        const float kf = stack[sp - 1];
+        const int k = kf <= 0.0f ? 0 : (kf >= v.keep ? v.keep : static_cast<int>(kf + 0.5f));
+        stack[sp - 1] = k == 0 ? s->slots[v.slot] : s->history[v.history][k - 1];
         break;
       }
       default: break;
@@ -1004,7 +1071,13 @@ bool compileTemplate(Screen* s, int node, uint16_t* first, uint16_t* count) {
         const char* f = colon + 1;
         size_t len = static_cast<size_t>(close - f);
         bool looks = len > 0 && len < sizeof(seg.fmt) && strchr("dfxX", f[len - 1]);
-        for (size_t i = 0; looks && i + 1 < len; ++i) looks = strchr("0123456789.-+ ", f[i]) != nullptr;
+        // Flags, then a width and a precision of at most two digits each.
+        int digits = 0;
+        for (size_t i = 0; looks && i + 1 < len; ++i) {
+          looks = strchr("0123456789.-+ ", f[i]) != nullptr;
+          digits = isdigit(static_cast<unsigned char>(f[i])) ? digits + 1 : 0;
+          if (digits > 2) return fail(s, n.line, "a number format allows two digits for width and precision: \"%s\"", text);
+        }
         if (looks) {
           memcpy(seg.fmt, f, len);
           seg.fmt[len] = '\0';
@@ -1017,6 +1090,12 @@ bool compileTemplate(Screen* s, int node, uint16_t* first, uint16_t* count) {
     } else {
       const char* brace = strchr(p, '{');
       const size_t len = brace ? static_cast<size_t>(brace - p) : strlen(p);
+      // Readout glyphs only ("PK ", " V"); words for people belong in the
+      // central translations, not in a screen file.
+      if (len > static_cast<size_t>(kMaxLiteralText)) {
+        return fail(s, n.line, "fixed text parts are at most %d bytes (readout labels, not words): \"%.*s\"",
+                    kMaxLiteralText, static_cast<int>(len), p);
+      }
       if (s->pool_used + static_cast<int>(len) > kStringPool) return fail(s, n.line, "too much fixed text");
       memcpy(s->pool + s->pool_used, p, len);
       seg.lit_off = static_cast<uint16_t>(s->pool_used);
@@ -1031,10 +1110,10 @@ bool compileTemplate(Screen* s, int node, uint16_t* first, uint16_t* count) {
 }
 
 uint32_t exprCost(const Screen* s, const Elem& e) {
-  uint32_t cost = e.cond.len;
-  for (int i = 0; i < kMaxProps; ++i) cost += e.p[i].len;
-  for (int i = 0; i < e.let_count; ++i) cost += s->lets[e.let_first + i].expr.len;
-  for (int i = 0; i < e.seg_count; ++i) cost += s->segs[e.seg_first + i].expr.len * (e.kind == kLog ? 1 : 1);
+  uint32_t cost = weight(s, e.cond);
+  for (int i = 0; i < kMaxProps; ++i) cost += weight(s, e.p[i]);
+  for (int i = 0; i < e.let_count; ++i) cost += weight(s, s->lets[e.let_first + i].expr);
+  for (int i = 0; i < e.seg_count; ++i) cost += weight(s, s->segs[e.seg_first + i].expr);
   return cost;
 }
 
@@ -1165,7 +1244,7 @@ bool loadElement(Screen* s, int node, int depth, uint32_t mult, uint32_t* ops, u
     case kArc: draws = (e.flags & kGlow) ? 2 : 1; break;
     case kDisc:
     case kRect: draws = 1; break;
-    case kFrame: draws = 4; break;
+    case kOutline: draws = 4; break;
     case kPoly: {
       if (s->poly_count >= kMaxPolylines) return fail(s, n.line, "too many polylines (limit %d)", kMaxPolylines);
       if (e.repeat != 1 || mult != 1) return fail(s, n.line, "a poly cannot repeat (use its 'count')");
@@ -1225,9 +1304,10 @@ bool loadElement(Screen* s, int node, int depth, uint32_t mult, uint32_t* ops, u
       poly.pts = static_cast<uint16_t>(s->point_count);
       s->point_count += needed;
       draws = (count - 1) * ((e.flags & kGlow) ? 2 : 1) + (count - 1) * poly.keep;
-      *ops += exprCost(s, e) - e.p[kP_X].len - e.p[kP_Y].len + (e.p[kP_X].len + e.p[kP_Y].len) * count;
+      const uint32_t xy = weight(s, e.p[kP_X]) + weight(s, e.p[kP_Y]);
+      *ops += exprCost(s, e) - xy + xy * count;
       if (e.flags & kLiteral) {
-        for (int p = 0; p < count; ++p) *ops += poly.lit[p][0].len + poly.lit[p][1].len;
+        for (int p = 0; p < count; ++p) *ops += weight(s, poly.lit[p][0]) + weight(s, poly.lit[p][1]);
       }
       *cmds += draws;
       e.end = static_cast<uint16_t>(s->elem_count);
@@ -1332,10 +1412,15 @@ bool readReach(Screen* s, int node, Reach* out) {
   if (s->json[node].type != J::Obj) return fail(s, s->json[node].line, "\"reach\" is an object");
   for (int c = s->json[node].first; c >= 0; c = s->json[c].next) {
     if (s->json[c].type != J::Num) return fail(s, s->json[c].line, "reach values are numbers");
-    if (keyIs(s, s->json[c], "half_r")) out->half_r = s->json[c].num;
-    else if (keyIs(s, s->json[c], "side_r")) out->side_r = s->json[c].num;
-    else if (keyIs(s, s->json[c], "side_px")) out->side_px = s->json[c].num;
-    else return fail(s, s->json[c].line, "reach has half_r, side_r and side_px");
+    const float v = s->json[c].num;
+    if (v < 0.0f || v > 1000.0f) return fail(s, s->json[c].line, "reach values are 0 to 1000");
+    if (keyIs(s, s->json[c], "half_r")) out->half_r = v;
+    else if (keyIs(s, s->json[c], "side_r")) out->side_r = v;
+    else if (keyIs(s, s->json[c], "side_px")) out->side_px = v;
+    else if (keyIs(s, s->json[c], "up_r")) out->up_r = v;
+    else if (keyIs(s, s->json[c], "down_r")) out->down_r = v;
+    else if (keyIs(s, s->json[c], "label_r")) out->label_r = v;
+    else return fail(s, s->json[c].line, "reach has half_r, side_r, side_px, up_r, down_r and label_r");
   }
   return true;
 }
@@ -1377,12 +1462,14 @@ bool loadLayouts(Screen* s, int node, uint32_t* ops) {
       }
     }
   }
-  // ops holds each derived var's own formula; add what a longer layout one costs.
+  // ops holds each derived var's own formula; add what a costlier layout one adds.
   for (int k = 0; k < s->var_count; ++k) {
     const Var& v = s->vars[k];
-    uint16_t longest = v.expr.len;
-    for (const Expr& alt : v.alt) longest = alt.len > longest ? alt.len : longest;
-    *ops += longest - v.expr.len;
+    if (v.kind != 0) continue;
+    const uint32_t own = weight(s, v.expr);
+    uint32_t most = own;
+    for (const Expr& alt : v.alt) most = weight(s, alt) > most ? weight(s, alt) : most;
+    *ops += most - own;
   }
   return true;
 }
@@ -1407,8 +1494,11 @@ bool loadFile(Screen* s) {
     }
   }
   int format = 0;
-  if (!readInt(s, root, "format", 0, 1, 1, &format)) return false;
-  if (format != 1) return fail(s, 1, "\"format\": 1 is required");
+  if (!readInt(s, root, "format", 0, 0, 1000, &format)) return false;
+  if (format < 1) return fail(s, 1, "\"format\" is required (this panel reads format %d)", kFormat);
+  if (format > kFormat) {
+    return fail(s, 1, "this screen needs format %d; this panel reads format %d (update the firmware)", format, kFormat);
+  }
   const int id = child(s, root, "id");
   if (id < 0 || s->json[id].type != J::Str || !copyString(s, s->json[id], s->info.id, sizeof(s->info.id))) {
     return fail(s, 1, "\"id\" is required ([a-z0-9_], up to 32)");
@@ -1464,7 +1554,7 @@ bool loadFile(Screen* s) {
     if (!compileNode(s, label, &e)) return false;
     s->info.label_color = colorOf(eval(s, e));
   }
-  Reach base{2.0f, 0.0f, 0.0f};
+  Reach base;
   if (!readReach(s, child(s, root, "reach"), &base)) return false;
   for (Reach& r : s->info.reach) r = base;
 
@@ -1480,8 +1570,19 @@ bool loadFile(Screen* s) {
       keyText(s, s->json[c], key, sizeof(key));
       Var& v = s->vars[s->var_count++];
       v = Var{};
+      v.history = -1;
       v.slot = static_cast<int16_t>(addSlot(s, key, s->json[c].line, 2));
       if (v.slot < 0) return false;
+      // History first, so prev() in any formula knows it.
+      int keep = 0;
+      if (s->json[c].type == J::Obj && !readInt(s, c, "keep", 0, 0, kMaxKeep, &keep)) return false;
+      if (keep > 0) {
+        if (s->history_count >= kMaxHistoryVars) {
+          return fail(s, s->json[c].line, "too many vars with a history (limit %d)", kMaxHistoryVars);
+        }
+        v.keep = static_cast<uint8_t>(keep);
+        v.history = static_cast<int8_t>(s->history_count++);
+      }
     }
     int k = 0;
     for (int c = s->json[vars].first; c >= 0; c = s->json[c].next, ++k) {
@@ -1491,8 +1592,8 @@ bool loadFile(Screen* s) {
         v.kind = 1;
         for (int f = n.first; f >= 0; f = s->json[f].next) {
           if (!keyIs(s, s->json[f], "init") && !keyIs(s, s->json[f], "next") && !keyIs(s, s->json[f], "every") &&
-              !keyIs(s, s->json[f], "frames")) {
-            return fail(s, s->json[f].line, "a state var has init, next, every or frames");
+              !keyIs(s, s->json[f], "frames") && !keyIs(s, s->json[f], "keep") && !keyIs(s, s->json[f], "record")) {
+            return fail(s, s->json[f].line, "a state var has init, next, every, frames, keep or record");
           }
         }
         const int init = child(s, c, "init");
@@ -1502,12 +1603,15 @@ bool loadFile(Screen* s) {
         if (init >= 0 && !compileNode(s, init, &v.expr)) return false;
         if (next >= 0 && !compileNode(s, next, &v.next)) return false;
         if (every >= 0 && !compileNode(s, every, &v.every)) return false;
+        const int record = child(s, c, "record");
+        if (record >= 0 && !v.keep) return fail(s, s->json[record].line, "'record' needs 'keep'");
+        if (record >= 0 && !compileNode(s, record, &v.record)) return false;
         if (!readInt(s, c, "frames", 0, 0, 3600, &frames)) return false;
         v.frames = static_cast<uint16_t>(frames);
-        ops += v.next.len + v.every.len;
+        ops += weight(s, v.next) + weight(s, v.every) + weight(s, v.record) + v.keep;
       } else {
         if (!compileNode(s, c, &v.expr)) return false;
-        ops += v.expr.len;
+        ops += weight(s, v.expr);
       }
     }
   }
@@ -1538,12 +1642,19 @@ void joinArea(lv_area_t* out, const lv_area_t* a, const lv_area_t* b) {
   *out = r;
 }
 
+// A box edge as a whole pixel, kept well inside int32 whatever the file computes.
+int32_t edge(float v, bool up) {
+  if (!isfinite(v)) return 0;
+  v = v < -2.0f * kCoordLimit ? -2.0f * kCoordLimit : (v > 2.0f * kCoordLimit ? 2.0f * kCoordLimit : v);
+  return static_cast<int32_t>(up ? ceilf(v) : floorf(v));
+}
+
 void grow(Screen* s, float x1, float y1, float x2, float y2) {
   lv_area_t a;
-  a.x1 = static_cast<int32_t>(floorf(fminf(x1, x2))) - 2;
-  a.y1 = static_cast<int32_t>(floorf(fminf(y1, y2))) - 2;
-  a.x2 = static_cast<int32_t>(ceilf(fmaxf(x1, x2))) + 2;
-  a.y2 = static_cast<int32_t>(ceilf(fmaxf(y1, y2))) + 2;
+  a.x1 = edge(fminf(x1, x2), false) - 2;
+  a.y1 = edge(fminf(y1, y2), false) - 2;
+  a.x2 = edge(fmaxf(x1, x2), true) + 2;
+  a.y2 = edge(fmaxf(y1, y2), true) + 2;
   Region& r = s->regions[s->region];
   if (!r.valid) {
     r.box = a;
@@ -1551,6 +1662,31 @@ void grow(Screen* s, float x1, float y1, float x2, float y2) {
     return;
   }
   joinArea(&r.box, &r.box, &a);
+}
+
+// The part of a box on the screen, in pixels.
+float clipArea(const Screen* s, float x1, float y1, float x2, float y2) {
+  const float w = s->slots[s->s_w], h = s->slots[s->s_h];
+  const float cw = fminf(fmaxf(x1, x2), w) - fmaxf(fminf(x1, x2), 0.0f);
+  const float ch = fminf(fmaxf(y1, y2), h) - fmaxf(fminf(y1, y2), 0.0f);
+  return cw > 0.0f && ch > 0.0f ? cw * ch : 0.0f;
+}
+
+// Charges a shape's painted pixels (an estimate, at most its box on screen)
+// to the frame's fill budget; false (and counted) once the budget is spent.
+bool afford(Screen* s, float px) {
+  if (s->fill_px + px > s->fill_limit) {
+    ++s->skipped;
+    return false;
+  }
+  s->fill_px += px;
+  return true;
+}
+
+// Radii past the screen diagonal paint nothing more.
+float maxRadius(const Screen* s) {
+  const float w = s->slots[s->s_w], h = s->slots[s->s_h];
+  return fminf(sqrtf(w * w + h * h) + 2.0f, 4000.0f);
 }
 
 Cmd* addCmd(Screen* s) {
@@ -1563,6 +1699,13 @@ Cmd* addCmd(Screen* s) {
 void addLine(Screen* s, float x1, float y1, float x2, float y2, float width, uint32_t color, float alpha, bool round,
              uint16_t dash = 0, uint16_t gap = 0) {
   if (alpha < 0.02f) return;
+  const float w = static_cast<float>(widthOf(width));
+  const float len = sqrtf((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)) + w;
+  const float h0 = w / 2.0f + 1.0f;
+  if (!afford(s, fminf(len * w, clipArea(s, fminf(x1, x2) - h0, fminf(y1, y2) - h0, fmaxf(x1, x2) + h0,
+                                         fmaxf(y1, y2) + h0)))) {
+    return;
+  }
   Cmd* c = addCmd(s);
   if (!c) return;
   c->kind = cLine;
@@ -1576,7 +1719,7 @@ void addLine(Screen* s, float x1, float y1, float x2, float y2, float width, uin
   c->d = coord(y2);
   c->x1 = dash;
   c->x2 = gap;
-  const float h = width / 2.0f + 1.0f;
+  const float h = c->width / 2.0f + 1.0f;
   grow(s, c->a - h, c->b - h, c->c + h, c->d + h);
   grow(s, c->c - h, c->d - h, c->a + h, c->b + h);
 }
@@ -1584,6 +1727,12 @@ void addLine(Screen* s, float x1, float y1, float x2, float y2, float width, uin
 void addArc(Screen* s, float x, float y, float radius, float start, float end, float width, uint32_t color, float alpha,
             bool round) {
   if (alpha < 0.02f || radius < 1.0f) return;
+  radius = fminf(radius, maxRadius(s));
+  const float span = end - start >= 360.0f ? 360.0f : fmaxf(0.0f, fminf(end - start, 360.0f));
+  const float w = fminf(static_cast<float>(widthOf(width)), radius);
+  if (!afford(s, fminf(kTwoPi * radius * span / 360.0f * w, clipArea(s, x - radius, y - radius, x + radius, y + radius)))) {
+    return;
+  }
   Cmd* c = addCmd(s);
   if (!c) return;
   c->kind = cArc;
@@ -1593,11 +1742,11 @@ void addArc(Screen* s, float x, float y, float radius, float start, float end, f
   c->color = color;
   c->a = coord(x);
   c->b = coord(y);
-  c->c = roundf(fminf(radius, 4000.0f));
+  c->c = roundf(radius);
   // Whole degrees, as drawn; a full ring stays full.
   const bool full = end - start >= 360.0f;
   c->d = full ? 0.0f : truncf(fmodf(start, 360.0f));
-  c->e = full ? 360.0f : c->d + truncf(end - start);
+  c->e = full ? 360.0f : c->d + truncf(span);
   grow(s, c->a - c->c - 1, c->b - c->c - 1, c->a + c->c + 1, c->b + c->c + 1);
 }
 
@@ -1640,6 +1789,10 @@ void formatText(Screen* s, const Elem& e, char* out) {
 
 void addText(Screen* s, const Elem& e, int buffer, float x, float y, float width, uint32_t color, float alpha) {
   if (alpha < 0.02f || !s->texts[buffer][0]) return;
+  const lv_font_t* line_font = assist_screen_font(e.font);
+  const float line_h = line_font ? static_cast<float>(lv_font_get_line_height(line_font)) : e.font;
+  const float box_w = fminf(fmaxf(width, 1.0f), 2000.0f);
+  if (!afford(s, clipArea(s, x, y, x + box_w, y + line_h))) return;
   Cmd* c = addCmd(s);
   if (!c) return;
   c->kind = cText;
@@ -1689,11 +1842,19 @@ void buildPoly(Screen* s, const Elem& e) {
   const uint32_t color = colorOf(eval(s, e.p[kP_C], 0xFFFFFF));
   const float width = eval(s, e.p[kP_W], 1.0f);
   const bool round = (e.flags & kRoundSet) ? (e.flags & kRound) : true;
+  // Fill estimate per copy: the line's length times its width, at most a screen.
+  float length = 0.0f;
+  for (int i = 1; i < poly.count; ++i) {
+    const float dx = static_cast<float>(now[i][0] - now[i - 1][0]), dy = static_cast<float>(now[i][1] - now[i - 1][1]);
+    length += sqrtf(dx * dx + dy * dy);
+  }
+  const float screen = clipArea(s, 0.0f, 0.0f, 1e9f, 1e9f);
+  auto fill = [&](float w) { return fminf((length + w) * w, screen); };
   // Oldest first, so newer copies draw over them.
   for (int k = poly.stored - 1; k >= 0; --k) {
     const int slot = (poly.head + k) % poly.keep;
     const float alpha = poly.alpha[k];
-    if (alpha < 0.02f) continue;
+    if (alpha < 0.02f || !afford(s, fill(poly.width))) continue;
     Cmd* c = addCmd(s);
     if (!c) return;
     c->kind = cPoly;
@@ -1705,8 +1866,8 @@ void buildPoly(Screen* s, const Elem& e) {
     c->x2 = poly.count;
   }
   const float alpha = eval(s, e.p[kP_A], 1.0f);
-  if (alpha >= 0.02f) {
-    if (e.flags & kGlow) {
+  if (alpha >= 0.02f && afford(s, fill(widthOf(width)))) {
+    if ((e.flags & kGlow) && afford(s, fill(widthOf(width * 4.0f)))) {
       Cmd* g = addCmd(s);
       if (!g) return;
       g->kind = cPoly;
@@ -1768,16 +1929,18 @@ void buildOne(Screen* s, const Elem& e) {
     }
     case kDisc: {
       const float alpha = eval(s, e.p[kD_A], 1.0f);
-      const float radius = eval(s, e.p[kD_R]);
+      const float radius = fminf(eval(s, e.p[kD_R]), maxRadius(s));
       if (alpha < 0.02f || radius < 1.0f) break;
+      const float dx = eval(s, e.p[kD_X]), dy = eval(s, e.p[kD_Y]);
+      if (!afford(s, fminf(kPi * radius * radius, clipArea(s, dx - radius, dy - radius, dx + radius, dy + radius)))) break;
       Cmd* c = addCmd(s);
       if (!c) break;
       c->kind = cDisc;
       c->opa = opaOf(alpha);
       c->color = colorOf(eval(s, e.p[kD_C], 0xFFFFFF));
-      c->a = coord(eval(s, e.p[kD_X]));
-      c->b = coord(eval(s, e.p[kD_Y]));
-      c->c = roundf(fminf(radius, 4000.0f) * 2.0f) * 0.5f;
+      c->a = coord(dx);
+      c->b = coord(dy);
+      c->c = roundf(radius * 2.0f) * 0.5f;
       // grad: the colour at the bottom, shading down from color at the top.
       if (e.p[kD_G].len) {
         c->flags = cfGrad;
@@ -1789,25 +1952,28 @@ void buildOne(Screen* s, const Elem& e) {
     case kRect: {
       const float alpha = eval(s, e.p[kR_A], 1.0f);
       if (alpha < 0.02f) break;
+      const float x1 = coord(eval(s, e.p[kR_X1])), y1 = coord(eval(s, e.p[kR_Y1]));
+      const float x2 = coord(eval(s, e.p[kR_X2])), y2 = coord(eval(s, e.p[kR_Y2]));
+      if (!afford(s, clipArea(s, x1, y1, x2 + 1.0f, y2 + 1.0f))) break;
       Cmd* c = addCmd(s);
       if (!c) break;
       c->kind = cRect;
       c->opa = opaOf(alpha);
       c->color = colorOf(eval(s, e.p[kR_C], 0xFFFFFF));
-      c->a = coord(eval(s, e.p[kR_X1]));
-      c->b = coord(eval(s, e.p[kR_Y1]));
-      c->c = coord(eval(s, e.p[kR_X2]));
-      c->d = coord(eval(s, e.p[kR_Y2]));
+      c->a = x1;
+      c->b = y1;
+      c->c = x2;
+      c->d = y2;
       c->x1 = static_cast<uint16_t>(fmaxf(0.0f, fminf(eval(s, e.p[kR_RAD]), 2000.0f)));
       grow(s, c->a, c->b, c->c, c->d);
       break;
     }
-    case kFrame: {
-      const float w = eval(s, e.p[kF_W], 1.0f);
-      const uint32_t color = colorOf(eval(s, e.p[kF_C], 0xFFFFFF));
-      const float alpha = eval(s, e.p[kF_A], 1.0f);
-      const float x1 = eval(s, e.p[kF_X1]), y1 = eval(s, e.p[kF_Y1]);
-      const float x2 = eval(s, e.p[kF_X2]), y2 = eval(s, e.p[kF_Y2]);
+    case kOutline: {
+      const float w = eval(s, e.p[kO_W], 1.0f);
+      const uint32_t color = colorOf(eval(s, e.p[kO_C], 0xFFFFFF));
+      const float alpha = eval(s, e.p[kO_A], 1.0f);
+      const float x1 = eval(s, e.p[kO_X1]), y1 = eval(s, e.p[kO_Y1]);
+      const float x2 = eval(s, e.p[kO_X2]), y2 = eval(s, e.p[kO_Y2]);
       addLine(s, x1, y1, x2, y1, w, color, alpha, false);
       addLine(s, x2, y1, x2, y2, w, color, alpha, false);
       addLine(s, x2, y2, x1, y2, w, color, alpha, false);
@@ -1815,7 +1981,7 @@ void buildOne(Screen* s, const Elem& e) {
       break;
     }
     case kText: {
-      const int every = static_cast<int>(fmaxf(1.0f, eval(s, e.p[kT_EVERY], 1.0f)));
+      const int every = whole(fmaxf(1.0f, eval(s, e.p[kT_EVERY], 1.0f)));
       if (!s->text_ready[e.text_first] || s->frame_no % every == 0) {
         formatText(s, e, s->texts[e.text_first]);
         s->text_ready[e.text_first] = true;
@@ -1887,7 +2053,7 @@ void stepLogs(Screen* s, bool start) {
         log.count = e.rows;
       }
     } else {
-      const int every = static_cast<int>(fmaxf(1.0f, eval(s, e.p[kG_EVERY], 1.0f)));
+      const int every = whole(fmaxf(1.0f, eval(s, e.p[kG_EVERY], 1.0f)));
       if (s->frame_no % every == 0) {
         if (eval(s, e.p[kG_PUSH], 1.0f) != 0.0f) {
           if (log.count == e.rows) {
@@ -1973,6 +2139,8 @@ const Info& info(const Screen* s) { return s->info; }
 
 uint32_t commandCount(const Screen* s) { return s->cmd_count; }
 
+uint32_t skippedShapes(const Screen* s) { return s->skipped; }
+
 void reset(Screen* s, uint32_t seed) {
   s->rng = seed ? seed : 0x2545F491u;
   s->frame_no = 0;
@@ -1987,7 +2155,9 @@ void reset(Screen* s, uint32_t seed) {
     Var& v = s->vars[i];
     v.acc = 0.0f;
     s->slots[v.slot] = eval(s, v.expr);
+    for (int k = 0; k < v.keep; ++k) s->history[v.history][k] = s->slots[v.slot];
   }
+  s->skipped = 0;
   stepLogs(s, true);
 }
 
@@ -2008,7 +2178,13 @@ void frame(Screen* s, const Inputs& in) {
     } else if (v.frames && s->frame_no % v.frames != 0) {
       continue;
     }
-    s->slots[v.slot] = eval(s, v.next);
+    const float next = eval(s, v.next);
+    if (v.keep && (!v.record.len || eval(s, v.record) != 0.0f)) {
+      float* h = s->history[v.history];
+      memmove(h + 1, h, sizeof(float) * (v.keep - 1));
+      h[0] = s->slots[v.slot];
+    }
+    s->slots[v.slot] = next;
   }
   stepLogs(s, false);
   for (int i = 0; i < kMaxRegions; ++i) {
@@ -2022,6 +2198,9 @@ void frame(Screen* s, const Inputs& in) {
   s->cmd_count = 0;
   s->region_count = 0;
   s->region = 0;
+  s->fill_px = 0.0f;
+  s->fill_limit = kFillScreens * fmaxf(in.w, 100.0f) * fmaxf(in.h, 100.0f);
+  s->skipped = 0;
   buildRange(s, 0, s->elem_count, 0);
   for (int i = 0; i < s->region_count; ++i) {
     Region& r = s->regions[i];
@@ -2066,9 +2245,35 @@ int dirty(const Screen* s, lv_area_t* areas, int max) {
   return n;
 }
 
-void draw(const Screen* s, lv_layer_t* layer, int32_t ox, int32_t oy) {
-  for (uint32_t i = 0; i < s->cmd_count; ++i) {
-    const Cmd& c = s->cmds[i];
+namespace {
+
+// Whether a box (painter coordinates, inclusive) reaches the clip area.
+bool reaches(const lv_area_t& clip, int32_t ox, int32_t oy, float x1, float y1, float x2, float y2) {
+  return ox + x2 >= clip.x1 && ox + x1 <= clip.x2 && oy + y2 >= clip.y1 && oy + y1 <= clip.y2;
+}
+
+// A command's box, for skipping the ones outside the band being drawn.
+bool cmdReaches(const Cmd& c, const lv_area_t& clip, int32_t ox, int32_t oy) {
+  switch (c.kind) {
+    case cLine: {
+      const float h = c.width / 2.0f + 1.0f;
+      return reaches(clip, ox, oy, fminf(c.a, c.c) - h, fminf(c.b, c.d) - h, fmaxf(c.a, c.c) + h, fmaxf(c.b, c.d) + h);
+    }
+    case cArc:
+    case cDisc: return reaches(clip, ox, oy, c.a - c.c - 1, c.b - c.c - 1, c.a + c.c + 1, c.b + c.c + 1);
+    case cRect: return reaches(clip, ox, oy, fminf(c.a, c.c), fminf(c.b, c.d), fmaxf(c.a, c.c), fmaxf(c.b, c.d));
+    case cText: {
+      const lv_font_t* font = assist_screen_font(c.x2);
+      const float h = font ? static_cast<float>(lv_font_get_line_height(font)) : c.x2;
+      return reaches(clip, ox, oy, c.a, c.b, c.a + c.c, c.b + h);
+    }
+    default: return true;  // polylines are checked per segment
+  }
+}
+
+void drawCmd(const Screen* s, const Cmd& c, lv_layer_t* layer, const lv_area_t& clip, int32_t ox, int32_t oy) {
+  if (!cmdReaches(c, clip, ox, oy)) return;
+  {
     switch (c.kind) {
       case cLine:
       case cPoly: {
@@ -2091,7 +2296,12 @@ void draw(const Screen* s, lv_layer_t* layer, int32_t ox, int32_t oy) {
           lv_draw_line(layer, &dsc);
         } else {
           const int16_t (*pts)[2] = &s->points[c.x1];
+          const float h = c.width / 2.0f + 1.0f;
           for (int k = 1; k < c.x2; ++k) {
+            if (!reaches(clip, ox, oy, fminf(pts[k - 1][0], pts[k][0]) - h, fminf(pts[k - 1][1], pts[k][1]) - h,
+                         fmaxf(pts[k - 1][0], pts[k][0]) + h, fmaxf(pts[k - 1][1], pts[k][1]) + h)) {
+              continue;
+            }
             dsc.p1.x = static_cast<lv_value_precise_t>(ox + pts[k - 1][0]);
             dsc.p1.y = static_cast<lv_value_precise_t>(oy + pts[k - 1][1]);
             dsc.p2.x = static_cast<lv_value_precise_t>(ox + pts[k][0]);
@@ -2163,7 +2373,7 @@ void draw(const Screen* s, lv_layer_t* layer, int32_t ox, int32_t oy) {
         dsc.font = font;
         dsc.align = static_cast<lv_text_align_t>(c.width);
         dsc.text = s->texts[c.x1];
-        dsc.text_local = 1;
+        dsc.text_local = 0;  // the Screen's text buffers outlive the draw
         lv_area_t area;
         area.x1 = ox + static_cast<int32_t>(c.a);
         area.y1 = oy + static_cast<int32_t>(c.b);
@@ -2177,4 +2387,19 @@ void draw(const Screen* s, lv_layer_t* layer, int32_t ox, int32_t oy) {
   }
 }
 
+}  // namespace
+
+// LVGL calls the painter once per render band: only commands that reach the
+// band are issued (each lv_draw_* call allocates a draw task).
+void draw(const Screen* s, lv_layer_t* layer, int32_t ox, int32_t oy) {
+  const lv_area_t clip = layer->_clip_area;
+  for (int r = 0; r < s->region_count; ++r) {
+    const Region& region = s->regions[r];
+    if (!region.valid || !reaches(clip, ox, oy, region.box.x1, region.box.y1, region.box.x2, region.box.y2)) continue;
+    for (uint32_t i = region.first_cmd; i < region.end_cmd; ++i) drawCmd(s, s->cmds[i], layer, clip, ox, oy);
+  }
+}
+
 }  // namespace assist_screen
+
+#endif  // HOMETILES_ASSIST_DATA_SCREENS
