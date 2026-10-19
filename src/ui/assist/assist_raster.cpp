@@ -119,9 +119,57 @@ bool target(const lv_layer_t* layer, Target* out) {
 #endif
 }
 
+// A horizontal or vertical line without round ends is the rectangle
+// lv_draw_line fills: width w spans w >> 1 pixels before the line's pixel
+// and the rest after it; no anti-aliasing.
+void fillAxisLine(const Target& t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t width, lv_color_t color,
+                  uint8_t opa) {
+  const int32_t before = width >> 1, after = width - before - 1;
+  lv_area_t a;
+  if (y1 == y2) {
+    a.x1 = x1 < x2 ? x1 : x2;
+    a.x2 = x1 < x2 ? x2 : x1;
+    a.y1 = y1 - before;
+    a.y2 = y1 + after;
+  } else {
+    a.y1 = y1 < y2 ? y1 : y2;
+    a.y2 = y1 < y2 ? y2 : y1;
+    a.x1 = x1 - before;
+    a.x2 = x1 + after;
+  }
+  if (a.x1 < t.clip.x1) a.x1 = t.clip.x1;
+  if (a.y1 < t.clip.y1) a.y1 = t.clip.y1;
+  if (a.x2 > t.clip.x2) a.x2 = t.clip.x2;
+  if (a.y2 > t.clip.y2) a.y2 = t.clip.y2;
+  if (a.x1 > a.x2 || a.y1 > a.y2) return;
+  const uint16_t c16 = lv_color_to_u16(color);
+  const uint32_t c32 = lv_color_to_u32(color);
+  for (int32_t py = a.y1; py <= a.y2; ++py) {
+    uint8_t* row_start = t.pixels + static_cast<size_t>(py - t.buf.y1) * static_cast<size_t>(t.stride);
+    if (t.wide) {
+      uint32_t* p = reinterpret_cast<uint32_t*>(row_start) + (a.x1 - t.buf.x1);
+      for (int32_t px = a.x1; px <= a.x2; ++px, ++p) *p = mix888(c32, *p, opa);
+    } else if (t.swapped) {
+      uint16_t* p = reinterpret_cast<uint16_t*>(row_start) + (a.x1 - t.buf.x1);
+      for (int32_t px = a.x1; px <= a.x2; ++px, ++p) *p = __builtin_bswap16(mix565(c16, __builtin_bswap16(*p), opa));
+    } else {
+      uint16_t* p = reinterpret_cast<uint16_t*>(row_start) + (a.x1 - t.buf.x1);
+      if (opa >= 255) {
+        for (int32_t px = a.x1; px <= a.x2; ++px, ++p) *p = c16;
+      } else {
+        for (int32_t px = a.x1; px <= a.x2; ++px, ++p) *p = mix565(c16, *p, opa);
+      }
+    }
+  }
+}
+
 void line(const Target& t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t width, lv_color_t color,
           uint8_t opa, bool round_ends) {
   if (width < 1 || opa == 0 || (x1 == x2 && y1 == y2)) return;
+  if (!round_ends && (x1 == x2 || y1 == y2)) {
+    fillAxisLine(t, x1, y1, x2, y2, width, color, opa);
+    return;
+  }
   // LVGL centres an odd width on the pixel and an even width on its edge.
   const float off = (width & 1) ? 0.5f : 0.0f;
   const float ax = static_cast<float>(x1) + off, ay = static_cast<float>(y1) + off;
@@ -309,11 +357,17 @@ void arc(const Target& t, int32_t cx, int32_t cy, int32_t radius, int32_t width,
           const float de = -(ce * dy - se * dx);
           const float angular = narrow ? sat(0.5f + ds) * sat(0.5f + de) : 1.0f - sat(0.5f - ds) * sat(0.5f - de);
           cov *= angular;
-          if (round_ends) {
-            const float sx = static_cast<float>(px) + 0.5f - cap_sx, sy = yc - cap_sy;
-            const float ex = static_cast<float>(px) + 0.5f - cap_ex, ey = yc - cap_ey;
-            const float cap = fmax3(sat(cap_r + 0.5f - sqrtf(sx * sx + sy * sy)),
-                                    sat(cap_r + 0.5f - sqrtf(ex * ex + ey * ey)));
+          if (round_ends && cov < 1.0f) {
+            // The end discs, only where a pixel lies within their boxes.
+            const float xc = static_cast<float>(px) + 0.5f;
+            const float sx = xc - cap_sx, sy = yc - cap_sy;
+            const float ex = xc - cap_ex, ey = yc - cap_ey;
+            const float cap_reach = cap_r + 1.0f;
+            float cap = 0.0f;
+            if (fabsf(sx) < cap_reach && fabsf(sy) < cap_reach) cap = sat(cap_r + 0.5f - sqrtf(sx * sx + sy * sy));
+            if (fabsf(ex) < cap_reach && fabsf(ey) < cap_reach) {
+              cap = fmax3(cap, sat(cap_r + 0.5f - sqrtf(ex * ex + ey * ey)));
+            }
             if (cap > cov) cov = cap;
           }
         }
