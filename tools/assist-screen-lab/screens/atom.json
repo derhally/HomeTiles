@@ -1,0 +1,63 @@
+{
+  "format": 1,
+  "id": "atom",
+  "name": "Atom",
+  "note": "Cyan, violet and magenta lobes swell with the voice; while thinking they gather into a smaller sphere and nine satellites circle it on three tilted elliptical orbits inside two counter-turning rings.",
+  "label_color": "#C8D2E6",
+  "colors": {"c0": "#22D3EE", "c1": "#7C3AED", "c2": "#DB2777",
+             "s0": "#0E7490", "s1": "#4C1D95", "s2": "#831843",
+             "core": "#F0FDFF", "core_shade": "#67E8F9",
+             "sat0": "#67E8F9", "sat1": "#C4B5FD", "sat2": "#F9A8D4",
+             "arc": "#A5F3FC", "arc_inner": "#C4B5FD", "white": "#FFFFFF"},
+  "vars": {
+    "lv": "level",
+    "m": "mode",
+    "glow": "floor(14 + 125 * m + 0.5) * 65536 + floor(165 - 73 * m + 0.5) * 256 + floor(233 + 13 * m + 0.5)",
+    "orbit_r": "r * (1.45 + 0.15 * lv * m)",
+    "sat_size": "r * (0.16 + 0.10 * lv)"
+  },
+  "items": [
+    {"type": "disc", "note": "halo, cyan while listening and violet while thinking", "repeat": 3, "as": "j",
+     "let": {
+       "i": "2 - j",
+       "scale": "i == 0 ? 1.30 : i == 1 ? 1.62 : 2.0",
+       "breathe": "1 + 0.04 * sin(t * 1.6 + i * 0.9)"
+     },
+     "x": "cx", "y": "cy", "radius": "max(1, r * scale * breathe * (1 + 0.28 * lv))", "color": "glow",
+     "alpha": "i == 0 ? 0.118 : i == 1 ? 0.071 : 0.039"},
+    {"type": "disc", "note": "lobes push outward with the voice", "repeat": 3, "as": "i",
+     "let": {
+       "speed": "i == 0 ? 0.9 : i == 1 ? -1.3 : 1.7",
+       "ang": "i * tau / 3 + t * speed",
+       "wobble": "0.6 + 0.4 * sin(t * 1.7 + i * 2.1)",
+       "off": "(1 - m) * r * (0.10 + 0.42 * lv) * wobble + m * r * 0.14",
+       "size_listen": "2 * r * (0.80 + 0.07 * sin(t * 2.3 + i * 1.3) + 0.38 * lv * (0.7 + 0.3 * sin(t * 9 + i * 2)))",
+       "size_orbit": "r * (1.05 + 0.06 * sin(t * 2 + i * 1.7) + 0.40 * lv)"
+     },
+     "x": "cx + off * cos(ang)", "y": "cy + off * sin(ang)",
+     "radius": "max(1, ((1 - m) * size_listen + m * size_orbit) / 2)",
+     "color": "i == 0 ? c0 : i == 1 ? c1 : c2", "grad": "i == 0 ? s0 : i == 1 ? s1 : s2", "alpha": 0.588},
+    {"type": "disc", "note": "core", "x": "cx", "y": "cy",
+     "radius": "max(1, ((1 - m) * 2 * r * (0.48 + 0.22 * lv + 0.03 * sin(t * 3.1)) + m * r * (0.62 + 0.08 * sin(t * 4.2) + 0.30 * lv)) / 2)",
+     "color": "core", "grad": "core_shade", "alpha": 0.745},
+    {"type": "arc", "note": "outer ring", "x": "cx", "y": "cy", "radius": "orbit_r + r * 0.175",
+     "start": "t * 100", "end": "t * 100 + 70 + 40 * sin(t * 1.9)", "width": 3, "color": "arc", "alpha": "m * 0.8"},
+    {"type": "arc", "note": "inner ring, turning the other way", "x": "cx", "y": "cy", "radius": "r * 0.875",
+     "start": "-t * 70", "end": "-t * 70 + 200", "width": 2, "color": "arc_inner", "alpha": "m * 0.55"},
+    {"type": "disc", "note": "satellites on three tilted orbits; nearer ones larger and brighter", "repeat": 9, "as": "i",
+     "if": "m >= 0.03",
+     "let": {
+       "p": "floor(i / 3)",
+       "k": "mod(i, 3)",
+       "tilt": "p * 1.0472",
+       "ang": "t * 0.9 * (1 + 0.15 * p) + k * tau / 3 + p * 0.6",
+       "ex": "orbit_r * m * cos(ang)",
+       "ey": "orbit_r * m * 0.34 * sin(ang)",
+       "depth": "0.5 + 0.5 * sin(ang)"
+     },
+     "x": "cx + ex * cos(tilt) - ey * sin(tilt)", "y": "cy + ex * sin(tilt) + ey * cos(tilt)",
+     "radius": "max(1, sat_size * (0.55 + 0.75 * depth) / 2)",
+     "color": "white", "grad": "p == 0 ? sat0 : p == 1 ? sat1 : sat2",
+     "alpha": "m * (90 + 165 * depth) / 255"}
+  ]
+}

@@ -98,7 +98,8 @@ constexpr PropDef kProps[kKindCount][kMaxProps] = {
     {{"x", 0, true}, {"y", 0, true}, {"radius", 0, true}, {"start", 0, false}, {"end", 360, false},
      {"width", 1, false}, {"color", 0xFFFFFF, false}, {"alpha", 1, false}},
     // disc
-    {{"x", 0, true}, {"y", 0, true}, {"radius", 0, true}, {"color", 0xFFFFFF, false}, {"alpha", 1, false}},
+    {{"x", 0, true}, {"y", 0, true}, {"radius", 0, true}, {"color", 0xFFFFFF, false}, {"alpha", 1, false},
+     {"grad", 0, false}},
     // rect
     {{"x1", 0, true}, {"y1", 0, true}, {"x2", 0, true}, {"y2", 0, true}, {"color", 0xFFFFFF, false},
      {"alpha", 1, false}, {"radius", 0, false}},
@@ -118,7 +119,7 @@ constexpr PropDef kProps[kKindCount][kMaxProps] = {
 };
 enum { kL_X1, kL_Y1, kL_X2, kL_Y2, kL_W, kL_C, kL_A, kL_DASH, kL_GAP };
 enum { kA_X, kA_Y, kA_R, kA_S, kA_E, kA_W, kA_C, kA_A };
-enum { kD_X, kD_Y, kD_R, kD_C, kD_A };
+enum { kD_X, kD_Y, kD_R, kD_C, kD_A, kD_G };
 enum { kR_X1, kR_Y1, kR_X2, kR_Y2, kR_C, kR_A, kR_RAD };
 enum { kF_X1, kF_Y1, kF_X2, kF_Y2, kF_W, kF_C, kF_A };
 enum { kP_X, kP_Y, kP_W, kP_C, kP_A };
@@ -132,6 +133,7 @@ struct Elem {
   uint8_t flags;
   uint8_t font;
   uint8_t align;
+  uint8_t on;  // bit n = drawn on Shape n
   uint16_t repeat;
   int16_t index_slot;
   uint16_t let_first, let_count;
@@ -158,6 +160,7 @@ struct Var {
   Expr expr;     // derived value or state init
   Expr next;     // state step (may be absent)
   Expr every;    // seconds between steps (may be absent)
+  Expr alt[kShapeCount];  // a layout's own derived value (may be absent)
   uint16_t frames;  // frames between steps (0: every frame)
   float acc;
 };
@@ -187,7 +190,7 @@ struct Log {
 };
 
 enum CmdKind : uint8_t { cLine, cArc, cDisc, cRect, cPoly, cText };
-enum CmdFlag : uint8_t { cfRound = 1 };
+enum CmdFlag : uint8_t { cfRound = 1, cfGrad = 2 };
 
 struct Cmd {
   uint8_t kind;
@@ -257,7 +260,8 @@ struct Screen {
   Region regions[kMaxRegions];
   int region_count;  // used this frame
   int region;        // being built
-  int s_t, s_dt, s_frame, s_level, s_mode, s_answering, s_r, s_cx, s_cy, s_w, s_h;
+  int s_t, s_dt, s_frame, s_level, s_mode, s_answering, s_r, s_cx, s_cy, s_w, s_h, s_wide, s_square, s_tall;
+  uint8_t shape;
 };
 
 namespace {
@@ -491,6 +495,12 @@ int addSlot(Screen* s, const char* name, int line, uint8_t kind) {
   for (int f = 0; f < fFnCount; ++f) {
     if (strcmp(kFns[f].name, name) == 0) {
       fail(s, line, "'%s' is a function name", name);
+      return -1;
+    }
+  }
+  for (int c = 0; c < s->color_count; ++c) {
+    if (strcmp(s->colors[c].name, name) == 0) {
+      fail(s, line, "'%s' is already a color name", name);
       return -1;
     }
   }
@@ -1030,6 +1040,30 @@ uint32_t exprCost(const Screen* s, const Elem& e) {
 
 bool loadElements(Screen* s, int array, int depth, uint32_t mult, uint32_t* ops, uint32_t* cmds);
 
+constexpr const char* kShapeNames[kShapeCount] = {"wide", "square", "tall"};
+
+int shapeNamed(const char* name) {
+  for (int i = 0; i < kShapeCount; ++i) {
+    if (!strcmp(kShapeNames[i], name)) return i;
+  }
+  return -1;
+}
+
+// "on": ["wide", "square"] -> a bit per shape; absent = every shape.
+bool readShapes(Screen* s, int node, uint8_t* out) {
+  *out = (1u << kShapeCount) - 1u;
+  if (node < 0) return true;
+  if (s->json[node].type != J::Arr) return fail(s, s->json[node].line, "\"on\" is a list of shapes (wide, square, tall)");
+  *out = 0;
+  for (int c = s->json[node].first; c >= 0; c = s->json[c].next) {
+    char name[16];
+    const int shape = s->json[c].type == J::Str && copyString(s, s->json[c], name, sizeof(name)) ? shapeNamed(name) : -1;
+    if (shape < 0) return fail(s, s->json[c].line, "unknown shape (wide, square, tall)");
+    *out |= static_cast<uint8_t>(1u << shape);
+  }
+  return true;
+}
+
 bool loadElement(Screen* s, int node, int depth, uint32_t mult, uint32_t* ops, uint32_t* cmds) {
   const JNode& n = s->json[node];
   if (n.type != J::Obj) return fail(s, n.line, "an item must be an object");
@@ -1053,7 +1087,7 @@ bool loadElement(Screen* s, int node, int depth, uint32_t mult, uint32_t* ops, u
   // Every key must be known: a typo is an error, not a silent default.
   static const char* const kCommon[] = {"type", "repeat", "as", "let", "if", "glow", "round", "items",
                                         "font", "align", "text", "line", "rows", "id", "points", "count",
-                                        "trail", "fill", "note"};
+                                        "trail", "fill", "note", "on"};
   for (int c = n.first; c >= 0; c = s->json[c].next) {
     bool known = false;
     for (const char* k : kCommon) known = known || keyIs(s, s->json[c], k);
@@ -1065,6 +1099,7 @@ bool loadElement(Screen* s, int node, int depth, uint32_t mult, uint32_t* ops, u
     }
   }
 
+  if (!readShapes(s, child(s, node, "on"), &e.on)) return false;
   int repeat = 1;
   if (!readInt(s, node, "repeat", 1, 1, kMaxRepeat, &repeat)) return false;
   e.repeat = static_cast<uint16_t>(repeat);
@@ -1291,6 +1326,67 @@ bool declareLogCounts(Screen* s, int array, int depth) {
   return true;
 }
 
+// Reach keys over the values already in out.
+bool readReach(Screen* s, int node, Reach* out) {
+  if (node < 0) return true;
+  if (s->json[node].type != J::Obj) return fail(s, s->json[node].line, "\"reach\" is an object");
+  for (int c = s->json[node].first; c >= 0; c = s->json[c].next) {
+    if (s->json[c].type != J::Num) return fail(s, s->json[c].line, "reach values are numbers");
+    if (keyIs(s, s->json[c], "half_r")) out->half_r = s->json[c].num;
+    else if (keyIs(s, s->json[c], "side_r")) out->side_r = s->json[c].num;
+    else if (keyIs(s, s->json[c], "side_px")) out->side_px = s->json[c].num;
+    else return fail(s, s->json[c].line, "reach has half_r, side_r and side_px");
+  }
+  return true;
+}
+
+// "layouts": {"tall": {"reach": {...}, "vars": {"name": "expr"}}, ...}: per
+// shape, reach keys over the file's and other formulas for derived vars. The
+// worst case per frame counts the longest formula of each var.
+bool loadLayouts(Screen* s, int node, uint32_t* ops) {
+  if (node < 0) return true;
+  if (s->json[node].type != J::Obj) return fail(s, s->json[node].line, "\"layouts\" is an object");
+  for (int c = s->json[node].first; c >= 0; c = s->json[c].next) {
+    char name[16];
+    keyText(s, s->json[c], name, sizeof(name));
+    const int shape = shapeNamed(name);
+    if (shape < 0) return fail(s, s->json[c].line, "unknown layout '%s' (wide, square, tall)", name);
+    if (s->json[c].type != J::Obj) return fail(s, s->json[c].line, "a layout is an object");
+    s->info.layouts |= static_cast<uint8_t>(1u << shape);
+    for (int f = s->json[c].first; f >= 0; f = s->json[f].next) {
+      if (keyIs(s, s->json[f], "reach")) {
+        if (!readReach(s, f, &s->info.reach[shape])) return false;
+      } else if (keyIs(s, s->json[f], "vars")) {
+        if (s->json[f].type != J::Obj) return fail(s, s->json[f].line, "a layout's \"vars\" is an object");
+        for (int v = s->json[f].first; v >= 0; v = s->json[v].next) {
+          char key[24];
+          keyText(s, s->json[v], key, sizeof(key));
+          const int slot = findSlot(s, key, strlen(key));
+          Var* var = nullptr;
+          for (int k = 0; k < s->var_count && slot >= 0; ++k) {
+            if (s->vars[k].slot == slot) var = &s->vars[k];
+          }
+          if (!var) return fail(s, s->json[v].line, "layout var '%s' is not in \"vars\"", key);
+          if (var->kind != 0) return fail(s, s->json[v].line, "a layout can only change a derived var ('%s' is state)", key);
+          if (!compileNode(s, v, &var->alt[shape])) return false;
+        }
+      } else if (!keyIs(s, s->json[f], "note")) {
+        char key[24];
+        keyText(s, s->json[f], key, sizeof(key));
+        return fail(s, s->json[f].line, "a layout has reach, vars and note, not '%s'", key);
+      }
+    }
+  }
+  // ops holds each derived var's own formula; add what a longer layout one costs.
+  for (int k = 0; k < s->var_count; ++k) {
+    const Var& v = s->vars[k];
+    uint16_t longest = v.expr.len;
+    for (const Expr& alt : v.alt) longest = alt.len > longest ? alt.len : longest;
+    *ops += longest - v.expr.len;
+  }
+  return true;
+}
+
 bool loadFile(Screen* s) {
   JParser p{s, 0, 1};
   const int root = parseValue(p, 0);
@@ -1300,7 +1396,7 @@ bool loadFile(Screen* s) {
   if (s->json[root].type != J::Obj) return fail(s, 1, "the file must be one JSON object");
 
   static const char* const kTop[] = {"format", "id", "name", "needs", "label_color", "reach", "colors",
-                                     "vars", "items", "note"};
+                                     "vars", "items", "note", "layouts"};
   for (int c = s->json[root].first; c >= 0; c = s->json[c].next) {
     bool known = false;
     for (const char* k : kTop) known = known || keyIs(s, s->json[c], k);
@@ -1353,6 +1449,10 @@ bool loadFile(Screen* s) {
       }
       keyText(s, s->json[c], s->colors[s->color_count].name, sizeof(s->colors[0].name));
       if (!validName(s->colors[s->color_count].name)) return fail(s, s->json[c].line, "a color name is letters, digits and _");
+      // A name means one thing: built-in names (and log counts) come first.
+      if (findSlot(s, s->colors[s->color_count].name, strlen(s->colors[s->color_count].name)) >= 0) {
+        return fail(s, s->json[c].line, "'%s' is already a name, not a color", s->colors[s->color_count].name);
+      }
       s->colors[s->color_count].color = static_cast<uint32_t>(strtoul(value + 1, nullptr, 16));
       ++s->color_count;
     }
@@ -1364,17 +1464,9 @@ bool loadFile(Screen* s) {
     if (!compileNode(s, label, &e)) return false;
     s->info.label_color = colorOf(eval(s, e));
   }
-  s->info.reach_half_r = 2.0f;
-  const int reach = child(s, root, "reach");
-  if (reach >= 0) {
-    for (int c = s->json[reach].first; c >= 0; c = s->json[c].next) {
-      if (s->json[c].type != J::Num) return fail(s, s->json[c].line, "reach values are numbers");
-      if (keyIs(s, s->json[c], "half_r")) s->info.reach_half_r = s->json[c].num;
-      else if (keyIs(s, s->json[c], "side_r")) s->info.reach_side_r = s->json[c].num;
-      else if (keyIs(s, s->json[c], "side_px")) s->info.reach_side_px = s->json[c].num;
-      else return fail(s, s->json[c].line, "reach has half_r, side_r and side_px");
-    }
-  }
+  Reach base{2.0f, 0.0f, 0.0f};
+  if (!readReach(s, child(s, root, "reach"), &base)) return false;
+  for (Reach& r : s->info.reach) r = base;
 
   uint32_t ops = 0, cmds = 0;
   // Vars: all names first, so any expression may read any var (a later one
@@ -1419,6 +1511,7 @@ bool loadFile(Screen* s) {
       }
     }
   }
+  if (!loadLayouts(s, child(s, root, "layouts"), &ops)) return false;
   const int items = child(s, root, "items");
   if (items < 0 || s->json[items].type != J::Arr) return fail(s, 1, "\"items\" (a list) is required");
   if (!loadElements(s, items, 0, 1, &ops, &cmds)) return false;
@@ -1685,6 +1778,11 @@ void buildOne(Screen* s, const Elem& e) {
       c->a = coord(eval(s, e.p[kD_X]));
       c->b = coord(eval(s, e.p[kD_Y]));
       c->c = roundf(fminf(radius, 4000.0f) * 2.0f) * 0.5f;
+      // grad: the colour at the bottom, shading down from color at the top.
+      if (e.p[kD_G].len) {
+        c->flags = cfGrad;
+        c->d = static_cast<float>(colorOf(eval(s, e.p[kD_G])));
+      }
       grow(s, c->a - c->c, c->b - c->c, c->a + c->c, c->b + c->c);
       break;
     }
@@ -1752,6 +1850,10 @@ void buildRange(Screen* s, int first, int end, int depth) {
         s->region = s->region_count++;
         s->regions[s->region].first_cmd = s->cmd_count;
       }
+    }
+    if (!(e.on & (1u << s->shape))) {
+      i = e.end;
+      continue;
     }
     if (e.kind == kPoly) {
       if (!e.cond.len || eval(s, e.cond) != 0.0f) buildPoly(s, e);
@@ -1822,6 +1924,10 @@ void setInputs(Screen* s, const Inputs& in) {
   s->slots[s->s_cy] = in.cy;
   s->slots[s->s_w] = in.w;
   s->slots[s->s_h] = in.h;
+  s->shape = shapeOf(in.w, in.h);
+  s->slots[s->s_wide] = s->shape == kWide ? 1.0f : 0.0f;
+  s->slots[s->s_square] = s->shape == kSquare ? 1.0f : 0.0f;
+  s->slots[s->s_tall] = s->shape == kTall ? 1.0f : 0.0f;
 }
 
 }  // namespace
@@ -1846,9 +1952,10 @@ bool load(Screen* s, const char* text, size_t length, char* error, size_t error_
   }
   s->src = text;
   s->src_len = length;
-  const char* builtins[] = {"t", "dt", "frame", "level", "mode", "answering", "r", "cx", "cy", "w", "h"};
+  const char* builtins[] = {"t", "dt", "frame", "level", "mode", "answering", "r", "cx", "cy", "w", "h",
+                            "wide", "square", "tall"};
   int* targets[] = {&s->s_t, &s->s_dt, &s->s_frame, &s->s_level, &s->s_mode, &s->s_answering,
-                    &s->s_r, &s->s_cx, &s->s_cy, &s->s_w, &s->s_h};
+                    &s->s_r, &s->s_cx, &s->s_cy, &s->s_w, &s->s_h, &s->s_wide, &s->s_square, &s->s_tall};
   for (size_t i = 0; i < sizeof(builtins) / sizeof(builtins[0]); ++i) *targets[i] = addSlot(s, builtins[i], 0, 1);
   const bool ok = loadFile(s);
   // The file text and its DOM are not needed after this.
@@ -1890,7 +1997,7 @@ void frame(Screen* s, const Inputs& in) {
   for (int i = 0; i < s->var_count; ++i) {
     Var& v = s->vars[i];
     if (v.kind == 0) {
-      s->slots[v.slot] = eval(s, v.expr);
+      s->slots[v.slot] = eval(s, v.alt[s->shape].len ? v.alt[s->shape] : v.expr);
       continue;
     }
     if (!v.next.len) continue;
@@ -2030,6 +2137,11 @@ void draw(const Screen* s, lv_layer_t* layer, int32_t ox, int32_t oy) {
           area.y1 = oy + static_cast<int32_t>(c.b - c.c);
           area.x2 = ox + static_cast<int32_t>(c.a + c.c);
           area.y2 = oy + static_cast<int32_t>(c.b + c.c);
+          if (c.flags & cfGrad) {
+            const lv_color_t stops[2] = {dsc.bg_color, lv_color_hex(static_cast<uint32_t>(c.d))};
+            lv_grad_init_stops(&dsc.bg_grad, stops, nullptr, nullptr, 2);
+            lv_grad_vertical_init(&dsc.bg_grad);
+          }
         } else {
           dsc.radius = c.x1;
           area.x1 = ox + static_cast<int32_t>(fminf(c.a, c.c));

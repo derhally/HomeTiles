@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "id": "lens",
+  "name": "Lens",
+  "note": "A calm red lens in a brushed-metal ring. The glow around the bright centre grows with the voice; while thinking it breathes slowly; while answering it brightens with each word. Nothing else moves.",
+  "label_color": "#B9C0CA",
+  "reach": {"half_r": 1.75},
+  "colors": {"plate": "#0E1116", "white": "#FFFFFF",
+             "b0": "#5A626E", "b1": "#9AA3AF", "b2": "#C9D0D8", "b3": "#3A4048",
+             "l0": "#1A0303", "l1": "#3D0606", "l2": "#6E0B0A", "l3": "#A8120F",
+             "l4": "#E2231B", "l5": "#FF5A32", "l6": "#FF9A55", "l7": "#FFE3A0"},
+  "vars": {
+    "answer": {"init": 0, "next": "answer + (answering - answer) * 0.12"},
+    "think": "max(0, mode - answer)",
+    "g": "(1 - mode) * level + think * (0.25 + 0.25 * sin(t * 1.8)) + answer * (0.15 + 0.85 * level)"
+  },
+  "items": [
+    {"type": "disc", "note": "plate", "x": "cx", "y": "cy", "radius": "max(1, r * 1.75)", "color": "plate"},
+    {"type": "arc", "note": "bezel rings", "repeat": 4, "as": "i",
+     "let": {"br": "i == 0 ? 1.735 : i == 1 ? 1.67 : i == 2 ? 1.58 : 1.52"},
+     "x": "cx", "y": "cy", "radius": "r * br",
+     "width": "i == 0 ? 3 : i == 1 ? 6 : i == 2 ? 2 : 4",
+     "color": "i == 0 ? b0 : i == 1 ? b1 : i == 2 ? b2 : b3"},
+    {"type": "disc", "note": "lens layers, the inner ones grow with the glow", "repeat": 8, "as": "i",
+     "let": {
+       "lr": "i == 0 ? 1.38 : i == 1 ? 1.18 : i == 2 ? 0.98 : i == 3 ? 0.78 : i == 4 ? 0.56 : i == 5 ? 0.36 : i == 6 ? 0.20 : 0.09",
+       "grow": "i < 3 ? 1 : 1 + (0.15 + 0.12 * i / 8) * g * 2"
+     },
+     "x": "cx", "y": "cy", "radius": "max(1, min(r * 1.45, r * lr * grow))",
+     "color": "i == 0 ? l0 : i == 1 ? l1 : i == 2 ? l2 : i == 3 ? l3 : i == 4 ? l4 : i == 5 ? l5 : i == 6 ? l6 : l7",
+     "alpha": "i < 3 ? 1 : clamp01(0.55 + 0.45 * g + (i > 5 ? 0.3 : 0))"},
+    {"type": "arc", "note": "fixed reflections", "x": "cx", "y": "cy", "radius": "r * 1.22 + 2.5",
+     "start": 198, "end": 248, "width": 5, "color": "white", "alpha": 0.22},
+    {"type": "arc", "x": "cx", "y": "cy", "radius": "r * 1.05 + 1.5",
+     "start": 27, "end": 54, "width": 3, "color": "white", "alpha": 0.12}
+  ]
+}

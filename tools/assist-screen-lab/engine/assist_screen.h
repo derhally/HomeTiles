@@ -68,6 +68,22 @@ struct Inputs {
   float w, h;       // screen size
 };
 
+// The screen's shape. A file can give each shape its own layout (reach and
+// var overrides) and show elements on some shapes only.
+enum Shape : uint8_t { kWide, kSquare, kTall, kShapeCount };
+inline constexpr float kWideAspect = 1.2f;  // assist_style_catalog::kWideAspect
+inline Shape shapeOf(float w, float h) {
+  if (w >= kWideAspect * h) return kWide;
+  if (h >= kWideAspect * w) return kTall;
+  return kSquare;
+}
+
+// How far a screen reaches sideways: half_r * r, and side_r * r + side_px
+// (assist_styles::baseRadius).
+struct Reach {
+  float half_r, side_r, side_px;
+};
+
 // What a screen asks of the panel (assist_style_catalog.h features).
 enum Need : uint8_t { kNeedWide = 1u << 0, kNeedTearFree = 1u << 1 };
 
@@ -76,9 +92,8 @@ struct Info {
   char name[33];
   uint8_t needs;
   uint32_t label_color;
-  // How far it reaches sideways: half_r * r, and side_r * r + side_px
-  // (assist_styles::baseRadius).
-  float reach_half_r, reach_side_r, reach_side_px;
+  Reach reach[kShapeCount];  // by Shape; a shape without a layout keeps the file's
+  uint8_t layouts;           // bit n = Shape n has a layout of its own
   // Measured at load: the worst case per frame.
   uint32_t frame_ops;
   uint32_t frame_cmds;

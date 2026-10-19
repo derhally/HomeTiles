@@ -7,8 +7,8 @@ file is code the panel runs: it can only draw lines, arcs, discs, rectangles,
 polylines and text. A file over any limit is refused with a message naming the
 problem and its line.
 
-`screens/sentinel.json`, `screens/iris.json` and `screens/phosphor.json` are
-complete examples (ports of the built-in styles).
+`screens/` holds one complete example per built-in style (atom, reactor,
+dot_halo, voice_pills, sentinel, phosphor, light_disc, lens, iris).
 
 ## Top level
 
@@ -23,6 +23,7 @@ complete examples (ports of the built-in styles).
   "reach": {"half_r": 3.95, "side_r": 3.27, "side_px": 110},
   "colors": {"cyan": "#5CE1FF"},
   "vars": {},
+  "layouts": {},
   "items": []
 }
 ```
@@ -32,11 +33,12 @@ complete examples (ports of the built-in styles).
 | `format` | Always `1`. |
 | `id` | `a-z`, `0-9`, `_`, up to 32. It names the screen in Settings and the Bridge select. |
 | `name` | Shown name, up to 32 bytes. |
-| `needs` | Panel features the screen needs (`assist_style_catalog.h`). `wide` means the screen is at least 1.2 times as wide as tall. `tear_free` means the board swaps framebuffers (the 7B in landscape). A panel without them does not offer the screen. |
+| `needs` | Panel features the screen needs (`assist_style_catalog.h`). `wide` means the screen is at least 1.2 times as wide as tall. `tear_free` means the board swaps framebuffers (the 7B in landscape). A panel without them does not offer the screen. A screen with its own square and tall layouts does not need `wide`. |
 | `label_color` | Colour of the "Listening..." line under the screen. |
 | `reach` | How far the screen reaches sideways, which sets the base radius `r` (as `assist_styles::baseRadius` does). `half_r` is the half width in `r` (default 2). `side_r` and `side_px` give `side_r * r + side_px` for readouts with a fixed pixel width. `r` is 17 % of the short side, shrunk so the reach plus an 8 px edge fits. |
 | `colors` | Named colours, `"#RRGGBB"`, usable in expressions. |
 | `vars` | Named values, in order (below). |
+| `layouts` | Other reach and vars per screen shape (below). |
 | `items` | The shapes, drawn in order (later ones on top). |
 | `note` | Free text; also allowed on every element. |
 
@@ -59,6 +61,7 @@ These names are provided:
 | `r` | Base radius; it pops in from 0 as the screen opens |
 | `cx`, `cy` | Centre |
 | `w`, `h` | Screen size |
+| `wide`, `square`, `tall` | 1 for the screen's shape, else 0 (below) |
 | `pi`, `tau` | 3.14159..., 6.28318... |
 
 Functions:
@@ -88,6 +91,32 @@ Vars are evaluated in order each frame, so a var can use the ones above it.
 "box_an": {"init": 0, "next": "rand(0, 628) / 100", "every": 0.7}
 ```
 
+## Layouts
+
+A screen is `wide` when it is at least 1.2 times as wide as tall, `tall` when
+it is at least 1.2 times as tall as wide, and `square` otherwise (1024x600 and
+800x480 are wide, 720x720 and 480x480 square, 480x800 and 720x1280 tall).
+
+Readouts with a fixed pixel size that sit beside the rings on a wide screen
+collide with them on a narrow one. A layout moves them instead:
+
+```json
+"layouts": {
+  "tall": {"reach": {"half_r": 2.0, "side_r": 0, "side_px": 0},
+           "vars": {"by": "cy - 2.55 * r", "hy": "cy + 3.3 * r"}},
+  "square": {"vars": {"bx": "16", "by": "16 + 0.38 * r"}}
+}
+```
+
+- `reach` keys replace the file's for that shape, so `r` can stay large when
+  the readouts no longer sit beside the rings.
+- `vars` give derived vars another formula for that shape. Only derived vars
+  can change (not state vars), and each must be in the file's `vars`. Put every
+  position a layout may move in a var, as `screens/sentinel.json` does.
+- A shape without a layout uses the file as written.
+- Elements for one shape only take `"on": ["wide"]`; formulas can also read
+  `wide`, `square` and `tall`.
+
 ## Elements
 
 Every element has `type` and may have:
@@ -100,6 +129,7 @@ Every element has `type` and may have:
 | `if` | Skip this repeat (or the whole group) when 0. |
 | `glow` | Also draw a soft copy, 4 times as wide at 16 % alpha. |
 | `round` | Round line ends. Defaults to true for line, arc and poly. |
+| `on` | The shapes it is drawn on, for example `["wide"]`; default all. On a group it applies to everything inside. |
 
 Shapes (unlisted properties take their defaults; `color` defaults to white,
 `alpha` to 1, `width` to 1):
@@ -108,7 +138,7 @@ Shapes (unlisted properties take their defaults; `color` defaults to white,
 | --- | --- |
 | `line` | `x1 y1 x2 y2 width color alpha`; `dash gap` in px for a dashed line |
 | `arc` | `x y radius start end width color alpha`; degrees, 0 = right, clockwise; `radius` is the outer edge; a 360° span is a ring |
-| `disc` | `x y radius color alpha` |
+| `disc` | `x y radius color alpha`; `grad` shades it from `color` at the top to `grad` at the bottom |
 | `rect` | `x1 y1 x2 y2 color alpha radius` (filled) |
 | `frame` | `x1 y1 x2 y2 width color alpha` (outline, square corners) |
 | `poly` | A polyline, below |

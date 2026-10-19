@@ -3,7 +3,6 @@
   "id": "sentinel",
   "name": "Sentinel",
   "note": "A heads-up display. 72 ticks around the core rise with the voice inside broken rings and a turning triangle; while thinking the rings spin up, an amber arc races and a scan line sweeps; while answering the ticks pulse in waves. Readouts on both sides.",
-  "needs": ["wide"],
   "label_color": "#E8FBFF",
   "reach": {"half_r": 3.95, "side_r": 3.27, "side_px": 110},
   "colors": {"cyan": "#5CE1FF", "amber": "#FFB547", "white": "#E8FBFF"},
@@ -22,8 +21,42 @@
     "by": "ly - 0.3 * r",
     "bx": "cx - 3.95 * r",
     "hx": "cx + 3.27 * r",
+    "hy": "ry",
+    "row": "max(18, 0.18 * r)",
+    "l2x": "lx - 0.4 * r",
+    "l2y": "by",
+    "l3x": "cx - 3.15 * r",
+    "l3y": "by",
+    "r2x": "rx + 0.4 * r",
+    "r2y": "ry - 0.3 * r",
+    "r3x": "cx + 3.15 * r",
+    "r3y": "ry - 0.3 * r",
     "tri": "t * (0.3 + 2.2 * think) - pi / 2",
     "lit": "floor(level * 10 + 0.5)"
+  },
+  "layouts": {
+    "tall": {"note": "readouts above and below the rings", "reach": {"half_r": 2.0, "side_r": 0, "side_px": 0}, "vars": {
+      "by": "cy - 2.55 * r",
+      "bx": "cx - 64",
+      "lx": "cx + 1.66 * r * cos(-pi * 0.56)",
+      "ly": "cy + 1.66 * r * sin(-pi * 0.56)",
+      "l2x": "lx", "l2y": "by + 0.42 * r", "l3x": "bx", "l3y": "by + 0.42 * r",
+      "rx": "cx + 1.66 * r * cos(pi * 0.08)",
+      "ry": "cy + 1.66 * r * sin(pi * 0.08)",
+      "r2x": "cx + 1.95 * r", "r2y": "ry", "r3x": "cx + 1.95 * r", "r3y": "hy - 2.3 * row",
+      "hx": "cx - 25",
+      "hy": "cy + 3.3 * r"}},
+    "square": {"note": "readouts in the top corners", "reach": {"half_r": 2.0, "side_r": 0, "side_px": 0}, "vars": {
+      "bx": "16",
+      "by": "16 + 0.38 * r",
+      "lx": "cx + 1.66 * r * cos(-pi * 0.72)",
+      "ly": "cy + 1.66 * r * sin(-pi * 0.72)",
+      "l2x": "lx - 0.3 * r", "l2y": "by + 0.42 * r", "l3x": "bx", "l3y": "by + 0.42 * r",
+      "hx": "w - 76",
+      "hy": "16 + 2.1 * row",
+      "rx": "cx + 1.66 * r * cos(-pi * 0.28)",
+      "ry": "cy + 1.66 * r * sin(-pi * 0.28)",
+      "r2x": "rx + 0.3 * r", "r2y": "hy + 2 * row + 24", "r3x": "w - 16", "r3y": "hy + 2 * row + 24"}}
   },
   "items": [
     {"type": "group", "if": "r >= 2", "items": [
@@ -85,9 +118,9 @@
     ]},
 
     {"type": "poly", "note": "left callout", "round": false, "width": 2, "color": "cyan", "alpha": 0.59,
-     "points": [["lx", "ly"], ["lx - 0.4 * r", "by"], ["cx - 3.15 * r", "by"]]},
+     "points": [["lx", "ly"], ["l2x", "l2y"], ["l3x", "l3y"]]},
     {"type": "poly", "note": "right callout", "round": false, "width": 2, "color": "cyan", "alpha": 0.59,
-     "points": [["rx", "ry"], ["rx + 0.4 * r", "ry - 0.3 * r"], ["cx + 3.15 * r", "ry - 0.3 * r"]]},
+     "points": [["rx", "ry"], ["r2x", "r2y"], ["r3x", "r3y"]]},
 
     {"type": "text", "note": "level readout", "x": "bx", "y": "by - 0.38 * r", "width": 90, "font": 32,
      "text": "{lv * 100:03d}", "color": "white", "every": 4},
@@ -99,11 +132,11 @@
      "x2": "floor(mx) - floor(mw / 2) + floor(mw) - 1", "y2": "floor(my) - floor(mh / 2) + floor(mh) - 1",
      "color": "k >= 8 ? amber : cyan", "alpha": "k < lit ? 0.9 : 0.15"},
 
-    {"type": "log", "note": "hex column, faster while thinking", "x": "hx", "y": "ry - 0.38 * r", "rows": 4,
-     "line_height": "0.18 * r", "width": 110, "font": 16, "fill": true,
+    {"type": "log", "note": "hex column, faster while thinking", "x": "hx", "y": "hy - 2.1 * row", "rows": 4,
+     "line_height": "row", "width": 110, "font": 16, "fill": true,
      "line": "{rand(0, 255):02X} {rand(0, 255):02X}", "every": "mode - answer > 0.5 ? 3 : 18",
      "color": "k == 3 ? amber : cyan", "alpha": "(115 + k * 38) / 255"},
-    {"type": "text", "note": "clock", "x": "hx", "y": "ry + 0.36 * r", "width": 110, "font": 16,
+    {"type": "text", "note": "clock", "x": "hx", "y": "hy + 2 * row", "width": 110, "font": 16,
      "text": "T+{mod(t, 100):04.1f}", "color": "cyan", "alpha": 0.59, "every": 4}
   ]
 }
