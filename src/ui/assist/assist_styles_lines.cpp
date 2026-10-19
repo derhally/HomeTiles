@@ -830,7 +830,10 @@ void create(lv_obj_t* parent) {
 }
 
 void frame(const Frame& f) {
-  const bool size_changed = fabsf(f.r - g_f.r) > 0.5f;
+  // Against the radius last laid out, so the easing pop-in catches up (per
+  // frame its steps fall under 0.5 px about 3 px short).
+  const bool size_changed = fabsf(f.r - g_last_r) > 0.5f;
+  if (size_changed) g_last_r = f.r;
   g_f = f;
   g_answer = answerMix(g_answer, f.answering);
   const float lv = f.level, m = f.mode, r = f.r, cx = f.cx, cy = f.cy;
