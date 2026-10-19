@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "id": "holo",
-  "name": "Holo",
+  "id": "hologram",
+  "name": "Hologram",
   "note": "A cyberpunk hologram of a woman's face above a projector: a cyan wireframe with magenta accents, scanlines, flicker and glitch shifts. Listening, her eyes glow and voice rings pulse with the voice. Thinking, her gaze drifts up, data rings orbit and the glitches come more often. Answering, her lips move with the reply.",
   "label_color": "#7FF6FF",
   "reach": {"half_r": 1.75, "up_r": 1.75, "down_r": 2.3, "label_r": 1.95},
