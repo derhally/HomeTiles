@@ -78,10 +78,19 @@ for (const ns of ['sentinel', 'phosphor', 'iris']) {
   assert.match(body, /createPainter\(parent, onDraw/);
   assert.match(body, /invalidateBox\(/);
 }
-// The label follows the style's palette through the central hook.
-assert.match(overlay, /lv_obj_set_style_text_color\(g_label, lv_color_hex\(assist_styles::labelColor\(style\)\), 0\);/);
-// Only the chosen style's objects exist.
-assert.match(overlay, /lv_obj_clean\(g_stage\);\s*assist_styles::create\(style, g_stage\);/);
+// The label follows the style's palette through the central hook (a screen
+// file brings its own label colour in test builds).
+assert.match(overlay, /uint32_t label_color = assist_styles::labelColor\(style\);/);
+assert.match(overlay, /lv_obj_set_style_text_color\(g_label, lv_color_hex\(label_color\), 0\);/);
+// Only the chosen style's objects exist: the stage is cleaned, then either
+// the compiled style or a screen file's painter is built.
+const rebuild = overlay.slice(overlay.indexOf('if (rebuild) {'), overlay.indexOf('lv_color_hex(label_color)'));
+assert.match(rebuild, /lv_obj_clean\(g_stage\);/);
+assert.match(rebuild, /#else\s*assist_styles::create\(style, g_stage\);\s*#endif/);
+// Screen files (HOMETILES_ASSIST_DATA_SCREENS test builds) fall back to the
+// compiled style when they do not load.
+assert.match(rebuild, /g_data = loadScreenFile\(style\);\s*if \(g_data\) \{[\s\S]*\} else \{\s*assist_styles::create\(style, g_stage\);\s*\}/);
+assert.match(overlay, /refused, using the built-in style/);
 
 // Phase contract: any wake word or Assist start listens; a normal end of the
 // capture thinks; the answer clip answers; its end or a failure is idle.

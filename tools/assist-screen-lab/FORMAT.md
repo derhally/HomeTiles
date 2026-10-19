@@ -30,12 +30,12 @@ dot_halo, voice_pills, sentinel, phosphor, light_disc, lens, iris).
 
 | Key | Meaning |
 | --- | --- |
-| `format` | Always `1`. |
+| `format` | `1`. Additions to the format raise the number; a panel refuses a file with a higher number than it reads, with a message naming both ("this screen needs format 2; this panel reads format 1"), so a gallery can offer each panel only what it reads. Until format 1 ships, it may still change. |
 | `id` | `a-z`, `0-9`, `_`, up to 32. It names the screen in Settings and the Bridge select. |
-| `name` | Shown name, up to 32 bytes. |
+| `name` | Shown name, up to 32 bytes. Settings shows a built-in style's own translated name for the nine built-in ids; `name` is for new ids, like a tile title the user gives. |
 | `needs` | Panel features the screen needs (`assist_style_catalog.h`). `wide` means the screen is at least 1.2 times as wide as tall. `tear_free` means the board swaps framebuffers (the 7B in landscape). A panel without them does not offer the screen. A screen with its own square and tall layouts does not need `wide`. |
 | `label_color` | Colour of the "Listening..." line under the screen. |
-| `reach` | How far the screen reaches sideways, which sets the base radius `r` (as `assist_styles::baseRadius` does). `half_r` is the half width in `r` (default 2). `side_r` and `side_px` give `side_r * r + side_px` for readouts with a fixed pixel width. `r` is 17 % of the short side, shrunk so the reach plus an 8 px edge fits. |
+| `reach` | How far the screen reaches, which sets the base radius `r` (`assist_screen::baseRadius`, also used by the built-in styles). `half_r` is the half width in `r` (default 2). `side_r` and `side_px` give `side_r * r + side_px` for readouts with a fixed pixel width. `up_r` and `down_r` (0 = not limited) are how far it reaches above and below the centre. `r` is 17 % of the short side, shrunk so the reach plus an 8 px edge fits. `label_r` places the "Listening..." line below the centre, in `r` (default 2.1). |
 | `colors` | Named colours, `"#RRGGBB"`, usable in expressions. |
 | `vars` | Named values, in order (below). |
 | `layouts` | Other reach and vars per screen shape (below). |
@@ -71,6 +71,11 @@ Functions:
 - `mod` is always positive for a positive divisor, like GLSL.
 - `hash(i, salt)` gives the built-in styles' fixed fraction per index, 0..1.
 - `rand(lo, hi)` gives a whole number in lo..hi; `frand()` gives 0..1.
+- `prev(var, k)` is a state var's value `k` steps of its history ago (below).
+
+Each step counts toward the per-frame budget: `sin cos tan asin acos atan
+atan2 exp pow log sqrt` count 8 (software routines on the panel), other
+functions and `prev` 2, everything else 1.
 
 NaN and infinity become 0. Coordinates are clamped to ±30000 px and snapped to
 half pixels, so movement too small to see does not redraw.
@@ -90,6 +95,18 @@ Vars are evaluated in order each frame, so a var can use the ones above it.
 "think": "max(0, mode - answer)",
 "box_an": {"init": 0, "next": "rand(0, 628) / 100", "every": 0.7}
 ```
+
+A state var can keep a history: `"keep": n` (up to 8) keeps its last `n`
+values, newest first, read with `prev(name, k)` (`k` = 0 is the value now,
+`k` past `n` reads the oldest). By default every step adds the old value;
+`"record": "expr"` adds it only at steps where the expression is not 0. Light
+Disc keeps its trails' last corners this way:
+
+```json
+"p_cx": {"init": 0, "next": "p_turn ? p_nx : p_cx", "keep": 8, "record": "p_turn"}
+```
+
+Up to 16 vars may keep a history.
 
 ## Layouts
 
@@ -140,7 +157,7 @@ Shapes (unlisted properties take their defaults; `color` defaults to white,
 | `arc` | `x y radius start end width color alpha`; degrees, 0 = right, clockwise; `radius` is the outer edge; a 360° span is a ring |
 | `disc` | `x y radius color alpha`; `grad` shades it from `color` at the top to `grad` at the bottom |
 | `rect` | `x1 y1 x2 y2 color alpha radius` (filled) |
-| `frame` | `x1 y1 x2 y2 width color alpha` (outline, square corners) |
+| `outline` | `x1 y1 x2 y2 width color alpha` (an outlined box, square corners) |
 | `poly` | A polyline, below |
 | `text` | A text line, below |
 | `log` | Rows of text that scroll, below |
@@ -162,15 +179,19 @@ kept, and the newest copy comes first in `alpha`. Up to 4 copies.
 
 ### text
 
-Keys: `x y` (top left), `width` (box width), `font`, `align`
-(`left`/`center`/`right`), `color`, `alpha` and `every`. `every` refreshes the
-text only every n frames; the position is updated every frame.
+Keys: `x y` (top left), `box_width`, `font`, `align`
+(`left`/`center`/`right`), `color`, `alpha` and `frames`. `frames` refreshes the
+text only every n frames (like a state var's `frames`); the position is
+updated every frame.
 
 - `font` is 16, 20, 24, 28, 32, 40 or 48: the sizes every panel has.
 - `text` is a template: `"PK {peak * 100:03d}"`. Inside `{expr:fmt}`, `fmt` is
-  a printf conversion without `%` (`d`, `x`, `X`, `f` with flags, width and
-  precision; for example `02X` or `06.1f`).
-- The text can hold up to 47 bytes.
+  a printf conversion without `%` (`d`, `x`, `X`, `f` with flags, and a width
+  and precision of at most two digits each; for example `02X` or `06.1f`).
+- The text can hold up to 47 bytes. Each fixed part between `{...}` is at most
+  8 bytes: files carry readout glyphs and units (`PK`, `CH1`, `V`, `T+`), never
+  words for people. Words belong in the firmware's central translations, like
+  the "Listening..." line the panel draws itself.
 
 ### log
 
@@ -181,7 +202,7 @@ Rows that scroll up as new ones arrive. Row `k` (0 at the top) is drawn at
 | --- | --- |
 | `line` | Template of a new row, like `text` |
 | `rows` | Rows kept, up to 8 |
-| `every` | Frames between steps (an expression) |
+| `frames` | Frames between steps (an expression) |
 | `push` | When non-zero at a step, a new row is added and the oldest drops when full |
 | `pop` | When non-zero at a step (and `push` is 0), the oldest row is removed |
 | `fill` | Start full |
@@ -189,7 +210,8 @@ Rows that scroll up as new ones arrive. Row `k` (0 at the top) is drawn at
 
 ## Panel limits
 
-These are checked when the file loads. `engine/assist_screen.h` holds the
+These are checked when the file loads, except the fill budget, which is
+checked as each frame is built. `src/ui/assist/assist_screen.h` holds the
 constants.
 
 | Limit | Value | Why |
@@ -202,14 +224,20 @@ constants.
 | Polylines | 8, ≤ 128 points, trail ≤ 4; 2048 points in total | Fixed point pool |
 | Texts | 24 buffers (texts plus log rows) of 48 bytes; 4 logs | Fixed text buffers, no allocation per change |
 | Shapes per frame | ≤ 1200, worst case over every branch and repeat | Draw time on the panel |
-| Expression steps per frame | ≤ 60000, worst case | CPU time per 33 ms frame |
-| Memory | One fixed block of about 145 KB (PSRAM on the panel), allocated once | Nothing is allocated per load or frame |
+| Expression steps per frame | ≤ 60000 (weighted, above), worst case | CPU time per 33 ms frame |
+| Fill per frame | ≤ 6 times the screen area, estimated per shape (glows included); radii are clamped to the screen diagonal | Shapes past the budget are left out (counted, logged once) |
+| History | 16 vars, 8 values each | Fixed array |
+| Fixed text | 8 bytes per part; number formats two digits | Readouts only |
+| Memory | One fixed block of about 108 KB (PSRAM on the panel), allocated once | The engine allocates nothing per load or frame |
 
-A loaded file costs at most these limits, however its expressions behave.
+A loaded file costs at most these limits, however its expressions behave. The
+LVGL draw calls allocate their draw tasks like any widget does; the engine
+issues only the commands that reach the band LVGL is drawing.
 
 Redraw: each top-level element keeps the box it drew last frame and this frame,
 and only the elements whose drawing changed are redrawn. Overlapping boxes are
-joined, and the panel gets at most 8 areas. A frame with no visible change
-redraws nothing. Put parts that move independently (side readouts, a moving
+joined, and the panel gets at most 8 areas. The first 24 top-level elements
+are regions of their own; the rest share the last one. A frame with no visible
+change redraws nothing. Put parts that move independently (side readouts, a moving
 box) in their own top-level elements, not in one group, so they redraw on
 their own.

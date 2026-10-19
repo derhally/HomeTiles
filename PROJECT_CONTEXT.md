@@ -41,6 +41,10 @@ Last reviewed: 2026-10-29
 - Camera: `-skip_loop_filter` (drift, PSNR 18.6 dB), key-frame-only fallback (1 FPS), H.264 decoding on the panel (no HW decoder), `-flags low_delay` (one decode thread).
 - Entity picker lists taken from the Bridge (b232-235 loop); b126 cover fade, b128/b582 frame swap (lag); Wi-Fi power saving (P4 Hosted TX asserts, S3 link drops).
 
+## Assist screens from data (`claude/project-thread-ydiabz`, unreleased)
+
+- Engine `src/ui/assist/assist_screen.*` (fixed ~108 KB PSRAM block, load-time limits, per-frame fill budget), nine screen files and the desktop lab in `tools/assist-screen-lab/`, design `docs-dev/assist-screens.md`. Compiled only with `HOMETILES_ASSIST_DATA_SCREENS=1` (7B image +68 KB): the chosen style is drawn from microSD `/assist/<id>.json`, else internal storage, else the built-in copy (`node tools/generate-assist-screens.mjs`); a refused file keeps the compiled style. HW pending (7B first, then S3/P4 timing).
+
 ## Hardware validation
 
 - Maintainer hardware: Tab5, Waveshare 4B/8-inch, Guition S3 and V2 (JC8012P4A1C_I_W_Y1, SKU10153002-V2; PPA/SD confirmed). Other revisions need community validation; compiling is not support.
