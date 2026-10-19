@@ -1,0 +1,62 @@
+{
+  "format": 1,
+  "id": "phosphor",
+  "name": "Phosphor",
+  "note": "A green oscilloscope. The voice draws the trace with fading afterglow copies behind it; while thinking the trace goes flat with a travelling blip and number rows print in the corner; while answering it curls into a Lissajous figure that grows with the reply.",
+  "needs": ["wide"],
+  "label_color": "#39FF7A",
+  "reach": {"half_r": 3.55},
+  "colors": {"green": "#39FF7A", "dim": "#1B7A3C", "plate": "#020503"},
+  "vars": {
+    "answer": {"init": 0, "next": "answer + (answering - answer) * 0.12"},
+    "think": "max(0, mode - answer)",
+    "a": "answer",
+    "lv": "level",
+    "m": "mode",
+    "x0": "cx - 3.55 * r",
+    "x1": "cx + 3.55 * r",
+    "y0": "cy - 1.76 * r",
+    "y1": "cy + 1.76 * r",
+    "step_x": "(x1 - x0) / 10",
+    "blip": "mod(t * 0.6, 1.2) - 0.1",
+    "sz": "r * (0.7 + 0.9 * lv)",
+    "s0": {"init": "rand(0, 628) / 100"},
+    "s1": {"init": "rand(0, 628) / 100"},
+    "s2": {"init": "rand(0, 628) / 100"}
+  },
+  "items": [
+    {"type": "group", "note": "graticule", "if": "r >= 2", "items": [
+      {"type": "line", "note": "dotted rows", "repeat": 7, "as": "gy", "round": false,
+       "let": {"y": "y0 + gy * (y1 - y0) / 6"},
+       "x1": "x0 - 1", "y1": "y", "x2": "x1 + 2", "y2": "y",
+       "width": 3, "dash": 3, "gap": "floor(step_x) - 3", "color": "dim", "alpha": 0.588},
+      {"type": "line", "round": false, "x1": "x0", "y1": "cy", "x2": "x1", "y2": "cy", "width": 1, "color": "dim", "alpha": 0.6},
+      {"type": "line", "round": false, "x1": "cx", "y1": "y0", "x2": "cx", "y2": "y1", "width": 1, "color": "dim", "alpha": 0.6},
+      {"type": "line", "note": "centre ticks", "repeat": 26, "as": "k", "round": false,
+       "let": {"x": "x0 + k * (x1 - x0) / 25"},
+       "x1": "x", "y1": "cy - 4", "x2": "x", "y2": "cy + 4", "width": 1, "color": "dim", "alpha": 0.6},
+      {"type": "frame", "x1": "x0", "y1": "y0", "x2": "x1", "y2": "y1", "width": 1, "color": "dim", "alpha": 0.6}
+    ]},
+
+    {"type": "poly", "note": "trace: voice, then a blip while thinking, a Lissajous figure while answering",
+     "if": "r >= 2", "count": 64, "width": 3, "color": "green",
+     "trail": {"keep": 3, "frames": 3, "width": 2, "alpha": [0.30, 0.18, 0.10]},
+     "x": "(1 - m + think) * (x0 + u * (x1 - x0)) + a * (cx + sin(3 * tau * u + t * 0.9) * sz * 1.5)",
+     "y": "(1 - m) * (cy - sin(pi * u) * (sin(u * 22 + t * 9 + s0) * 0.6 + sin(u * 47 - t * 13 + s1) * 0.3 + sin(u * 91 + t * 21 + s2) * 0.15) * lv * 1.5 * r) + think * (cy - exp(-((u - blip) / 0.03) * ((u - blip) / 0.03)) * 0.6 * r * sin((u - blip) * 120)) + a * (cy + sin(2 * tau * u) * sz)"},
+
+    {"type": "text", "note": "channel", "x": "x0", "y": "y0 - 0.32 * r", "width": 160, "font": 16,
+     "text": "CH1  {lv * 2.5:.2f} V", "color": "green", "alpha": 0.863, "every": 4},
+    {"type": "text", "note": "time", "x": "x1 - 2.2 * r", "y": "y0 - 0.32 * r", "width": "2.2 * r", "font": 16, "align": "right",
+     "text": "{mod(t, 1000):06.1f} S", "color": "green", "alpha": 0.863, "every": 4},
+
+    {"type": "rect", "note": "plate under the number rows", "if": "rows_count > 0",
+     "x1": "floor(x0 + 0.1 * r)", "y1": "floor(y0 + 0.1 * r)",
+     "x2": "floor(x0 + 0.1 * r) + floor(2.3 * r) - 1", "y2": "floor(y0 + 0.1 * r) + floor(1.35 * r) - 1",
+     "color": "plate", "alpha": 0.863},
+    {"type": "log", "id": "rows", "note": "number rows print while thinking and clear when the look leaves",
+     "x": "x0 + 0.18 * r", "y": "y0 + 0.18 * r", "rows": 5, "line_height": "0.24 * r", "width": 220, "font": 16,
+     "line": "{rand(0, 9999):04d}  {rand(0, 9999):04d}  {rand(0, 9999):04d}",
+     "every": 4, "push": "think > 0.4", "pop": "m < 0.2",
+     "color": "green", "alpha": "(100 + k * 36) / 255"}
+  ]
+}
