@@ -203,7 +203,7 @@ the grille teeth part with each word.
 
 ![Retro Robot: listening, thinking, answering](assist-screens/retro_robot.png)
 
-Each is one JSON file of about 5 KB, made in the lab in minutes. On a test
+Each is one JSON file of about 6 KB, made in the lab in minutes. On a test
 build, a file shows in place of a built-in style when it is stored as that
 style's file, for example `/assist/atom.json` on the microSD card.
 
