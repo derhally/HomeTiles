@@ -104,6 +104,10 @@ limits are 1,200 shapes and 60,000 steps. Milliseconds on a desktop say little
 about a panel: the design document lists what still needs measuring on S3 and
 P4 hardware.
 
+Two more screens, `robot.json` and `retro_robot.json`, are examples of new
+looks (pictures in the design document); they have no built-in style to
+compare with.
+
 ## Device limits
 
 The limits are checked at load, and the painted area as each frame is built,
