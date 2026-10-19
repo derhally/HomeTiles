@@ -381,6 +381,10 @@ void show(AssistUiPhase phase, AssistScreenStyle style) {
       lv_obj_add_event_cb(g_painter, onPaint, LV_EVENT_DRAW_MAIN, nullptr);
       label_color = assist_screen::info(g_screen).label_color;
     } else {
+      if (assist_style_catalog::kFileStyles & (1u << static_cast<uint8_t>(style))) {
+        Serial.printf("[Assist] Screen file %s unavailable, showing Atom\n",
+                      assist_contract::kScreenStyleIds[static_cast<uint8_t>(style)]);
+      }
       assist_styles::create(style, g_stage);
     }
 #else
@@ -434,7 +438,9 @@ void offerStyles() {
   // The tear-free path only runs in the panel's native orientation.
   g_tear_free = Device::kCapabilities.tear_free_ui && w == Device::kScreenWidth && h == Device::kScreenHeight;
   const uint32_t offered =
-      assist_style_catalog::available(assist_style_catalog::features(w, h, g_tear_free));
+      assist_style_catalog::available(assist_style_catalog::features(w, h, g_tear_free),
+                                      HOMETILES_ASSIST_STYLES_OFF |
+                                          (HOMETILES_ASSIST_DATA_SCREENS ? 0u : assist_style_catalog::kFileStyles));
   speaker::setAvailableAssistScreenStyles(offered);
   Serial.printf("[Assist] Screen styles offered at %ldx%ld%s: 0x%03lX\n", static_cast<long>(w),
                 static_cast<long>(h), g_tear_free ? " (tear-free)" : "", static_cast<unsigned long>(offered));

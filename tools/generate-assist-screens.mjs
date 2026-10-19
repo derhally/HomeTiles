@@ -1,8 +1,9 @@
 // Generates src/ui/assist/assist_screen_files.h: the Assist screen files
 // (tools/assist-screen-lab/screens/*.json) built into firmware compiled with
-// HOMETILES_ASSIST_DATA_SCREENS=1: one per built-in style id (other screens,
-// such as robot.json, are examples for the lab and the microSD card). Each file
-// is minified and loses its "note" texts, which only explain the file to people.
+// HOMETILES_ASSIST_DATA_SCREENS: the styles that exist only as files
+// (assist_style_catalog.h kFileStyles). Atom, Reactor, Dot Halo and Voice Pills
+// are C++; their files and the examples (robot.json, ...) are for the lab and
+// the microSD card. Each file is minified and loses its "note" texts.
 //
 // Usage: node tools/generate-assist-screens.mjs [--check]
 import fs from 'node:fs';
@@ -21,10 +22,14 @@ const strip = value => {
   return value;
 };
 
-// The built-in style ids (src/audio/assist_contract.h kScreenStyleIds).
+// The style ids (src/audio/assist_contract.h kScreenStyleIds) whose bit is set
+// in assist_style_catalog.h kFileStyles.
 const contract = fs.readFileSync(path.join(root, 'src/audio/assist_contract.h'), 'utf8');
-const builtIn = new Set([...contract.match(/kScreenStyleIds\[\] = \{([^}]*)\}/)[1].matchAll(/"([a-z_]+)"/g)].map(m => m[1]));
-const files = fs.readdirSync(screens).filter(f => f.endsWith('.json') && builtIn.has(f.replace('.json', ''))).sort().map(f => {
+const styleIds = [...contract.match(/kScreenStyleIds\[\] = \{([^}]*)\}/)[1].matchAll(/"([a-z_]+)"/g)].map(m => m[1]);
+const catalog = fs.readFileSync(path.join(root, 'src/ui/assist/assist_style_catalog.h'), 'utf8');
+const fileBits = [...catalog.match(/kFileStyles = ([^;]*);/)[1].matchAll(/1u << (\d+)/g)].map(m => Number(m[1]));
+const fileStyles = new Set(fileBits.map(bit => styleIds[bit]));
+const files = fs.readdirSync(screens).filter(f => f.endsWith('.json') && fileStyles.has(f.replace('.json', ''))).sort().map(f => {
   const json = strip(JSON.parse(fs.readFileSync(path.join(screens, f), 'utf8')));
   const text = JSON.stringify(json);
   if (text.includes(')json"')) throw new Error(`${f} contains the raw string delimiter`);
