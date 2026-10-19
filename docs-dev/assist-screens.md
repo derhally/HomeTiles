@@ -225,6 +225,35 @@ the nine built-in copies and the overlay path:
   object whose areas are invalidated from `dirty()`.
 - A frame over the fill budget logs once per showing.
 
+## Screens from Home Assistant
+
+Screen files can live in Home Assistant and reach panels through the Bridge,
+on the direct link and on MQTT alike (Bridge `assist_screens.py`, firmware
+`src/ui/assist/assist_screen_store.*`, contract in
+`src/audio/assist_contract.h`):
+
+1. Users put screen files (`*.json`, at most 24 KB) in
+   `<config>/hometiles/assist_screens/` and run the
+   `tab5_lvgl.reload_assist_screens` service (or restart Home Assistant). The
+   Bridge checks size, JSON, `id` (a-z, 0-9, _, never a built-in id) and
+   `name`, logs each file it leaves out, and keeps at most 16, sorted by name.
+2. Every panel gets `{base}/assist/screens` retained
+   (`{"v":1,"screens":[{"id":"robot","name":"Robot"}]}`) and each file
+   retained on `{base}/assist/screen/<id>`; unchanged files are not sent again
+   and withdrawn ones get an empty retained message.
+3. The panel lists the files after its built-in styles: in **Settings ->
+   Assist** by their names, and in the Assist status `screen_styles`, so the
+   Bridge's Assist screen select offers them. Picking one (on the panel, or
+   `screen_style` with the file's id from the select) stores the choice and
+   subscribes to that file only.
+4. The panel keeps the chosen file in its internal storage (`/assist_ha/`),
+   written only when it changed, so it still shows while the Bridge is away.
+   The overlay loads it each time the screen opens; a refused file keeps the
+   built-in style and reports the reason in the status `screen_error`, which
+   the select shows as an attribute and the Bridge logs.
+
+The panel checks every limit itself; the Bridge only filters what it offers.
+
 ## Integration contract (for a release)
 
 - Ownership: the overlay owns the `Screen` block and the read buffer for the

@@ -38,6 +38,7 @@
 #include "src/ui/shared/theme_schedule.h"
 #include "src/audio/speaker.h"
 #include "src/ui/assist/assist_overlay.h"
+#include "src/ui/assist/assist_screen_store.h"
 #include "src/ui/assist/assist_style_catalog.h"
 
 // The Settings tab: what its pages show and do (settings_model.h, drawn by
@@ -374,14 +375,19 @@ void mic_gain_changed(int step, bool final) {
   if (final) speaker::setMicGainStep(static_cast<uint8_t>(step < 0 ? 0 : step));
 }
 
-// The list shows only the styles this panel offers (assist_style_catalog.h);
-// an index is a position in that list.
+// The list shows only the styles this panel offers (assist_style_catalog.h),
+// then the screen files the Bridge offers (assist_screen_store.h, test builds
+// with screen files); an index is a position in that list.
 uint8_t assist_style_count() {
-  return assist_style_catalog::count(speaker::availableAssistScreenStyles());
+  return static_cast<uint8_t>(assist_style_catalog::count(speaker::availableAssistScreenStyles()) +
+                              assist_screen_store::count());
 }
 
 const char* assist_style_name(uint8_t index) {
   const i18n::Strings& s = tr();
+  const uint8_t built_in = assist_style_catalog::count(speaker::availableAssistScreenStyles());
+  // A screen file's own name, like a tile title the user gave.
+  if (index >= built_in) return assist_screen_store::name(index - built_in);
   const uint8_t style = assist_style_catalog::styleAt(index, speaker::availableAssistScreenStyles());
   switch (static_cast<speaker::AssistScreenStyle>(style)) {
     case speaker::AssistScreenStyle::Atom:
@@ -407,13 +413,21 @@ const char* assist_style_name(uint8_t index) {
 }
 
 uint8_t assist_style() {
+  const int file = assist_screen_store::indexOf(assist_screen_store::chosen());
+  if (file >= 0) return static_cast<uint8_t>(assist_style_catalog::count(speaker::availableAssistScreenStyles()) + file);
   return assist_style_catalog::positionOf(static_cast<uint8_t>(speaker::assistScreenStyle()),
                                           speaker::availableAssistScreenStyles());
 }
 
 void assist_style_selected(uint8_t index) {
   const uint32_t offered = speaker::availableAssistScreenStyles();
-  if (index < assist_style_catalog::count(offered)) {
+  const uint8_t built_in = assist_style_catalog::count(offered);
+  if (index >= built_in) {
+    assist_screen_store::choose(assist_screen_store::id(index - built_in));
+    return;
+  }
+  assist_screen_store::choose(nullptr);
+  if (index < built_in) {
     speaker::setAssistScreenStyle(
         static_cast<speaker::AssistScreenStyle>(assist_style_catalog::styleAt(index, offered)));
   }

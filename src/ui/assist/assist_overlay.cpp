@@ -21,6 +21,7 @@
 
 #include "src/audio/assist_contract.h"
 #include "src/ui/assist/assist_screen_files.h"
+#include "src/ui/assist/assist_screen_store.h"
 
 // The fonts every panel carries; the engine refuses other sizes.
 const lv_font_t* assist_screen_font(int px) {
@@ -101,20 +102,54 @@ void onPaint(lv_event_t* e) {
   assist_screen::draw(g_screen, lv_event_get_layer(e), coords.x1, coords.y1);
 }
 
+bool ensureScreenMemory() {
+  if (g_screen) return true;
+  void* memory = heap_caps_malloc(assist_screen::screenSize(), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!memory) memory = heap_caps_malloc(assist_screen::screenSize(), MALLOC_CAP_8BIT);
+  if (!memory) {
+    Serial.printf("[Assist] Screen files off: no memory for %u bytes\n", static_cast<unsigned>(assist_screen::screenSize()));
+    return false;
+  }
+  g_screen = assist_screen::init(memory);
+  if (!g_file_text) {
+    g_file_text = static_cast<char*>(heap_caps_malloc(assist_screen::kMaxFileBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  }
+  return true;
+}
+
+// The screen file chosen in Home Assistant (assist_screen_store.h); false
+// when none is chosen, none was received yet, or it was refused (the reason
+// goes to the Assist status).
+bool loadChosenFile() {
+  const char* id = assist_screen_store::chosen();
+  if (!id || !ensureScreenMemory() || !g_file_text) return false;
+  size_t length = 0;
+  if (!assist_screen_store::readChosen(g_file_text, assist_screen::kMaxFileBytes, &length)) {
+    Serial.printf("[Assist] Screen file %s from Home Assistant not received yet, using the built-in style\n", id);
+    return false;
+  }
+  char error[160];
+  const uint32_t started = millis();
+  if (!assist_screen::load(g_screen, g_file_text, length, error, sizeof(error))) {
+    Serial.printf("[Assist] Screen file %s (Home Assistant) refused, using the built-in style: %s\n", id, error);
+    assist_screen_store::setError(error);
+    return false;
+  }
+  assist_screen_store::setError("");
+  const assist_screen::Info& in = assist_screen::info(g_screen);
+  Serial.printf("[Assist] Screen file %s (Home Assistant) loaded in %lu ms: %lu shapes, %lu steps per frame at most\n",
+                id, static_cast<unsigned long>(millis() - started), static_cast<unsigned long>(in.frame_cmds),
+                static_cast<unsigned long>(in.frame_ops));
+  return true;
+}
+
 // Loads the screen file for a style; false keeps the compiled style.
 bool loadScreenFile(AssistScreenStyle style) {
+  if (loadChosenFile()) return true;
   const uint8_t index = static_cast<uint8_t>(style);
   if (index >= assist_contract::kScreenStyleCount) return false;
   const char* id = assist_contract::kScreenStyleIds[index];
-  if (!g_screen) {
-    void* memory = heap_caps_malloc(assist_screen::screenSize(), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!memory) memory = heap_caps_malloc(assist_screen::screenSize(), MALLOC_CAP_8BIT);
-    if (!memory) {
-      Serial.printf("[Assist] Screen files off: no memory for %u bytes\n", static_cast<unsigned>(assist_screen::screenSize()));
-      return false;
-    }
-    g_screen = assist_screen::init(memory);
-  }
+  if (!ensureScreenMemory()) return false;
   const char* text = nullptr;
   size_t length = 0;
   const char* source = "built-in";

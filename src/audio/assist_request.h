@@ -51,8 +51,10 @@ struct Command {
   bool listen = false;
   // Mic: the requested privacy switch state.
   bool mic_enabled = true;
-  // ScreenStyle: catalog index of "style" (kScreenStyleIds).
+  // ScreenStyle: catalog index of "style" (kScreenStyleIds), or
+  // kFileScreenStyle with the id of a screen file in screen_file.
   uint8_t screen_style = 0;
+  char screen_file[kMaxWakeWordIdLength + 1] = {};
 };
 
 inline void parseCommand(const char* payload, size_t length, Command* out) {
@@ -92,12 +94,20 @@ inline void parseCommand(const char* payload, size_t length, Command* out) {
   } else if (op_name && strcmp(op_name, "screen_style") == 0) {
     out->kind = CommandKind::ScreenStyle;
     JsonVariantConst style = doc["style"];
-    const int index = style.is<const char*>() ? screenStyleIndex(style.as<const char*>()) : -1;
-    if (index < 0) {
+    const char* id = style.is<const char*>() ? style.as<const char*>() : nullptr;
+    const int index = screenStyleIndex(id);
+    if (index >= 0) {
+      out->screen_style = static_cast<uint8_t>(index);
+      out->status = CommandStatus::Ok;
+      return;
+    }
+    // Any other valid id names a screen file; the speaker checks the catalog.
+    if (!id || !isValidWakeWordId(id, strlen(id))) {
       out->status = CommandStatus::InvalidValue;
       return;
     }
-    out->screen_style = static_cast<uint8_t>(index);
+    out->screen_style = kFileScreenStyle;
+    memcpy(out->screen_file, id, strlen(id) + 1);
     out->status = CommandStatus::Ok;
     return;
   } else if (op_name && strcmp(op_name, "wake_words") == 0) {

@@ -127,6 +127,8 @@ void setAssistScreenStyle(AssistScreenStyle style);
 // sets them once it knows the screen. Any task / loop task.
 uint32_t availableAssistScreenStyles();
 void setAvailableAssistScreenStyles(uint32_t mask);
+// Republishes the Assist status (the screen files changed: assist_screen_store.h).
+void assistStatusChanged();
 
 // "audio_output" flag in the Bridge capabilities: codec found and ready.
 bool bridgeCapability();

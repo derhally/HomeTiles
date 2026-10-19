@@ -45,7 +45,11 @@ const settings = read('src/ui/tabs/settings/tab_settings.cpp');
 for (const f of styleFields.slice(2, 11)) assert.match(settings, new RegExp(`return s\\.${f};`));
 // The list holds only the styles this panel offers; an index is a position in it.
 assert.match(settings, /assist_style_catalog::styleAt\(index, offered\)\)\);/);
-assert.match(settings, /return assist_style_catalog::count\(speaker::availableAssistScreenStyles\(\)\);/);
+// The offered built-in styles, then the screen files from Home Assistant
+// (assist_screen_store.h; none without HOMETILES_ASSIST_DATA_SCREENS).
+assert.match(settings, /assist_style_catalog::count\(speaker::availableAssistScreenStyles\(\)\) \+\s*assist_screen_store::count\(\)/);
+assert.match(settings, /if \(index >= built_in\) return assist_screen_store::name\(index - built_in\);/);
+assert.match(settings, /assist_screen_store::choose\(assist_screen_store::id\(index - built_in\)\);/);
 assert.match(settings, /void assist_preview\(\) \{ assist_overlay::preview\(\); \}/);
 const page = read('src/ui/tabs/settings/settings_screen.cpp');
 assert.match(page, /settings_parts::section\(page, s\.settings_assist, false\);/);
