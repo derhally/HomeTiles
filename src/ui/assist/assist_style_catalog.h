@@ -44,8 +44,8 @@ inline constexpr uint8_t kNeeds[] = {
     0,             // reactor
     0,             // dot_halo
     0,             // voice_pills
-    kWideScreen,   // sentinel: rings plus side readouts, about 8 r wide
-    kWideScreen,   // phosphor: the scope is about 7 r wide
+    0,             // sentinel: its file has square and tall layouts
+    0,             // phosphor: its file has square and tall layouts
     kTearFreeUi,   // light_disc: its trails move about 8 px per frame
     0,             // lens
     0,             // iris

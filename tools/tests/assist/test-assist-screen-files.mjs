@@ -208,6 +208,11 @@ int main(int argc, char** argv) {
   refused("{\"format\": 2, \"id\": \"t\", \"items\": []}", "needs format 2");
   refused(file("{\"type\": \"text\", \"x\": 0, \"y\": 0, \"text\": \"Listening\"}"), "at most 8");
   refused(file("{\"type\": \"text\", \"x\": 0, \"y\": 0, \"text\": \"{t:100d}\"}"), "two digits");
+  // A ':' that closes a ?: is no format, even when the branch looks like one.
+  if (!loadText(file("{\"type\": \"text\", \"x\": 0, \"y\": 0, \"text\": \"{t > 1 ? 1 : x}\"}",
+                     ", \"vars\": {\"x\": 2}"))) { printf("FAIL: ternary text: %s\n", error); exit(1); }
+  if (!loadText(file("{\"type\": \"text\", \"x\": 0, \"y\": 0, \"text\": \"{t > 1 ? 1 : x:4.1f}\"}",
+                     ", \"vars\": {\"x\": 2}"))) { printf("FAIL: ternary with format: %s\n", error); exit(1); }
   refused(file("{\"type\": \"disc\", \"x\": \"prev(a, 1)\", \"y\": 0, \"radius\": 5}",
                ", \"vars\": {\"a\": {\"init\": 0, \"next\": \"a + 1\"}}"), "prev()");
   refused(file("", ", \"vars\": {\"a\": {\"init\": 0, \"next\": \"a + 1\", \"record\": 1}}"), "'record' needs 'keep'");
