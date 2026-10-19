@@ -55,12 +55,6 @@ h1 { font: 600 clamp(26px, 4vw, 36px)/1.1 var(--display); letter-spacing: .01em;
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + .5px));
           mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + .5px)); }
 footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
-.files { display: grid; gap: 14px; }
-.files > h2 { font: 600 24px/1.2 var(--display); margin: 8px 0 0; }
-.files > p { color: var(--muted); margin: 0; max-width: 70ch; }
-.files .option { grid-template-columns: minmax(0, 1fr); }
-.shot { width: 100%; height: auto; display: block; border-radius: 10px; background: var(--panel); box-shadow: inset 0 0 0 1px #1A2133; }
-.shot-caps { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; font: 400 12px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 6px; }
 </style>
 
 </head>
@@ -68,7 +62,7 @@ footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
 <div class="wrap">
   <header>
     <h1>Assist Sphere Options</h1>
-    <p class="lede">Nine looks for the Assist voice screen. Each preview is a 1024 × 600 panel, scaled down, with a simulated voice driving it. Options A to D are built only from circles, pills and arcs. Options E to I add lines, polylines and short number labels, still without per-pixel effects, so each can be drawn by LVGL on the ESP32-P4.</p>
+    <p class="lede">Eleven looks for the Assist voice screen. Each preview is a 1024 × 600 panel, scaled down, with a simulated voice driving it. Options A to D are built only from circles, pills and arcs. Options E to I add lines, polylines and short number labels, still without per-pixel effects, so each can be drawn by LVGL on the ESP32-P4. Options J and K are drawn from Assist screen files, the JSON the panel loads.</p>
   </header>
 
   <div class="controls" role="group" aria-label="Phase">
@@ -172,35 +166,24 @@ footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
         <dl><dt>Feel</dt><dd>Noir, teal and amber</dd><dt>Objects</dt><dd>90 fiber lines, 4 circles, 8 bracket lines, 2 labels</dd><dt>Panel</dt><dd>The fibers barely change and can be cached as one image, rotated only while thinking.</dd></dl>
       </div>
     </article>
-  </section>
 
-  <section class="files" aria-labelledby="files-h">
-    <h2 id="files-h">New screens from files</h2>
-    <p>These two are not built into the firmware. Each is a JSON screen file of about 6 KB, drawn by the data screen engine (branch <code>claude/project-thread-ydiabz</code>, design notes in <code>docs-dev/assist-screens.md</code>). The pictures are rendered by the desktop lab with the firmware's LVGL 9.6 at 1024 × 600.</p>
-
-    <article class="option">
-      <div>
-        <img class="shot" src="robot.png" width="912" height="360" alt="Robot screen in its listening, thinking and answering looks">
-        <div class="shot-caps"><span>Listening</span><span>Thinking</span><span>Answering</span></div>
-      </div>
+    <article class="option" data-screen="robot">
+      <div class="stage"><canvas aria-label="Robot preview"></canvas></div>
       <div class="notes">
-        <span class="tag">Screen file</span>
+        <span class="tag">Option J · screen file</span>
         <h2>Robot</h2>
-        <p>A small robot in outline. Listening, it bobs and blinks, its ears glow and sound waves reach its head with the voice. Thinking, its eyes wander, a hand goes to its chin, the antenna and chest light blink amber and three dots bounce above it. Answering, its mouth moves with the reply, its eyes turn happy and it waves.</p>
-        <dl><dt>File</dt><dd><code>robot.json</code></dd><dt>Per frame</dt><dd>35 shapes, 1,403 formula steps at most</dd></dl>
+        <p>A small robot in outline. Listening, it bobs, blinks, its ears glow and sound waves reach its head with your voice. Thinking, its eyes wander, the antenna blinks amber, a hand goes to its chin and three dots bounce above it. Answering, its mouth moves with the reply, its eyes turn happy and it waves.</p>
+        <dl><dt>Feel</dt><dd>Cute, friendly</dd><dt>Objects</dt><dd>35 shapes at most</dd><dt>Panel</dt><dd>Drawn here from its JSON screen file, robot.json, the same file the panel loads.</dd></dl>
       </div>
     </article>
 
-    <article class="option">
-      <div>
-        <img class="shot" src="retro_robot.png" width="912" height="360" alt="Retro Robot screen in its listening, thinking and answering looks">
-        <div class="shot-caps"><span>Listening</span><span>Thinking</span><span>Answering</span></div>
-      </div>
+    <article class="option" data-screen="retro_robot">
+      <div class="stage"><canvas aria-label="Retro Robot preview"></canvas></div>
       <div class="notes">
-        <span class="tag">Screen file</span>
+        <span class="tag">Option K · screen file</span>
         <h2>Retro Robot</h2>
-        <p>A tall tin-can head with a dome, an antenna ball, a wide visor and a grille mouth. Listening, its eyes glance about and the antenna ball glows with the voice. Thinking, its lids droop, its eyes roll up and a question mark bobs beside it. Answering, the grille teeth part with each word and the head bounces.</p>
-        <dl><dt>File</dt><dd><code>retro_robot.json</code></dd><dt>Per frame</dt><dd>34 shapes, 1,630 formula steps at most</dd></dl>
+        <p>A tall tin-can head with a dome, an antenna, a wide visor and a grille mouth. Its eyes glance about while listening, its lids droop and a question mark bobs while thinking, and the grille teeth part with each word while answering.</p>
+        <dl><dt>Feel</dt><dd>Retro, cheeky</dd><dt>Objects</dt><dd>34 shapes at most</dd><dt>Panel</dt><dd>Drawn here from its JSON screen file, retro_robot.json.</dd></dl>
       </div>
     </article>
   </section>
@@ -807,6 +790,192 @@ footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
       c.globalAlpha = 1; c.lineCap = 'round'; c.lineJoin = 'miter';
       run.frame(c, t, reduce ? 0.35 : lv, run.m, Math.min(run.a, run.m), CAPS[phase], dt);
     });
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
+
+
+<script>
+// Options J and K are Assist screen files (tools/assist-screen-lab/FORMAT.md):
+// this small renderer evaluates the same JSON the panel loads, in panel pixels
+// (1024x600), with the shared phase switch and a simulated voice.
+(() => {
+  const SCREENS = { robot: {"format":1,"id":"robot","name":"Robot","label_color":"#BFF4FF","reach":{"half_r":1.75,"up_r":1.95,"down_r":2.4},"colors":{"line":"#7FE7FF","face":"#0B1624","back":"#05070F","eye":"#9BF6FF","glint":"#FFFFFF","amber":"#FFB547","mouth":"#9BF6FF"},"vars":{"answer":{"init":0,"next":"answer + (answering - answer) * 0.12"},"think":"max(0, mode - answer)","listen":"1 - mode","lv":"level","s":"max(2, 0.05 * r)","oy":"sin(t * 2.2) * 0.03 * r * (1 - think) - answer * lv * 0.05 * r","hx":"cx","hy":"cy - 0.35 * r + oy","hw":"1.1 * r","hh":"0.8 * r","by":"cy + 1.05 * r + oy * 0.5","bw":"0.7 * r","bh":"0.42 * r","bp":"mod(t, 3.7)","blink":"bp < 0.16 ? sin(bp / 0.16 * pi) : 0","gx":"think * 0.13 * r * sin(t * 1.3)","gy":"-think * 0.09 * r - listen * 0.02 * r * lv","ex":"0.45 * r","eh":"0.34 * r * (1 - 0.9 * blink)","rest":"1 - think - answer","lhx":"hx - bw - 0.28 * r","lhy":"by + bh * 0.65 - 0.04 * r * sin(t * 2.2)","rhx":"rest * (hx + bw + 0.28 * r) + think * (hx + 0.55 * r) + answer * (hx + bw + 0.42 * r + 0.14 * r * sin(t * 6))","rhy":"rest * (by + bh * 0.65 + 0.04 * r * sin(t * 2.2)) + think * (hy + hh + 0.12 * r) + answer * (by - bh - 0.5 * r)"},"items":[{"type":"line","x1":"hx","y1":"hy - hh","x2":"hx","y2":"hy - hh - 0.42 * r","width":"s","color":"line"},{"type":"disc","x":"hx","y":"hy - hh - 0.5 * r","radius":"max(1, 0.22 * r)","color":"think > 0.3 ? amber : line","alpha":"0.12 + 0.18 * (listen * lv + think * (0.5 + 0.5 * sin(t * 8)))"},{"type":"disc","x":"hx","y":"hy - hh - 0.5 * r","radius":"max(1, 0.1 * r)","color":"think > 0.3 ? amber : line","alpha":"think > 0.3 ? 0.55 + 0.45 * sin(t * 8) : 1"},{"type":"disc","repeat":2,"as":"k","x":"hx + (k * 2 - 1) * hw","y":"hy","radius":"max(1, 0.2 * r)","color":"line"},{"type":"disc","repeat":2,"as":"k","x":"hx + (k * 2 - 1) * hw","y":"hy","radius":"max(1, 0.2 * r - s)","color":"eye","alpha":"0.15 + 0.85 * clamp01(listen * lv * 1.4)"},{"type":"rect","x1":"hx - hw","y1":"hy - hh","x2":"hx + hw","y2":"hy + hh","radius":"0.32 * r","color":"line"},{"type":"rect","x1":"hx - hw + s","y1":"hy - hh + s","x2":"hx + hw - s","y2":"hy + hh - s","radius":"0.32 * r - s","color":"face"},{"type":"rect","repeat":2,"as":"k","let":{"x":"hx + (k * 2 - 1) * ex + gx","y":"hy - 0.08 * r + gy"},"x1":"x - 0.15 * r","y1":"y - eh / 2","x2":"x + 0.15 * r","y2":"y + eh / 2","radius":1000,"color":"eye","alpha":"1 - answer"},{"type":"disc","repeat":2,"as":"k","x":"hx + (k * 2 - 1) * ex + gx - 0.05 * r","y":"hy - 0.08 * r + gy - 0.07 * r","radius":"max(1, 0.045 * r)","color":"glint","alpha":"(1 - answer) * (1 - blink)"},{"type":"arc","repeat":2,"as":"k","x":"hx + (k * 2 - 1) * ex","y":"hy - 0.02 * r","radius":"0.16 * r","start":205,"end":335,"width":"s * 1.4","color":"eye","alpha":"answer"},{"type":"arc","x":"hx","y":"hy + 0.12 * r","radius":"0.26 * r","start":30,"end":150,"width":"s","color":"mouth","alpha":"(1 - answer) * (1 - think)"},{"type":"rect","x1":"hx + 0.05 * r","y1":"hy + 0.36 * r - s / 2","x2":"hx + 0.3 * r","y2":"hy + 0.36 * r + s / 2","radius":1000,"color":"mouth","alpha":"think"},{"type":"rect","let":{"mh":"0.05 * r + answer * lv * 0.3 * r"},"x1":"hx - 0.24 * r","y1":"hy + 0.42 * r - mh / 2","x2":"hx + 0.24 * r","y2":"hy + 0.42 * r + mh / 2","radius":1000,"color":"mouth","alpha":"answer"},{"type":"rect","x1":"hx - 0.12 * r","y1":"hy + hh","x2":"hx + 0.12 * r","y2":"by - bh","color":"line"},{"type":"rect","x1":"hx - bw","y1":"by - bh","x2":"hx + bw","y2":"by + bh","radius":"0.2 * r","color":"line"},{"type":"rect","x1":"hx - bw + s","y1":"by - bh + s","x2":"hx + bw - s","y2":"by + bh - s","radius":"0.2 * r - s","color":"face"},{"type":"disc","x":"hx","y":"by","radius":"max(1, 0.12 * r)","color":"think > 0.3 ? amber : eye","alpha":"0.35 + 0.65 * clamp01(lv * 1.3 + think * (0.5 + 0.5 * sin(t * 4)))"},{"type":"line","x1":"hx - bw","y1":"by - bh * 0.4","x2":"lhx","y2":"lhy","width":"s * 1.6","color":"line"},{"type":"disc","x":"lhx","y":"lhy","radius":"max(1, 0.07 * r)","color":"line"},{"type":"line","x1":"hx + bw","y1":"by - bh * 0.4","x2":"rhx","y2":"rhy","width":"s * 1.6","color":"line"},{"type":"disc","x":"rhx","y":"rhy","radius":"max(1, 0.07 * r)","color":"line"},{"type":"arc","repeat":6,"as":"k","let":{"side":"k < 3 ? 1 : -1","n":"mod(k, 3)","start":"side > 0 ? -35 : 145"},"x":"hx + side * hw","y":"hy","radius":"(0.38 + n * 0.16) * r","start":"start","end":"start + 70","width":"s","color":"eye","alpha":"listen * clamp01(lv * 1.6 - n * 0.3)"},{"type":"disc","repeat":3,"as":"k","x":"hx + hw * 0.7 + k * 0.24 * r","y":"hy - hh - 0.25 * r - 0.1 * r * max(0, sin(t * 4.5 - k * 0.9))","radius":"max(1, 0.065 * r)","color":"eye","alpha":"think"}]}, retro_robot: {"format":1,"id":"retro_robot","name":"Retro Robot","label_color":"#D8DEE4","reach":{"half_r":1.5,"up_r":2.5,"down_r":2.0,"label_r":1.6},"colors":{"metal":"#A9B4C0","shade":"#7F8A96","edge":"#2A3038","visor":"#15181D","white":"#F2F2EE","pupil":"#101114","mouth":"#DCE2E8","amber":"#FFB547","ball":"#C8D0D8"},"vars":{"answer":{"init":0,"next":"answer + (answering - answer) * 0.12"},"think":"max(0, mode - answer)","listen":"1 - mode","lv":"level","R":"r * 1.25","s":"max(2, 0.035 * r)","oy":"sin(t * 2) * 0.025 * R - answer * lv * 0.04 * R","hx":"cx","hy":"cy - 0.15 * R + oy","hw":"0.62 * R","top":"hy - 0.7 * R","bot":"hy + 1.0 * R","glance":{"init":0,"next":"rand(-100, 100) / 100","every":1.6},"gx":"listen * 0.06 * R * glance + think * 0.05 * R * sin(t * 1.4)","gy":"-think * 0.07 * R","lid":"think * 0.55 + listen * 0.15 * (1 - lv)","bp":"mod(t, 4.3)","blink":"bp < 0.14 ? sin(bp / 0.14 * pi) : 0","open":"answer * (0.04 * R + lv * 0.16 * R)"},"items":[{"type":"line","x1":"hx","y1":"top - hw + 0.05 * R","x2":"hx","y2":"top - hw - 0.36 * R","width":"s * 1.6","color":"edge"},{"type":"disc","x":"hx","y":"top - hw - 0.42 * R","radius":"max(1, 0.18 * R)","color":"think > 0.3 ? amber : ball","alpha":"0.1 + 0.25 * (listen * lv + think * (0.5 + 0.5 * sin(t * 7)))"},{"type":"disc","x":"hx","y":"top - hw - 0.42 * R","radius":"max(1, 0.075 * R + s)","color":"edge"},{"type":"disc","x":"hx","y":"top - hw - 0.42 * R","radius":"max(1, 0.075 * R)","color":"think > 0.3 ? amber : ball","alpha":"think > 0.3 ? 0.6 + 0.4 * sin(t * 7) : 1"},{"type":"rect","x1":"hx - 0.1 * R","y1":"top - hw - 0.02 * R","x2":"hx + 0.1 * R","y2":"top - hw + 0.1 * R","radius":"0.03 * R","color":"edge"},{"type":"disc","x":"hx","y":"top","radius":"max(1, hw + s)","color":"edge"},{"type":"disc","x":"hx","y":"top","radius":"max(1, hw)","color":"metal"},{"type":"rect","x1":"hx - hw - s","y1":"top","x2":"hx + hw + s","y2":"bot + s","radius":"0.1 * R","color":"edge"},{"type":"rect","x1":"hx - hw","y1":"top","x2":"hx + hw","y2":"bot","radius":"0.08 * R","color":"metal"},{"type":"rect","x1":"hx + hw * 0.55","y1":"top","x2":"hx + hw","y2":"bot","radius":"0.08 * R","color":"shade","alpha":0.6},{"type":"rect","x1":"hx - hw - s","y1":"hy - 0.42 * R","x2":"hx + hw + s","y2":"hy + 0.06 * R","radius":1000,"color":"visor"},{"type":"rect","repeat":2,"as":"k","let":{"x":"hx + (k * 2 - 1) * 0.27 * R"},"x1":"x - 0.19 * R","y1":"hy - 0.34 * R","x2":"x + 0.19 * R","y2":"hy - 0.02 * R","radius":"0.09 * R","color":"white"},{"type":"rect","repeat":2,"as":"k","let":{"x":"hx + (k * 2 - 1) * 0.27 * R + gx","y":"hy - 0.17 * R + gy"},"x1":"x - 0.05 * R","y1":"y - 0.05 * R","x2":"x + 0.05 * R","y2":"y + 0.05 * R","radius":"0.015 * R","color":"pupil"},{"type":"rect","repeat":2,"as":"k","let":{"x":"hx + (k * 2 - 1) * 0.27 * R","lh":"0.32 * R * clamp01(max(lid, blink))"},"if":"lh >= 1","x1":"x - 0.2 * R","y1":"hy - 0.35 * R","x2":"x + 0.2 * R","y2":"hy - 0.35 * R + lh","color":"visor"},{"type":"rect","x1":"hx - 0.42 * R - s","y1":"hy + 0.3 * R - s - open / 2","x2":"hx + 0.42 * R + s","y2":"hy + 0.66 * R + s + open / 2","radius":"0.1 * R","color":"edge"},{"type":"rect","x1":"hx - 0.42 * R","y1":"hy + 0.3 * R - open / 2","x2":"hx + 0.42 * R","y2":"hy + 0.66 * R + open / 2","radius":"0.08 * R","color":"mouth"},{"type":"rect","if":"open >= 1","x1":"hx - 0.42 * R","y1":"hy + 0.48 * R - open / 2","x2":"hx + 0.42 * R","y2":"hy + 0.48 * R + open / 2","color":"visor"},{"type":"line","repeat":10,"as":"k","round":false,"let":{"col":"mod(k, 5)","row":"floor(k / 5)","x":"hx - 0.42 * R + (col + 1) * 0.84 * R / 6","ya":"row == 0 ? hy + 0.3 * R - open / 2 : hy + 0.48 * R + open / 2","yb":"row == 0 ? hy + 0.48 * R - open / 2 : hy + 0.66 * R + open / 2"},"x1":"x","y1":"ya","x2":"x","y2":"yb","width":"s * 0.8","color":"edge"},{"type":"line","round":false,"x1":"hx - 0.42 * R","y1":"hy + 0.48 * R","x2":"hx + 0.42 * R","y2":"hy + 0.48 * R","width":"s * 0.8","color":"edge","alpha":"open < 1 ? 1 : 0"},{"type":"rect","x1":"hx - 0.38 * R - s","y1":"bot","x2":"hx + 0.38 * R + s","y2":"bot + 0.22 * R","color":"edge"},{"type":"rect","x1":"hx - 0.38 * R","y1":"bot + s","x2":"hx + 0.38 * R","y2":"bot + 0.22 * R - s","color":"shade"},{"type":"text","x":"hx + hw + 0.18 * R","y":"top - 0.35 * R - 0.08 * R * sin(t * 3)","box_width":60,"font":48,"text":"?","color":"amber","alpha":"think"}]} };
+  const PW = 1024, PH = 600;
+  const CAPS = { listening: 'Listening…', thinking: 'Thinking…', answering: 'Answering…' };
+  const nowEl = document.getElementById('now');
+  const phaseNow = () => { const p = nowEl.textContent.trim().toLowerCase(); return CAPS[p] ? p : 'listening'; };
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let target = 0, level = 0, nextSyl = 0;
+  function voice(now, active) {
+    if (now > nextSyl) { nextSyl = now + 110 + Math.random() * 170; target = Math.random() < 0.22 ? 0 : 0.25 + Math.random() * 0.75; }
+    const tg = active ? target : 0;
+    level += (tg - level) * (tg > level ? 0.55 : 0.12);
+    return level;
+  }
+  const FN = {
+    sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos, atan: Math.atan, atan2: Math.atan2,
+    sqrt: v => v > 0 ? Math.sqrt(v) : 0, abs: Math.abs, min: Math.min, max: Math.max, floor: Math.floor, ceil: Math.ceil,
+    round: Math.round, exp: Math.exp, pow: Math.pow, log: v => v > 0 ? Math.log(v) : 0, sign: Math.sign,
+    clamp: (v, a, b) => Math.max(a, Math.min(b, v)), clamp01: v => Math.max(0, Math.min(1, v)),
+    mix: (a, b, k) => a + (b - a) * k, fract: v => v - Math.floor(v), mod: (a, b) => b ? a - b * Math.floor(a / b) : 0,
+    step: (e, x) => x < e ? 0 : 1,
+    smoothstep: (a, b, x) => { let k = b === a ? 0 : (x - a) / (b - a); k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); },
+    hash: (i, s) => (((Math.trunc(i) * 7 + Math.trunc(s) * 13) % 23) + 23) % 23 / 22,
+    rand: (lo, hi) => Math.floor(lo + Math.random() * (hi - lo + 1)), frand: () => Math.random(),
+  };
+  const cache = new Map();
+  // The file's own formulas, run against a scope of names (trusted files only).
+  function compile(src) {
+    if (typeof src === 'number' || typeof src === 'boolean') return () => +src;
+    if (!cache.has(src)) cache.set(src, new Function('S', `with (S) { return +(${src}); }`));
+    const f = cache.get(src);
+    return S => { const v = f(S); return Number.isFinite(v) ? v : 0; };
+  }
+  const css = v => '#' + (Math.max(0, Math.min(0xFFFFFF, Math.floor(v)))).toString(16).padStart(6, '0');
+
+  function build(file) {
+    const S = Object.assign(Object.create(null), FN, { pi: Math.PI, tau: Math.PI * 2 });
+    for (const [k, v] of Object.entries(file.colors || {})) S[k] = parseInt(v.slice(1), 16);
+    const reach = Object.assign({ half_r: 2, side_r: 0, side_px: 0, up_r: 0, down_r: 0, label_r: 2.1 }, file.reach || {});
+    const vars = Object.entries(file.vars || {}).map(([name, v]) => typeof v === 'object'
+      ? { name, init: compile(v.init ?? 0), next: v.next !== undefined ? compile(v.next) : null, every: v.every !== undefined ? compile(v.every) : null, acc: 0 }
+      : { name, expr: compile(v) });
+    const prepare = items => items.map(it => {
+      const e = { ...it, f: {} };
+      for (const [k, v] of Object.entries(it)) {
+        if (['type', 'repeat', 'as', 'let', 'items', 'text', 'font', 'align', 'round', 'glow', 'on'].includes(k)) continue;
+        e.f[k] = compile(v);
+      }
+      e.lets = Object.entries(it.let || {}).map(([k, v]) => [k, compile(v)]);
+      if (it.items) e.kids = prepare(it.items);
+      return e;
+    });
+    return { S, reach, vars, items: prepare(file.items || []), label: file.label_color || '#C8D2E6', started: false };
+  }
+
+  function baseRadius(rc, w, h) {
+    let r = Math.min(w, h) * 0.17;
+    const half = w / 2 - 8, cy = h / 2 - h * 0.05;
+    r = Math.min(r, (half - (rc.side_r > 0 ? 0 : rc.side_px)) / (rc.half_r || 2));
+    if (rc.side_r > 0) r = Math.min(r, (half - rc.side_px) / rc.side_r);
+    if (rc.up_r > 0) r = Math.min(r, (cy - 8) / rc.up_r);
+    if (rc.down_r > 0) r = Math.min(r, (h - cy - 8) / rc.down_r);
+    return Math.max(1, r);
+  }
+
+  function shape(c, e, S) {
+    const g = (k, d = 0) => e.f[k] ? e.f[k](S) : d;
+    const alpha = Math.max(0, Math.min(1, g('alpha', 1)));
+    if (alpha < 0.02) return;
+    const color = css(g('color', 0xFFFFFF));
+    c.globalAlpha = alpha;
+    const round = e.round === undefined ? true : !!e.round;
+    switch (e.type) {
+      case 'line': {
+        const draw = (w, a) => { c.globalAlpha = a; c.lineWidth = w; c.lineCap = round ? 'round' : 'butt'; c.strokeStyle = color;
+          c.beginPath(); c.moveTo(g('x1'), g('y1')); c.lineTo(g('x2'), g('y2')); c.stroke(); };
+        const w = Math.max(1, g('width', 1));
+        if (e.glow) draw(w * 4, alpha * 0.16);
+        draw(w, alpha);
+        break;
+      }
+      case 'arc': {
+        const R = g('radius'); if (R < 1) return;
+        const w = Math.max(1, Math.min(g('width', 1), R)), s = g('start', 0), en = g('end', 360);
+        const full = en - s >= 360;
+        const draw = (ww, a) => { c.globalAlpha = a; c.lineWidth = ww; c.lineCap = round && !full ? 'round' : 'butt'; c.strokeStyle = color;
+          c.beginPath(); c.arc(g('x'), g('y'), Math.max(0, R - w / 2), full ? 0 : s * Math.PI / 180, full ? Math.PI * 2 : en * Math.PI / 180); c.stroke(); };
+        if (e.glow) draw(w * 4, alpha * 0.16);
+        draw(w, alpha);
+        break;
+      }
+      case 'disc': {
+        const R = g('radius'); if (R < 1) return;
+        const x = g('x'), y = g('y');
+        if (e.f.grad) { const gr = c.createLinearGradient(0, y - R, 0, y + R); gr.addColorStop(0, color); gr.addColorStop(1, css(g('grad'))); c.fillStyle = gr; }
+        else c.fillStyle = color;
+        c.beginPath(); c.arc(x, y, R, 0, Math.PI * 2); c.fill();
+        break;
+      }
+      case 'rect': {
+        const x1 = Math.min(g('x1'), g('x2')), y1 = Math.min(g('y1'), g('y2'));
+        const w = Math.abs(g('x2') - g('x1')) + 1, h = Math.abs(g('y2') - g('y1')) + 1;
+        const rad = Math.max(0, Math.min(g('radius', 0), w / 2, h / 2));
+        c.fillStyle = color; c.beginPath(); c.roundRect(x1, y1, w, h, rad); c.fill();
+        break;
+      }
+      case 'outline': {
+        c.strokeStyle = color; c.lineWidth = Math.max(1, g('width', 1));
+        c.strokeRect(g('x1'), g('y1'), g('x2') - g('x1'), g('y2') - g('y1'));
+        break;
+      }
+      case 'text': {
+        const font = e.font || 16;
+        const text = String(e.text || '').replace(/\{([^}]*)\}/g, (_, x) => String(Math.round(compile(x.split(':')[0])(S))));
+        c.fillStyle = color; c.font = `500 ${font}px "IBM Plex Sans", system-ui, sans-serif`; c.textBaseline = 'top';
+        const bw = g('box_width', 200);
+        c.textAlign = e.align === 'center' ? 'center' : e.align === 'right' ? 'right' : 'left';
+        const x = g('x') + (e.align === 'center' ? bw / 2 : e.align === 'right' ? bw : 0);
+        c.fillText(text, x, g('y'));
+        break;
+      }
+    }
+    c.globalAlpha = 1;
+  }
+
+  function run(c, items, S) {
+    for (const e of items) {
+      const n = e.repeat || 1;
+      for (let k = 0; k < n; k++) {
+        if (n > 1 || e.as) S[e.as || 'i'] = k;
+        for (const [name, f] of e.lets) S[name] = f(S);
+        if (e.f.if && !e.f.if(S)) continue;
+        if (e.type === 'group') run(c, e.kids, S); else shape(c, e, S);
+      }
+    }
+  }
+
+  const runs = [...document.querySelectorAll('.option[data-screen]')].map(opt => {
+    const cv = opt.querySelector('canvas');
+    return { cv, ctx: cv.getContext('2d'), sc: build(SCREENS[opt.dataset.screen]), m: 0, a: 0, appear: 0, frame: 0 };
+  });
+  const t0 = performance.now();
+  let lastNow = t0;
+  function tick(now) {
+    const phase = phaseNow();
+    const lv = reduce ? 0.35 : voice(now, phase !== 'thinking');
+    const dt = reduce ? 0 : Math.min(0.05, (now - lastNow) / 1000);
+    lastNow = now;
+    const t = reduce ? 1.5 : (now - t0) / 1000;
+    for (const R of runs) {
+      const rect = R.cv.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.round(rect.width * dpr), h = Math.round(rect.height * dpr);
+      if (w !== R.cv.width || h !== R.cv.height) { R.cv.width = w; R.cv.height = h; }
+      if (rect.bottom < 0 || rect.top > innerHeight) continue;
+      R.m += ((phase === 'listening' ? 0 : 1) - R.m) * 0.12;
+      R.appear += (1 - R.appear) * 0.18;
+      const sc = R.sc, S = sc.S;
+      const base = baseRadius(sc.reach, PW, PH);
+      Object.assign(S, { t, dt, frame: ++R.frame, level: lv, mode: R.m, answering: phase === 'answering' ? 1 : 0,
+        r: base * (reduce ? 1 : R.appear), cx: PW / 2, cy: PH / 2 - PH * 0.05, w: PW, h: PH, wide: 1, square: 0, tall: 0 });
+      if (!sc.started) { for (const v of sc.vars) S[v.name] = v.expr ? v.expr(S) : v.init(S); sc.started = true; }
+      for (const v of sc.vars) {
+        if (v.expr) { S[v.name] = v.expr(S); continue; }
+        if (!v.next) continue;
+        if (v.every) { v.acc += dt; if (v.acc < v.every(S)) continue; v.acc = 0; }
+        S[v.name] = v.next(S);
+      }
+      const c = R.ctx;
+      c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, w, h); c.setTransform(w / PW, 0, 0, h / PH, 0, 0);
+      run(c, sc.items, S);
+      c.globalAlpha = 1; c.fillStyle = sc.label; c.font = '500 28px "IBM Plex Sans", system-ui, sans-serif';
+      c.textAlign = 'center'; c.textBaseline = 'top';
+      c.fillText(CAPS[phase], PW / 2, S.cy + base * sc.reach.label_r);
+    }
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
