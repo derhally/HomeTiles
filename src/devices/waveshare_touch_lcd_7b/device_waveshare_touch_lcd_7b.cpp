@@ -23,7 +23,6 @@
 #include <hal/lcd_types.h>
 
 #include "src/core/display/dma2d_arbiter.h"
-#include "src/core/display/display_manager.h"
 #include "src/devices/common/p4_dsi_camera_presenter.h"
 #include "src/devices/common/p4_dsi_cpu_rotate.h"
 #include "src/devices/common/p4_dsi_ui_ppa.h"
@@ -118,8 +117,6 @@ bool g_sd_available = false;
 uint32_t g_sd_retry_tick_ms = 0;
 bool g_littlefs_ready = false;
 uint8_t g_rotation = DeviceWaveshareTouchLCD7B::kProfile.rotation_default;
-// Below, with draw_landscape_area: the refresh areas in panel coordinates.
-uint8_t refresh_areas_on_panel(int32_t (*out)[4], uint8_t max);
 bool g_touch_active = false;
 uint8_t g_touch_release_reads = 0;
 int32_t g_touch_stable_x = 0;
@@ -530,9 +527,6 @@ bool init_panel_framebuffer() {
   // Landscape only: the upright layout's turn (p4_dsi_ui_ppa, CPU rotate)
   // writes the shown framebuffer.
   g_camera_presenter.setUiFlip(!g_turned);
-  // After a swap, the hidden framebuffer skips what the next LVGL refresh
-  // draws anyway (refresh_areas_on_panel).
-  g_camera_presenter.setUiRefreshAreas(&refresh_areas_on_panel);
   Serial.printf("[Device/Waveshare Touch LCD 7B] Panel framebuffers OK fb0=%p fb1=%p\n",
                 fb0, fb1);
   return true;
@@ -561,23 +555,6 @@ bool write_physical_to_panel(int32_t x, int32_t y, int32_t w, int32_t h, const u
   mark_dirty_rect(x, y, w, h);
   g_camera_presenter.noteUiWrite(x, y, w, h, false);
   return true;
-}
-
-// The areas the running LVGL refresh draws, in the panel's coordinates: the
-// 180 degree rotation mirrors every band (draw_landscape_area), so the areas
-// are mirrored too; the upright layouts never use the flip path.
-uint8_t refresh_areas_on_panel(int32_t (*out)[4], uint8_t max) {
-  const uint8_t n = DisplayManager::refreshAreas(out, max);
-  if (!(g_rotation & 0x02)) return n;
-  const int32_t w = display_cfg.width, h = display_cfg.height;
-  for (uint8_t i = 0; i < n; ++i) {
-    const int32_t x1 = out[i][0], y1 = out[i][1], x2 = out[i][2], y2 = out[i][3];
-    out[i][0] = w - 1 - x2;
-    out[i][1] = h - 1 - y2;
-    out[i][2] = w - 1 - x1;
-    out[i][3] = h - 1 - y1;
-  }
-  return n;
 }
 
 bool draw_landscape_area(int32_t x, int32_t y, int32_t w, int32_t h, const uint16_t* data) {

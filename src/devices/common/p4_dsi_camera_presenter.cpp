@@ -249,6 +249,7 @@ bool Presenter::begin(bool covers_panel) {
   if (ui_flip_) {
     commitUi();
     finishUiSwap();
+    syncHidden();
   }
   finishPendingSwap();
   uint16_t* active = activeFramebuffer();
@@ -581,6 +582,7 @@ bool Presenter::beginFullFrames() {
   if (ui_flip_) {
     commitUi();
     finishUiSwap();
+    syncHidden();
   }
   finishPendingSwap();
   uint16_t* active = activeFramebuffer();
@@ -744,6 +746,7 @@ void Presenter::setUiFlip(bool enabled) {
   if (!enabled) {
     commitUi();
     finishUiSwap();
+    syncHidden();
   }
   ui_flip_ = enabled;
   ui_back_valid_ = false;
@@ -767,36 +770,13 @@ void Presenter::finishUiSwap() {
     Serial.printf("[Display/%s] UI swap not confirmed by a refresh\n",
                   config_.device_name ? config_.device_name : "P4");
   }
+}
+
+void Presenter::syncHidden() {
   uint16_t* shown = activeFramebuffer();
   uint16_t* hidden = inactiveFramebuffer();
-  // What the refresh now running draws needs no copy: only the rest of each
-  // rectangle is brought over (an Assist screen frame is redrawn where the
-  // last one was, so nearly nothing is copied).
-  constexpr uint8_t kMaxCovers = 16;
-  int32_t cover_boxes[kMaxCovers][4];
-  const uint8_t cover_count =
-      ui_refresh_areas_ ? ui_refresh_areas_(cover_boxes, kMaxCovers) : 0;
-  rect_subtract::Box covers[kMaxCovers];
-  for (uint8_t c = 0; c < cover_count; ++c) {
-    covers[c] = rect_subtract::Box{cover_boxes[c][0], cover_boxes[c][1],
-                                   cover_boxes[c][2], cover_boxes[c][3]};
-  }
   for (uint8_t i = 0; i < ui_sync_count_ && ui_back_valid_; ++i) {
-    const Rect& r = ui_sync_rects_[i];
-    rect_subtract::Box pieces[32];
-    const int n = cover_count
-                      ? rect_subtract::outside(
-                            rect_subtract::Box{r.x1, r.y1, r.x2, r.y2}, covers,
-                            cover_count, pieces, 32)
-                      : -1;
-    if (n < 0) {
-      if (!copyRect(hidden, shown, r)) ui_back_valid_ = false;
-      continue;
-    }
-    for (int k = 0; k < n && ui_back_valid_; ++k) {
-      const Rect piece{pieces[k].x1, pieces[k].y1, pieces[k].x2, pieces[k].y2};
-      if (!copyRect(hidden, shown, piece)) ui_back_valid_ = false;
-    }
+    if (!copyRect(hidden, shown, ui_sync_rects_[i])) ui_back_valid_ = false;
   }
   ui_sync_count_ = 0;
 }
@@ -819,6 +799,32 @@ uint16_t* Presenter::uiFramebuffer() {
 void Presenter::commitUi() {
   if (!uiFlipUsable() || ui_frame_count_ == 0) return;
   uint16_t* hidden = inactiveFramebuffer();
+  uint16_t* shown = activeFramebuffer();
+  // The shown frame's rectangles, where this frame did not write them, are
+  // still missing from the hidden framebuffer: copy that rest over now, while
+  // the panel certainly does not scan it.
+  {
+    rect_subtract::Box written[kMaxUiRects];
+    for (uint8_t i = 0; i < ui_frame_count_; ++i) {
+      const Rect& r = ui_frame_rects_[i];
+      written[i] = rect_subtract::Box{r.x1, r.y1, r.x2, r.y2};
+    }
+    for (uint8_t i = 0; i < ui_sync_count_ && ui_back_valid_; ++i) {
+      const Rect& r = ui_sync_rects_[i];
+      rect_subtract::Box pieces[32];
+      const int n = rect_subtract::outside(rect_subtract::Box{r.x1, r.y1, r.x2, r.y2},
+                                           written, ui_frame_count_, pieces, 32);
+      if (n < 0) {
+        if (!copyRect(hidden, shown, r)) ui_back_valid_ = false;
+        continue;
+      }
+      for (int k = 0; k < n && ui_back_valid_; ++k) {
+        const Rect piece{pieces[k].x1, pieces[k].y1, pieces[k].x2, pieces[k].y2};
+        if (!copyRect(hidden, shown, piece)) ui_back_valid_ = false;
+      }
+    }
+    ui_sync_count_ = 0;
+  }
   // The rows were already written back by the writers; a one-pixel draw of
   // the framebuffer's own memory only switches the scanout at the next
   // refresh (ESP-IDF DPI driver, no copy).
