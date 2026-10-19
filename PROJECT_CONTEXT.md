@@ -38,7 +38,7 @@ Last reviewed: 2026-10-23
 
 ## Assist screens from data (`claude/project-thread-ydiabz`, unreleased)
 
-- Engine `src/ui/assist/assist_screen.*` (fixed ~108 KB PSRAM block, load-time limits, per-frame fill budget), nine screen files and the desktop lab in `tools/assist-screen-lab/`, design `docs-dev/assist-screens.md`. Compiled only with `HOMETILES_ASSIST_DATA_SCREENS=1` (7B image +68 KB): the chosen style is drawn from microSD `/assist/<id>.json`, else internal storage, else the built-in copy (`node tools/generate-assist-screens.mjs`); a refused file keeps the compiled style. HW pending (7B first, then S3/P4 timing).
+- Engine `src/ui/assist/assist_screen.*` (fixed ~108 KB PSRAM block, load-time limits, per-frame fill budget), nine screen files and the desktop lab in `tools/assist-screen-lab/`, design `docs-dev/assist-screens.md`. Compiled only with `HOMETILES_ASSIST_DATA_SCREENS=1` (7B image +68 KB): the chosen style is drawn from microSD `/assist/<id>.json`, else internal storage, else the built-in copy (`node tools/generate-assist-screens.mjs`); a refused file keeps the compiled style. From Home Assistant (local, unpushed; Bridge branch `assist-screens-from-ha` in `build/bridge`): `<config>/hometiles/assist_screens/*.json` -> retained `{base}/assist/screens` + `{base}/assist/screen/<id>`, listed after the built-in styles (Settings, select), chosen one kept in `/assist_ha/`. HW pending (7B first, then S3/P4 timing).
 
 ## Hardware validation
 
