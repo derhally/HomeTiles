@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "id": "dot_halo",
+  "name": "Dot Halo",
+  "note": "32 dots ring a soft core; the voice pushes each dot outward by a different amount, so the ring becomes a living waveform. While thinking a bright comet chases around the ring.",
+  "label_color": "#C8D2E6",
+  "colors": {"glow": "#22D3EE", "core_glow": "#67E8F9", "core": "#ECFEFF", "core_shade": "#0E7490", "dot": "#A5F3FC"},
+  "vars": {
+    "lv": "level",
+    "m": "mode",
+    "ring": "r * 1.35",
+    "head": "mod(t * 1.4, tau)"
+  },
+  "items": [
+    {"type": "disc", "note": "glow", "x": "cx", "y": "cy", "radius": "max(1, r * (1.9 + 0.3 * lv))", "color": "glow", "alpha": 0.078},
+    {"type": "disc", "note": "core glow", "x": "cx", "y": "cy", "radius": "max(1, r * (0.85 + 0.2 * lv))", "color": "core_glow", "alpha": 0.18},
+    {"type": "disc", "note": "core", "x": "cx", "y": "cy", "radius": "max(1, r * (0.5 + 0.12 * lv + 0.03 * sin(t * 3)))",
+     "color": "core", "grad": "core_shade", "alpha": 0.863},
+    {"type": "disc", "note": "dots", "repeat": 32, "as": "i",
+     "let": {
+       "slot": "i * tau / 32",
+       "ang": "slot + t * 0.15",
+       "freq": "2 + mod(i * 7, 11) * 0.45",
+       "phase": "mod(i * 13, 17) * 0.37",
+       "wave": "(0.5 + 0.5 * sin(t * freq + phase)) * (0.6 + 0.4 * sin(ang * 3 + t * 2))",
+       "push": "(1 - m) * lv * wave * r * 0.75 + m * lv * r * 0.2",
+       "behind": "mod(head - slot, tau)",
+       "trail": "behind < 2.2 ? 1 - behind / 2.2 : 0"
+     },
+     "x": "cx + (ring + push) * cos(ang)", "y": "cy + (ring + push) * sin(ang)",
+     "radius": "max(1, r * (0.075 + 0.05 * m * trail + 0.04 * (1 - m) * wave * lv) / 2)",
+     "color": "dot",
+     "alpha": "(1 - m) * (0.75 + 0.25 * wave * lv) + m * (0.18 + 0.82 * trail)"}
+  ]
+}

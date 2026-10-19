@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "id": "voice_pills",
+  "name": "Voice Pills",
+  "note": "Four coloured dots stretch into pills that dance with each syllable; while thinking they circle each other, and while answering they bounce in a wave with the reply.",
+  "label_color": "#C8D2E6",
+  "colors": {"glow": "#818CF8", "p0": "#22D3EE", "p1": "#A78BFA", "p2": "#F472B6", "p3": "#FBBF24"},
+  "vars": {
+    "am": {"init": 0, "next": "am + (answering - am) * 0.12"},
+    "lv": "level",
+    "m": "mode",
+    "dot": "r * 0.32",
+    "gap": "r * 0.5",
+    "h0": {"init": 0, "next": "h0 + (lv * (0.55 + 0.45 * abs(sin(t * 5.0))) - h0) * 0.5"},
+    "h1": {"init": 0, "next": "h1 + (lv * (0.55 + 0.45 * abs(sin(t * 6.7 + 1))) - h1) * 0.5"},
+    "h2": {"init": 0, "next": "h2 + (lv * (0.55 + 0.45 * abs(sin(t * 8.4 + 2))) - h2) * 0.5"},
+    "h3": {"init": 0, "next": "h3 + (lv * (0.55 + 0.45 * abs(sin(t * 10.1 + 3))) - h3) * 0.5"}
+  },
+  "items": [
+    {"type": "disc", "note": "glow", "x": "cx", "y": "cy", "radius": "max(1, r * (1.5 + 0.3 * lv))", "color": "glow", "alpha": 0.102},
+    {"type": "rect", "note": "pills", "repeat": 4, "as": "i",
+     "let": {
+       "hh": "i == 0 ? h0 : i == 1 ? h1 : i == 2 ? h2 : h3",
+       "height": "(1 - m) * (dot + hh * r * 1.5) + m * dot",
+       "row_x": "cx + (i - 1.5) * gap",
+       "ang": "t * 2.2 + i * tau / 4",
+       "orbit_x": "cx + r * 0.55 * cos(ang)",
+       "orbit_y": "cy + r * 0.55 * sin(ang)",
+       "bounce": "max(0, sin(t * 7 - i * 0.9)) * r * (0.25 + 0.6 * lv)",
+       "think_x": "(1 - am) * orbit_x + am * row_x",
+       "think_y": "(1 - am) * orbit_y + am * (cy - bounce)",
+       "px": "(1 - m) * row_x + m * think_x",
+       "py": "(1 - m) * cy + m * think_y"
+     },
+     "x1": "px - dot / 2", "y1": "py - height / 2", "x2": "px + dot / 2 - 1", "y2": "py + height / 2 - 1",
+     "radius": 1000,
+     "color": "i == 0 ? p0 : i == 1 ? p1 : i == 2 ? p2 : p3"}
+  ]
+}
