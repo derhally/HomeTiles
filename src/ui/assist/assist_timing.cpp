@@ -10,7 +10,7 @@ namespace assist_timing {
 namespace {
 
 constexpr int kMaxScreens = 16;
-constexpr int kBuckets = 48;  // draw time in 1 ms steps; the last holds the rest
+constexpr int kBuckets = 160;  // draw time in 1 ms steps; the last holds the rest
 constexpr uint32_t kFramePeriodUs = 33000;
 constexpr size_t kIdSize = 33;
 

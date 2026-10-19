@@ -23,6 +23,7 @@
 #include <hal/lcd_types.h>
 
 #include "src/core/display/dma2d_arbiter.h"
+#include "src/core/display/display_manager.h"
 #include "src/devices/common/p4_dsi_camera_presenter.h"
 #include "src/devices/common/p4_dsi_cpu_rotate.h"
 #include "src/devices/common/p4_dsi_ui_ppa.h"
@@ -527,6 +528,9 @@ bool init_panel_framebuffer() {
   // Landscape only: the upright layout's turn (p4_dsi_ui_ppa, CPU rotate)
   // writes the shown framebuffer.
   g_camera_presenter.setUiFlip(!g_turned);
+  // After a swap, the hidden framebuffer skips what the next LVGL refresh
+  // draws anyway (DisplayManager::refreshAreas).
+  g_camera_presenter.setUiRefreshAreas(&DisplayManager::refreshAreas);
   Serial.printf("[Device/Waveshare Touch LCD 7B] Panel framebuffers OK fb0=%p fb1=%p\n",
                 fb0, fb1);
   return true;
