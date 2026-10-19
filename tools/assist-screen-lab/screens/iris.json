@@ -1,0 +1,72 @@
+{
+  "format": 1,
+  "id": "iris",
+  "name": "Iris",
+  "note": "A close-up eye. The pupil opens with the voice; while thinking an inspection box hunts across the iris with crosshairs, a scan line and coordinates; while answering the pupil and fibers pulse with the reply.",
+  "label_color": "#FF9D3C",
+  "reach": {"half_r": 2.2},
+  "colors": {"teal": "#3FD0C9", "amber": "#FF9D3C", "white": "#F2F6F7", "rim": "#0B1A1C", "pupil": "#020304"},
+  "vars": {
+    "answer": {"init": 0, "next": "answer + (answering - answer) * 0.12"},
+    "think": "max(0, mode - answer)",
+    "a": "answer",
+    "lv": "level",
+    "m": "mode",
+    "ri": "r * 1.6",
+    "rot": {"init": 0, "next": "rot + dt * 0.4 * think"},
+    "pup": {"init": 0.45, "next": "pup + ((1 - m) * (0.42 + 0.3 * lv) + think * 0.32 + a * (0.36 + 0.26 * lv) - pup) * 0.2"},
+    "rp": "r * pup",
+    "box_an": {"init": 0, "next": "rand(0, 628) / 100", "every": 0.7},
+    "box_rr": {"init": 0, "next": "rand(0, 100) / 100 * 0.8", "every": 0.7},
+    "bdx": {"init": 0, "next": "bdx + (box_rr * ri * cos(box_an) - bdx) * 0.12"},
+    "bdy": {"init": 0, "next": "bdy + (box_rr * ri * sin(box_an) - bdy) * 0.12"},
+    "bx": "cx + bdx",
+    "by": "cy + bdy"
+  },
+  "items": [
+    {"type": "line", "note": "fibers, turning while thinking", "if": "r >= 2", "repeat": 90, "as": "i",
+     "let": {
+       "ang": "i * tau / 90 + (hash(i, 3) - 0.5) * 0.05 + rot",
+       "r0": "r * 0.3",
+       "r1": "r0 + (ri - r0) * (0.75 + hash(i, 4) * 0.25)",
+       "c": "cos(ang)",
+       "s": "sin(ang)"
+     },
+     "x1": "cx + r0 * c", "y1": "cy + r0 * s", "x2": "cx + r1 * c", "y2": "cy + r1 * s",
+     "width": 2, "round": false,
+     "color": "hash(i, 5) < 0.3 ? amber : teal",
+     "alpha": "clamp01(0.35 + hash(i, 6) * 0.5 + a * lv * 0.25)"},
+
+    {"type": "arc", "note": "rim", "x": "cx", "y": "cy", "radius": "ri + 0.08 * r", "width": 8, "color": "rim"},
+    {"type": "disc", "note": "pupil", "x": "cx", "y": "cy", "radius": "rp", "color": "pupil"},
+    {"type": "disc", "note": "gleam", "x": "cx - rp * 0.45", "y": "cy - rp * 0.45", "radius": "0.07 * r",
+     "color": "white", "alpha": 0.843},
+
+    {"type": "line", "note": "corner brackets", "repeat": 8, "as": "k", "round": false,
+     "let": {
+       "corner": "floor(k / 2)",
+       "sx": "mod(corner, 2) * 2 - 1",
+       "sy": "floor(corner / 2) * 2 - 1",
+       "ex": "cx + sx * (ri + 0.3 * r)",
+       "ey": "cy + sy * (ri + 0.3 * r) * 0.85",
+       "hz": "1 - mod(k, 2)"
+     },
+     "x1": "ex", "y1": "ey", "x2": "ex - sx * 0.3 * r * hz", "y2": "ey - sy * 0.3 * r * (1 - hz)",
+     "width": 2, "color": "amber", "alpha": 0.804},
+
+    {"type": "group", "note": "inspection box while thinking", "if": "think >= 0.02 && r >= 2", "items": [
+      {"type": "frame", "x1": "bx - 0.4 * r", "y1": "by - 0.3 * r", "x2": "bx + 0.4 * r", "y2": "by + 0.3 * r",
+       "width": 2, "color": "white", "alpha": "think * 0.9"},
+      {"type": "line", "round": false, "x1": "bx", "y1": "cy - ri - 0.1 * r", "x2": "bx", "y2": "cy + ri + 0.1 * r",
+       "width": 1, "color": "white", "alpha": "think * 0.9"},
+      {"type": "line", "round": false, "x1": "cx - ri - 0.1 * r", "y1": "by", "x2": "cx + ri + 0.1 * r", "y2": "by",
+       "width": 1, "color": "white", "alpha": "think * 0.9"},
+      {"type": "line", "note": "scan line", "round": false,
+       "let": {"sy": "cy - ri + mod(t * 2.2 * r, 2 * ri)"},
+       "x1": "cx - ri", "y1": "sy", "x2": "cx + ri", "y2": "sy", "width": 2, "color": "teal", "alpha": "think * 0.6"}
+    ]},
+
+    {"type": "text", "note": "box coordinates", "x": "bx + 0.45 * r", "y": "by - 0.42 * r", "width": 110, "font": 16,
+     "text": "{bx:04d} {by:04d}", "color": "white", "alpha": "think * 0.9 >= 0.03 ? 1 : 0", "every": 4}
+  ]
+}
