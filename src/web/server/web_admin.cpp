@@ -330,6 +330,10 @@ bool WebAdminServer::start() {
               guarded([this]() { this->handleCrashLogDownload(); }));
     server.on("/api/sd-diagnostics", HTTP_GET,
               guarded([this]() { this->handleSdDiagnosticsDownload(); }));
+    server.on("/api/assist-timing", HTTP_GET,
+              guarded([this]() { this->handleAssistTiming(); }));
+    server.on("/api/assist-timing/reset", HTTP_POST,
+              guarded([this]() { this->handleAssistTimingReset(); }));
     routes_registered = true;
   }
 
