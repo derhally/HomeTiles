@@ -1,5 +1,6 @@
 #include "src/devices/common/p4_dsi_camera_presenter.h"
 #include "src/devices/common/p4_dsi_cpu_rotate.h"
+#include "src/devices/common/rect_subtract.h"
 
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 
@@ -768,8 +769,34 @@ void Presenter::finishUiSwap() {
   }
   uint16_t* shown = activeFramebuffer();
   uint16_t* hidden = inactiveFramebuffer();
+  // What the refresh now running draws needs no copy: only the rest of each
+  // rectangle is brought over (an Assist screen frame is redrawn where the
+  // last one was, so nearly nothing is copied).
+  constexpr uint8_t kMaxCovers = 16;
+  int32_t cover_boxes[kMaxCovers][4];
+  const uint8_t cover_count =
+      ui_refresh_areas_ ? ui_refresh_areas_(cover_boxes, kMaxCovers) : 0;
+  rect_subtract::Box covers[kMaxCovers];
+  for (uint8_t c = 0; c < cover_count; ++c) {
+    covers[c] = rect_subtract::Box{cover_boxes[c][0], cover_boxes[c][1],
+                                   cover_boxes[c][2], cover_boxes[c][3]};
+  }
   for (uint8_t i = 0; i < ui_sync_count_ && ui_back_valid_; ++i) {
-    if (!copyRect(hidden, shown, ui_sync_rects_[i])) ui_back_valid_ = false;
+    const Rect& r = ui_sync_rects_[i];
+    rect_subtract::Box pieces[32];
+    const int n = cover_count
+                      ? rect_subtract::outside(
+                            rect_subtract::Box{r.x1, r.y1, r.x2, r.y2}, covers,
+                            cover_count, pieces, 32)
+                      : -1;
+    if (n < 0) {
+      if (!copyRect(hidden, shown, r)) ui_back_valid_ = false;
+      continue;
+    }
+    for (int k = 0; k < n && ui_back_valid_; ++k) {
+      const Rect piece{pieces[k].x1, pieces[k].y1, pieces[k].x2, pieces[k].y2};
+      if (!copyRect(hidden, shown, piece)) ui_back_valid_ = false;
+    }
   }
   ui_sync_count_ = 0;
 }
