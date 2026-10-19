@@ -55,6 +55,12 @@ h1 { font: 600 clamp(26px, 4vw, 36px)/1.1 var(--display); letter-spacing: .01em;
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + .5px));
           mask: radial-gradient(farthest-side, transparent calc(100% - var(--w)), #000 calc(100% - var(--w) + .5px)); }
 footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
+.files { display: grid; gap: 14px; }
+.files > h2 { font: 600 24px/1.2 var(--display); margin: 8px 0 0; }
+.files > p { color: var(--muted); margin: 0; max-width: 70ch; }
+.files .option { grid-template-columns: minmax(0, 1fr); }
+.shot { width: 100%; height: auto; display: block; border-radius: 10px; background: var(--panel); box-shadow: inset 0 0 0 1px #1A2133; }
+.shot-caps { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; font: 400 12px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 6px; }
 </style>
 
 </head>
@@ -164,6 +170,37 @@ footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
         <h2>Iris</h2>
         <p>A close-up eye. The pupil opens with the voice. While thinking an inspection box hunts across the iris with crosshairs, a scan line and coordinates. While answering the pupil and fibers pulse with the reply.</p>
         <dl><dt>Feel</dt><dd>Noir, teal and amber</dd><dt>Objects</dt><dd>90 fiber lines, 4 circles, 8 bracket lines, 2 labels</dd><dt>Panel</dt><dd>The fibers barely change and can be cached as one image, rotated only while thinking.</dd></dl>
+      </div>
+    </article>
+  </section>
+
+  <section class="files" aria-labelledby="files-h">
+    <h2 id="files-h">New screens from files</h2>
+    <p>These two are not built into the firmware. Each is a JSON screen file of about 6 KB, drawn by the data screen engine (branch <code>claude/project-thread-ydiabz</code>, design notes in <code>docs-dev/assist-screens.md</code>). The pictures are rendered by the desktop lab with the firmware's LVGL 9.6 at 1024 × 600.</p>
+
+    <article class="option">
+      <div>
+        <img class="shot" src="robot.png" width="912" height="360" alt="Robot screen in its listening, thinking and answering looks">
+        <div class="shot-caps"><span>Listening</span><span>Thinking</span><span>Answering</span></div>
+      </div>
+      <div class="notes">
+        <span class="tag">Screen file</span>
+        <h2>Robot</h2>
+        <p>A small robot in outline. Listening, it bobs and blinks, its ears glow and sound waves reach its head with the voice. Thinking, its eyes wander, a hand goes to its chin, the antenna and chest light blink amber and three dots bounce above it. Answering, its mouth moves with the reply, its eyes turn happy and it waves.</p>
+        <dl><dt>File</dt><dd><code>robot.json</code></dd><dt>Per frame</dt><dd>35 shapes, 1,403 formula steps at most</dd></dl>
+      </div>
+    </article>
+
+    <article class="option">
+      <div>
+        <img class="shot" src="retro_robot.png" width="912" height="360" alt="Retro Robot screen in its listening, thinking and answering looks">
+        <div class="shot-caps"><span>Listening</span><span>Thinking</span><span>Answering</span></div>
+      </div>
+      <div class="notes">
+        <span class="tag">Screen file</span>
+        <h2>Retro Robot</h2>
+        <p>A tall tin-can head with a dome, an antenna ball, a wide visor and a grille mouth. Listening, its eyes glance about and the antenna ball glows with the voice. Thinking, its lids droop, its eyes roll up and a question mark bobs beside it. Answering, the grille teeth part with each word and the head bounces.</p>
+        <dl><dt>File</dt><dd><code>retro_robot.json</code></dd><dt>Per frame</dt><dd>34 shapes, 1,630 formula steps at most</dd></dl>
       </div>
     </article>
   </section>
