@@ -29,29 +29,33 @@ The build finds LVGL 9.6.0 in this order: `LVGL_INCLUDE`, then
 ## Run
 
 ```sh
-build/assist-screen-lab/lab                      # every screen in tools/assist-screen-lab/screens
-build/assist-screen-lab/lab tools/assist-screen-lab/screens/iris.json --size=720x720
-build/assist-screen-lab/lab my-screens/          # every .json in a folder
+build/assist-screen-lab/lab                      # every screen
+build/assist-screen-lab/lab --size=720x720       # start at another panel size
+build/assist-screen-lab/lab my-screens/          # your own folder of .json screens
 ```
+
+The window lists all nine Assist screens in a button bar under the screen.
+Screens that are files (Sentinel, Phosphor, Iris) are bright. Built-in styles
+that have no file yet are dimmer, and they show the firmware's own drawing.
+
+| Bar row | Buttons |
+| --- | --- |
+| Screens | One button per screen |
+| Controls | Auto (cycles the phases), Listening, Thinking, Answering; Built-in (switches a file screen to the built-in style with the same id, for comparison); Voice (simulated, or hold the mouse on the screen: higher means louder); `<` size `>` (1024x600, 1280x800, 800x480, 1280x720, 720x720, 480x800, 720x1280) |
+| Numbers | For a file: worst-case shapes and steps per frame, pixels redrawn per frame and time per frame on this computer. Redrawn pixels are the panel's main cost; time on this computer is only a rough guide. |
+
+Saving a screen file reloads it. Keys do the same as the buttons:
 
 | Key | Action |
 | --- | --- |
-| `←` `→` (or `Tab`, `Shift+Tab`) | Previous or next screen; its name shows top right |
-| `1` `2` `3` | Listening, thinking, answering |
-| `A` | Cycle the phases automatically (default) |
-| `V` | Simulated voice on/off; when off, hold the mouse button, higher means louder |
-| `B` | Built-in style with the same id, for comparison |
-| `[` `]` | Previous or next panel size (1024x600, 1280x800, 800x480, 1280x720, 720x720, 480x800, 720x1280) |
-| `R` | Reload; saving the file also reloads it |
-| `S` | Screenshot |
+| `←` `→` (or `Tab`, `Shift+Tab`) | Previous or next screen |
+| `1` `2` `3` / `A` | Listening, thinking, answering / auto cycle |
+| `B` | Built-in comparison |
+| `V` | Simulated voice on or off |
+| `[` `]` | Previous or next panel size |
+| `R` | Reload |
+| `S` | Screenshot (`lab-shot-N.png`) |
 | `Esc` | Quit |
-
-The title bar shows the numbers that matter on the panel:
-
-- shapes and expression steps per frame (worst case, from the file)
-- pixels redrawn per frame
-- milliseconds per frame on this computer, which is only a rough guide to the
-  panel
 
 Headless, without a window:
 
