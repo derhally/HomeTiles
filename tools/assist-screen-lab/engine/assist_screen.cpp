@@ -975,7 +975,7 @@ bool compileTemplate(Screen* s, int node, uint16_t* first, uint16_t* count) {
   while (*p) {
     if (s->seg_count >= kMaxSegments) return fail(s, n.line, "too many text parts (limit %d)", kMaxSegments);
     Segment& seg = s->segs[s->seg_count];
-    memset(&seg, 0, sizeof(seg));
+    seg = Segment{};
     if (*p == '{') {
       const char* close = strchr(p, '}');
       if (!close) return fail(s, n.line, "'{' without '}' in \"%s\"", text);
@@ -1045,7 +1045,7 @@ bool loadElement(Screen* s, int node, int depth, uint32_t mult, uint32_t* ops, u
   if (kind < 0) return fail(s, n.line, "unknown item type '%s'", type);
   const int index = s->elem_count++;
   Elem& e = s->elems[index];
-  memset(&e, 0, sizeof(e));
+  e = Elem{};
   e.kind = static_cast<uint8_t>(kind);
   e.index_slot = -1;
   e.repeat = 1;
@@ -1136,7 +1136,7 @@ bool loadElement(Screen* s, int node, int depth, uint32_t mult, uint32_t* ops, u
       if (e.repeat != 1 || mult != 1) return fail(s, n.line, "a poly cannot repeat (use its 'count')");
       e.poly = static_cast<uint8_t>(s->poly_count);
       Poly& poly = s->polys[s->poly_count++];
-      memset(&poly, 0, sizeof(poly));
+      poly = Poly{};
       poly.i_slot = poly.u_slot = -1;
       const int points = child(s, node, "points");
       int count = 0;
@@ -1227,9 +1227,9 @@ bool loadElement(Screen* s, int node, int depth, uint32_t mult, uint32_t* ops, u
         log.count_slot = -1;
         const int id = child(s, node, "id");
         if (id >= 0) {
-          char name[24];
+          char name[18];  // "<name>_count" fits a slot name
           char slot_name[24];
-          if (!copyString(s, s->json[id], name, sizeof(name) - 6)) return false;
+          if (!copyString(s, s->json[id], name, sizeof(name))) return false;
           snprintf(slot_name, sizeof(slot_name), "%s_count", name);
           log.count_slot = static_cast<int16_t>(findSlot(s, slot_name, strlen(slot_name)));  // declareLogCounts
           if (log.count_slot < 0) return fail(s, n.line, "a log's \"id\" is a name (letters, digits, _)");
@@ -1282,9 +1282,9 @@ bool declareLogCounts(Screen* s, int array, int depth) {
     }
     const int id = child(s, c, "id");
     if (strcmp(kind, "log") || id < 0 || s->json[id].type != J::Str) continue;
-    char name[24];
+    char name[18];  // "<name>_count" fits a slot name
     char slot_name[24];
-    if (!copyString(s, s->json[id], name, sizeof(name) - 6)) return false;
+    if (!copyString(s, s->json[id], name, sizeof(name))) return false;
     snprintf(slot_name, sizeof(slot_name), "%s_count", name);
     if (addSlot(s, slot_name, s->json[id].line, 2) < 0) return false;
   }
@@ -1387,7 +1387,7 @@ bool loadFile(Screen* s) {
       char key[24];
       keyText(s, s->json[c], key, sizeof(key));
       Var& v = s->vars[s->var_count++];
-      memset(&v, 0, sizeof(v));
+      v = Var{};
       v.slot = static_cast<int16_t>(addSlot(s, key, s->json[c].line, 2));
       if (v.slot < 0) return false;
     }

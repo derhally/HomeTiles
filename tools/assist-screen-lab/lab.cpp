@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 
 #include <chrono>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -380,6 +381,12 @@ void showBuiltin(Lab& lab, bool on) {
 
 // ---- Headless: one PNG per phase (file left, built-in right with --compare) ----
 int headless(Lab& lab, const std::string& dir, bool compare, bool timing) {
+  std::error_code made;
+  std::filesystem::create_directories(dir, made);
+  if (made) {
+    fprintf(stderr, "Cannot create %s: %s\n", dir.c_str(), made.message().c_str());
+    return 1;
+  }
   const int frames[3] = {150, 90, 120};
   const int shot[3] = {120, 80, 100};
   const char* names[3] = {"listening", "thinking", "answering"};
