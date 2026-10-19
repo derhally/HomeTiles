@@ -216,6 +216,7 @@ if (!arduinoJson) {
 
 const requestProgram = String.raw`
 #include "src/audio/assist_request.h"
+#include "src/ui/assist/assist_screen_catalog.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -274,6 +275,55 @@ int main() {
   std::string big = "{\"v\":1,\"op\":\"stop\",\"id\":\"0123456789abcdef\",\"pad\":\"" +
                     std::string(kMaxRequestPayloadBytes, 'a') + "\"}";
   assert(parse(big).status == CommandStatus::TooLarge);
+
+  // Screen styles: a built-in id, or any other valid id for a screen file.
+  c = parse("{\"v\":1,\"op\":\"screen_style\",\"style\":\"reactor\"}");
+  assert(c.kind == CommandKind::ScreenStyle && c.status == CommandStatus::Ok && c.screen_style == 1);
+  c = parse("{\"v\":1,\"op\":\"screen_style\",\"style\":\"robot\"}");
+  assert(c.status == CommandStatus::Ok && c.screen_style == kFileScreenStyle && strcmp(c.screen_file, "robot") == 0);
+  assert(parse("{\"v\":1,\"op\":\"screen_style\",\"style\":\"Robot!\"}").status == CommandStatus::InvalidValue);
+  assert(parse("{\"v\":1,\"op\":\"screen_style\",\"style\":7}").status == CommandStatus::InvalidValue);
+
+  // The status lists screen files after the built-in styles and names the
+  // chosen one; a refusal reason is cleaned of quotes.
+  {
+    StatusFields f;
+    f.screen_style_state = true;
+    f.screen_style = 0;
+    f.available_screen_styles = 0x3;
+    const char* files[] = {"robot", "atom", "Bad", "retro_robot"};
+    f.file_styles = files;
+    f.file_style_count = 4;
+    char out[512];
+    assert(buildStatusJson(out, sizeof(out), f));
+    assert(strstr(out, "\"screen_style\":\"atom\",\"screen_styles\":[\"atom\",\"reactor\",\"robot\",\"retro_robot\"]"));
+    f.chosen_file = "robot";
+    f.screen_error = "line 3: a \"disc\" needs 'radius'";
+    assert(buildStatusJson(out, sizeof(out), f));
+    assert(strstr(out, "\"screen_style\":\"robot\""));
+    assert(strstr(out, "\"screen_error\":\"line 3: a  disc  needs 'radius'\""));
+    f.screen_error = nullptr;
+    assert(buildStatusJson(out, sizeof(out), f) && !strstr(out, "screen_error"));
+  }
+
+  // The Bridge's catalog of screen files.
+  {
+    using assist_screen_catalog::Entry;
+    Entry e[kMaxFileScreens];
+    const std::string catalog = "{\"v\":1,\"screens\":[{\"id\":\"robot\",\"name\":\"Robot\"},"
+                                "{\"id\":\"atom\",\"name\":\"Mine\"},{\"id\":\"robot\"},{\"id\":\"x y\"},"
+                                "{\"id\":\"retro_robot\"},{\"id\":\"long\",\"name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\u00e9\\u00e9\"}]}";
+    const int n = assist_screen_catalog::parse(catalog.c_str(), catalog.size(), e, kMaxFileScreens);
+    assert(n == 3);
+    assert(strcmp(e[0].id, "robot") == 0 && strcmp(e[0].name, "Robot") == 0);
+    assert(strcmp(e[1].id, "retro_robot") == 0 && strcmp(e[1].name, "retro_robot") == 0);
+    // 30 + 2 bytes fit, the second two-byte character would not: it is left out whole.
+    assert(strcmp(e[2].id, "long") == 0 && strlen(e[2].name) == 32);
+    assert(assist_screen_catalog::parse("", 0, e, kMaxFileScreens) == 0);
+    assert(assist_screen_catalog::parse("{\"v\":2,\"screens\":[]}", 21, e, kMaxFileScreens) == -1);
+    assert(assist_screen_catalog::parse("nope", 4, e, kMaxFileScreens) == -1);
+    assert(assist_screen_catalog::parse(catalog.c_str(), catalog.size(), e, 1) == 1);
+  }
 
   puts("assist command parser ok");
   return 0;
