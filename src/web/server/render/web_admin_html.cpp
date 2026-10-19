@@ -2491,6 +2491,9 @@ autocomplete="new-password" value=")html";
 <div class="settings-note">)html";
     html += tr.assist_timing_note;
     html += R"html(</div>
+<div class="settings-note">)html";
+    html += tr.assist_timing_band;
+    html += R"html(: <span id="assist_timing_band"></span></div>
 <div class="settings-actions">
 <button class="btn" type="button" onclick="loadAssistTiming()">)html";
     html += tr.assist_timing_refresh;
