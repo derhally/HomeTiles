@@ -34,8 +34,8 @@
 
 #include "src/ui/assist/assist_screen.h"
 #include "src/fonts/ui_fonts.h"
+#include "src/ui/assist/assist_style_catalog.h"
 #include "src/ui/assist/assist_styles.cpp"
-#include "src/ui/assist/assist_styles_lines.cpp"
 
 #if !defined(LAB_NO_SDL)
 #include <SDL.h>
@@ -68,9 +68,11 @@ const int kSizes[][2] = {{1024, 600}, {1280, 800}, {800, 480}, {1280, 720}, {720
 constexpr uint32_t kBackdrop = 0x05070F;
 const char* const kPhaseText[3] = {"Listening…", "Thinking…", "Answering…"};
 
+// The built-in style of an id, or -1. Sentinel, Phosphor, Light Disc, Lens and
+// Iris exist only as screen files (assist_style_catalog::kFileStyles).
 int builtinIndex(const char* id) {
   for (int i = 0; i < 9; ++i) {
-    if (!strcmp(kStyleIds[i], id)) return i;
+    if (!strcmp(kStyleIds[i], id)) return (assist_style_catalog::kFileStyles & (1u << i)) ? -1 : i;
   }
   return -1;
 }

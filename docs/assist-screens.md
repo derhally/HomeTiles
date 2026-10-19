@@ -2,8 +2,8 @@
 
 The animated screen HomeTiles shows while Assist listens, thinks and answers can come from a small JSON file instead of the firmware. Anyone can make a new look, try it in a desktop lab, and put it on a panel without building firmware.
 
-!!! warning "Test builds only"
-    Screens from files are a preview. They are only in firmware built with `HOMETILES_ASSIST_DATA_SCREENS=1`; release builds use the built-in styles. Not every board has been measured yet.
+!!! warning "Preview"
+    Screens from files are a preview and not in a release yet. Panels with Assist draw five of the built-in styles (Sentinel, Phosphor, Light Disc, Lens, Iris) from files; Atom, Reactor, Dot Halo and Voice Pills stay built in. Not every board has been measured yet.
 
 ## The Built-in Styles as Files { data-toc-label="Built-in styles" }
 
@@ -36,7 +36,7 @@ Two example screens show what a file can do beyond the built-in styles.
 
 ## Put a Screen on the Panel { data-toc-label="Use a screen file" }
 
-On a test build, each time the Assist screen opens, the panel draws the style picked in **Settings → Assist** from its file:
+Each time the Assist screen opens, the panel looks for a file for the style picked in **Settings → Assist**:
 
 1. Format a microSD card as FAT32 and insert it before switching the panel on.
 2. In the Web Admin file manager, create an `assist` folder on the card.

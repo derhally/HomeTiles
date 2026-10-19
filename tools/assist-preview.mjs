@@ -5,8 +5,8 @@
 // saved as a PNG.
 //
 // Usage: node tools/assist-preview.mjs [style ...] [--frames] [--size=WxH]
-//   style    atom reactor dot_halo voice_pills sentinel phosphor light_disc
-//            lens iris (default: all)
+//   style    atom reactor dot_halo voice_pills (default: all; the other
+//            styles are screen files, drawn by tools/assist-screen-lab)
 //   --frames also prints the host's draw time per frame of each phase, as a
 //            rough cost comparison between the styles
 //   --size   the screen, default 1024x600; every style renders, also one the
@@ -26,7 +26,9 @@ import {lvglHost} from './lib/lvgl-host.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const option = name => args.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
-const STYLES = ['atom', 'reactor', 'dot_halo', 'voice_pills', 'sentinel', 'phosphor', 'light_disc', 'lens', 'iris'];
+// Sentinel, Phosphor, Light Disc, Lens and Iris are screen files now: the
+// Assist Screen Lab (tools/assist-screen-lab) draws them.
+const STYLES = ['atom', 'reactor', 'dot_halo', 'voice_pills'];
 const selected = args.filter(a => !a.startsWith('--'));
 for (const s of selected) if (!STYLES.includes(s)) throw new Error(`unknown style ${s}`);
 const styles = selected.length ? selected : STYLES;
@@ -53,7 +55,6 @@ const harness = String.raw`
 #include <chrono>
 #include <vector>
 #include "src/ui/assist/assist_styles.cpp"
-#include "src/ui/assist/assist_styles_lines.cpp"
 
 using speaker::AssistScreenStyle;
 static const int kW = ${W}, kH = ${H};
