@@ -56,6 +56,8 @@ struct Strings {
   const char* assist_timing_interval;
   const char* assist_timing_late;
   const char* assist_timing_empty;
+  // The LVGL draw buffer the card names (DisplayManager::drawBufferDescription).
+  const char* assist_timing_band;
   const char* ota_firmware_file;
   const char* ota_upload_install;
   const char* ota_update_note;

@@ -1010,6 +1010,12 @@ bool DisplayManager::isTouchHeld() {
   return g_touch_held;
 }
 
+void DisplayManager::drawBufferDescription(char* out, size_t size) {
+  const char* where = g_fast_internal_draw_buffer ? "SRAM" : "PSRAM";
+  const unsigned buffers = buf2 ? 2u : 1u;
+  snprintf(out, size, "%s %ux%u lines", where, buffers, static_cast<unsigned>(g_buffer_lines));
+}
+
 uint8_t DisplayManager::refreshAreas(int32_t (*out)[4], uint8_t max) {
   // Only during a refresh do the display's invalid areas name what is drawn;
   // lv_refr_join_area has merged the overlapping ones by then.

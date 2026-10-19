@@ -20,6 +20,9 @@ public:
   // (inclusive, screen coordinates), up to max: 0 outside a refresh or when
   // they would not fit. The tear-free UI path copies only what they miss.
   static uint8_t refreshAreas(int32_t (*out)[4], uint8_t max);
+  // Where LVGL renders: "SRAM 36 lines", "PSRAM 2x100 lines" or
+  // "PSRAM 1x100 lines" (the camera's single buffer), for the diagnostics.
+  static void drawBufferDescription(char* out, size_t size);
 
   void resetActivityTimer();
   uint32_t getLastActivityTime() { return last_activity_time; }
