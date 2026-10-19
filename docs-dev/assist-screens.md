@@ -318,7 +318,7 @@ memory), the share spent in the flush callback (the copies), the pixels
 flushed and whether it ran over the 33 ms frame period; the overlay adds its
 own work per timer tick (the engine's frame, the invalidation) and the
 interval between ticks. Count, average, maximum and a 1 ms histogram for the
-95th percentile are kept per screen id and phase in a 7 KB PSRAM block; the
+95th percentile are kept per screen id and phase in a 17 KB PSRAM block; the
 opening frame (the whole screen) is kept apart. **Web Admin > Settings >
 Diagnostics > Assist screen drawing** shows the table (`/api/assist-timing`,
 Refresh, Reset); Preview in Settings > Audio plays every phase of a style.
