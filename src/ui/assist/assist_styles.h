@@ -3,9 +3,10 @@
 // The selectable looks of the Assist screen (speaker::AssistScreenStyle).
 // Each style builds a handful of plain LVGL circles, pills, arcs and lines
 // once and then only moves, sizes and fades them per frame: no layers, no
-// canvas and no allocation per frame. The line styles (assist_styles_lines.cpp)
-// paint their ticks, traces and fibers from one draw callback instead and
-// invalidate only the box that changed. The overlay (assist_overlay.cpp) owns
+// canvas and no allocation per frame. Atom, Reactor, Dot Halo and Voice Pills
+// are built in here; Sentinel, Phosphor, Light Disc, Lens and Iris are screen
+// files (assist_screen.h, assist_style_catalog::kFileStyles), for which
+// create() and frame() draw Atom. The overlay (assist_overlay.cpp) owns
 // the parent, the timer, the label and the eased animation inputs.
 //
 // Sizes are fractions of the frame's base radius r (baseRadius(): 102 px at

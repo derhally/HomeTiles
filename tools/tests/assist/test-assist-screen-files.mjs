@@ -200,7 +200,7 @@ int main(int argc, char** argv) {
       return 1;
     }
   }
-  if (assist_screen_files::kFileCount != 9) { printf("FAIL: built-in copies\n"); return 1; }
+  if (assist_screen_files::kFileCount != 5) { printf("FAIL: built-in copies\n"); return 1; }
 
   // Names, format version, text and history rules.
   refused(file("{\"type\": \"line\", \"let\": {\"v\": 1}, \"x1\": 0, \"y1\": 0, \"x2\": 1, \"y2\": 1}",

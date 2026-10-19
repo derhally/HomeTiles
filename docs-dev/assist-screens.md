@@ -2,9 +2,13 @@
 
 Design reference for Assist screens described by data instead of compiled
 into the firmware, and for the Assist Screen Lab that develops and checks
-them on a desktop. Status: prototype. The engine is in the firmware tree but
-compiled only into test builds (`HOMETILES_ASSIST_DATA_SCREENS=1`); release
-builds are unchanged. Not yet measured on panel hardware.
+them on a desktop. Status: prototype on `claude/project-thread-ydiabz`. Every
+panel with Assist (a speaker board) compiles the engine
+(`HOMETILES_ASSIST_DATA_SCREENS`, `assist_data_screens.h`): Atom, Reactor, Dot
+Halo and Voice Pills stay C++, while Sentinel, Phosphor, Light Disc, Lens and
+Iris exist only as screen files built into the firmware
+(`assist_style_catalog::kFileStyles`). Panels without Assist are unchanged.
+Not yet measured on panel hardware.
 
 | Part | Where |
 | --- | --- |
@@ -12,7 +16,7 @@ builds are unchanged. Not yet measured on panel hardware.
 | Engine (compile, frame, redraw, draw) | `src/ui/assist/assist_screen.*` |
 | Screen files, one per built-in style, plus examples (robot, retro_robot) | `tools/assist-screen-lab/screens/*.json` |
 | Built-in copies for the firmware (generated) | `src/ui/assist/assist_screen_files.h`, `tools/generate-assist-screens.mjs` |
-| Overlay integration (test builds) | `src/ui/assist/assist_overlay.cpp` |
+| Overlay integration | `src/ui/assist/assist_overlay.cpp` |
 | Desktop lab (window and headless) | `tools/assist-screen-lab/lab.cpp`, `build.mjs`, `README.md` |
 | Host tests | `tools/tests/assist/test-assist-screen-files.mjs`, `test-assist-screen-render.mjs` |
 | Built-in styles it reproduces | `src/ui/assist/assist_styles*.cpp`, `assist_style_catalog.h` |
@@ -152,10 +156,14 @@ the built-in styles' `needs: wide`.
 
 ## The screen files
 
-All nine built-in styles are files. The render test compares each with its
-built-in style at 1024x600, 800x480, 480x480 and 720x1280 (Sentinel and
-Phosphor on wide sizes only): at most 6 % of the pixels differ, from the
-random parts. Worst-case cost per frame:
+All nine built-in styles are files. The render test compares Atom, Reactor,
+Dot Halo and Voice Pills with their C++ styles at 1024x600, 800x480, 480x480
+and 720x1280: at most 6 % of the pixels differ. The five file-only styles and
+the examples are compared with reference pictures
+(`tools/tests/assist/fixtures/assist-screens`, made with `--update` from
+renders that matched the former C++ styles within 6 %, Sentinel and Phosphor
+on wide sizes, since their layouts differ on purpose elsewhere). Worst-case
+cost per frame:
 
 | File | Needs | Layouts | Shapes / weighted steps |
 | --- | --- | --- | --- |
@@ -203,22 +211,27 @@ the grille teeth part with each word.
 
 ![Retro Robot: listening, thinking, answering](assist-screens/retro_robot.png)
 
-Each is one JSON file of about 6 KB, made in the lab in minutes. On a test
-build, a file shows in place of a built-in style when it is stored as that
-style's file, for example `/assist/atom.json` on the microSD card.
+Each is one JSON file of about 6 KB, made in the lab in minutes. A file shows
+in place of a built-in style when it is stored as that style's file, for
+example `/assist/atom.json` on the microSD card, or comes from Home Assistant
+(below).
 
-## On a panel (test builds)
+## On a panel
 
-Building with `--define HOMETILES_ASSIST_DATA_SCREENS=1` compiles the engine,
-the nine built-in copies and the overlay path:
+Every panel with Assist compiles the engine, the five file-only styles'
+built-in copies (19 KB, `assist_screen_files.h`) and the overlay path; the
+C++ code of those five styles is gone (-17.8 KB flash, -3 KB RAM).
 
-- Each time the Assist screen opens, the overlay loads the screen file of the
-  style picked in Settings: `/assist/<id>.json` on the microSD card (upload it
-  with the Web Admin file manager), else in the internal storage, else the
-  built-in copy. The load time and the file's worst-case cost are logged.
-- A refused file falls back to the compiled style and logs the reason
-  (`[Assist] Screen file <id> (microSD) refused, using the built-in style:
-  ...`); the panel never shows a broken screen.
+- Each time the Assist screen opens, the overlay loads, in this order: the
+  screen chosen in Home Assistant, `/assist/<id>.json` for the picked style on
+  the microSD card (upload it with the Web Admin file manager) or in the
+  internal storage, then the built-in copy of a file-only style. Atom,
+  Reactor, Dot Halo and Voice Pills without such a file draw their C++ style.
+  The load time and the file's worst-case cost are logged.
+- A refused file falls back to the C++ style, Atom for a file-only one, and
+  logs the reason (`[Assist] Screen file <id> (microSD) refused, using the
+  built-in style: ...`); the panel never shows a broken screen. A build
+  without the engine does not offer the file-only styles.
 - The 108 KB block and a 24 KB read buffer come from PSRAM on first use and
   are kept. Frames run in the overlay's LVGL timer like the built-in styles,
   with the same easing, pacing and tear-free rules; the painter is one LVGL
@@ -271,12 +284,17 @@ The panel checks every limit itself; the Bridge only filters what it offers.
 
 ## Measurements
 
-| Profile | Image without the define | With the define | Difference |
-| --- | --- | --- | --- |
-| `waveshare_7b` | 5,182,176 bytes | 5,250,544 bytes | +68,368 bytes (engine ~42 KB, the nine files 26 KB) |
+`waveshare_7b` images:
 
-Static RAM grows by 16 bytes (the engine's block comes from PSRAM at runtime). S3
-profiles are not measured yet.
+| Build | Image | Static RAM |
+| --- | --- | --- |
+| All nine styles in C++, no engine | 5,182,768 bytes | 91,064 bytes |
+| Engine, nine styles in C++ and nine files built in (former test build) | 5,257,216 bytes | 91,412 bytes |
+| Engine, four styles in C++, five file-only styles built in (now) | 5,231,712 bytes | 88,328 bytes |
+
+So the engine with the screen store costs about 49 KB of flash over C++ only,
+and saves 2.7 KB of static RAM (the line styles' state); the engine's 108 KB
+block comes from PSRAM at runtime. Panels without Assist do not compile it.
 
 Still needed on hardware: milliseconds per frame and per load on the S3 and
 the P4 for every file, internal/PSRAM minimum free while the screen shows, and
@@ -378,14 +396,12 @@ Both report `SKIP` without LVGL 9.6.0 or a compiler.
 
 ## Toward a release
 
-1. Measure the test build on every maintainer board (above).
-2. Store uploaded files in LittleFS (`/assist/<id>.json`), compiled once when
-   uploaded; the Web Admin uploads them or fetches them from a gallery.
-3. List file screens with new ids after the built-in ones. Their `needs` feed
-   `assist_style_catalog`, so Settings and the Bridge select only offer
-   screens the panel can show.
-4. Only after hardware sign-off on every board: replace the compiled styles
-   with their files, which frees their flash.
+1. Measure on every maintainer board (above).
+2. Done: screens from Home Assistant, listed after the built-in styles.
+3. Done: Sentinel, Phosphor, Light Disc, Lens and Iris are file-only. Atom,
+   Reactor, Dot Halo and Voice Pills stay C++ (as files they would cost the
+   same 7 KB, and the C++ versions stay a fallback that needs no engine).
+4. Later: upload screen files in the Web Admin, compiled once when uploaded.
 
 Open questions: where downloadable screens come from (a gallery, the Bridge,
 a URL), and whether a panel keeps several files or one active screen.
