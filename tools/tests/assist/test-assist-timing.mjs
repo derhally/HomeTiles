@@ -28,7 +28,7 @@ const routes = read('src/web/server/web_admin.cpp');
 assert.match(routes, /server\.on\("\/api\/assist-timing", HTTP_GET,\s*guarded\(\[this\]\(\) \{ this->handleAssistTiming\(\); \}\)\);/);
 assert.match(routes, /server\.on\("\/api\/assist-timing\/reset", HTTP_POST,\s*guarded\(\[this\]\(\) \{ this->handleAssistTimingReset\(\); \}\)\);/);
 const handlers = read('src/web/server/handlers/web_admin_diagnostics.cpp');
-assert.match(handlers, /void WebAdminServer::handleAssistTiming\(\) \{[^}]*assist_timing::toJson\(json\);/s);
+assert.match(handlers, /void WebAdminServer::handleAssistTiming\(\) \{[\s\S]*?DisplayManager::drawBufferDescription\(band, sizeof\(band\)\);[\s\S]*?assist_timing::toJson\(screens\);/);
 assert.match(handlers, /void WebAdminServer::handleAssistTimingReset\(\) \{[^}]*assist_timing::reset\(\);/s);
 const html = read('src/web/server/render/web_admin_html.cpp');
 // The card sits in the diagnostics page, on speaker panels only, with every
@@ -39,6 +39,7 @@ for (const f of ['screen', 'phase', 'frames', 'draw', 'copy', 'pixels', 'engine'
   assert.ok(card.includes(`tr.assist_timing_${f}`), `column ${f} translated`);
 }
 assert.match(html, /<tr><td colspan="9">\)html";\s*html \+= tr\.assist_timing_empty;/);
+assert.match(html, /html \+= tr\.assist_timing_band;\s*html \+= R"html\(: <span id="assist_timing_band"><\/span>/);
 const scripts = read('src/web/server/render/web_admin_scripts.cpp');
 for (const [key, field] of [['assistTimingEmpty', 'assist_timing_empty'], ['assistListening', 'assist_listening'],
   ['assistThinking', 'assist_thinking'], ['assistAnswering', 'assist_answering']]) {
@@ -50,6 +51,7 @@ for (const fn of ['loadAssistTiming', 'resetAssistTiming', 'renderAssistTiming']
 }
 assert.match(js, /fetch\('\/api\/assist-timing\?ts=' \+ Date\.now\(\)\)/);
 assert.match(js, /fetch\('\/api\/assist-timing\/reset', \{ method: 'POST' \}\)/);
+assert.match(js, /band\.textContent = typeof data\?\.band === 'string' \? data\.band : ''/);
 // Screen ids and texts reach the page escaped.
 assert.match(js, /escapeHtml\(screen\.id \|\| ''\)/);
 assert.match(js, /escapeHtml\(assistTimingPhaseName\(p\.phase\)\)/);
@@ -63,7 +65,8 @@ const struct = header.slice(header.indexOf('struct Strings {'), header.indexOf('
 const schema = [...struct.replace(/\/\/[^\n]*/g, '').matchAll(/const char\*\s+(\w+);/g)].map(m => m[1]);
 const fields = ['assist_timing_title', 'assist_timing_note', 'assist_timing_refresh', 'assist_timing_reset',
   'assist_timing_screen', 'assist_timing_phase', 'assist_timing_frames', 'assist_timing_draw', 'assist_timing_copy',
-  'assist_timing_pixels', 'assist_timing_engine', 'assist_timing_interval', 'assist_timing_late', 'assist_timing_empty'];
+  'assist_timing_pixels', 'assist_timing_engine', 'assist_timing_interval', 'assist_timing_late', 'assist_timing_empty',
+  'assist_timing_band'];
 const at = schema.indexOf(fields[0]);
 assert.deepEqual(schema.slice(at, at + fields.length), fields, 'the timing strings sit together');
 const strings = read('src/core/i18n/i18n.cpp');
@@ -79,6 +82,7 @@ for (const table of ['kStringsDe', 'kStringsEn', 'kStringsFr', 'kStringsPl', 'kS
 }
 assert.equal(english[0], 'Assist screen drawing');
 assert.equal(english[13], 'No frames measured yet');
+assert.equal(english[14], 'Render band');
 
 // --- the module on the host: slots, phases, p95, JSON ---
 const cxx = [process.env.CXX, 'clang++', 'g++'].filter(Boolean).find(c => spawnSync(c, ['--version']).status === 0);
