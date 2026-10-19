@@ -55,7 +55,7 @@
      "width": 2, "color": "amber", "alpha": 0.804},
 
     {"type": "group", "note": "inspection box while thinking", "if": "think >= 0.02 && r >= 2", "items": [
-      {"type": "frame", "x1": "bx - 0.4 * r", "y1": "by - 0.3 * r", "x2": "bx + 0.4 * r", "y2": "by + 0.3 * r",
+      {"type": "outline", "x1": "bx - 0.4 * r", "y1": "by - 0.3 * r", "x2": "bx + 0.4 * r", "y2": "by + 0.3 * r",
        "width": 2, "color": "white", "alpha": "think * 0.9"},
       {"type": "line", "round": false, "x1": "bx", "y1": "cy - ri - 0.1 * r", "x2": "bx", "y2": "cy + ri + 0.1 * r",
        "width": 1, "color": "white", "alpha": "think * 0.9"},
@@ -66,7 +66,7 @@
        "x1": "cx - ri", "y1": "sy", "x2": "cx + ri", "y2": "sy", "width": 2, "color": "teal", "alpha": "think * 0.6"}
     ]},
 
-    {"type": "text", "note": "box coordinates", "x": "bx + 0.45 * r", "y": "by - 0.42 * r", "width": 110, "font": 16,
-     "text": "{bx:04d} {by:04d}", "color": "white", "alpha": "think * 0.9 >= 0.03 ? 1 : 0", "every": 4}
+    {"type": "text", "note": "box coordinates", "x": "bx + 0.45 * r", "y": "by - 0.42 * r", "box_width": 110, "font": 16,
+     "text": "{bx:04d} {by:04d}", "color": "white", "alpha": "think * 0.9 >= 0.03 ? 1 : 0", "frames": 4}
   ]
 }

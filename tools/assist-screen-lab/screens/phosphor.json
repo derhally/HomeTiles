@@ -41,7 +41,7 @@
       {"type": "line", "note": "centre ticks", "repeat": 26, "as": "k", "round": false,
        "let": {"x": "x0 + k * (x1 - x0) / 25"},
        "x1": "x", "y1": "cy - 4", "x2": "x", "y2": "cy + 4", "width": 1, "color": "dim", "alpha": 0.6},
-      {"type": "frame", "x1": "x0", "y1": "y0", "x2": "x1", "y2": "y1", "width": 1, "color": "dim", "alpha": 0.6}
+      {"type": "outline", "x1": "x0", "y1": "y0", "x2": "x1", "y2": "y1", "width": 1, "color": "dim", "alpha": 0.6}
     ]},
 
     {"type": "poly", "note": "trace: voice, then a blip while thinking, a Lissajous figure while answering",
@@ -50,19 +50,19 @@
      "x": "(1 - m + think) * (x0 + u * (x1 - x0)) + a * (cx + sin(3 * tau * u + t * 0.9) * liss)",
      "y": "(1 - m) * (cy - sin(pi * u) * (sin(u * 22 + t * 9 + s0) * 0.6 + sin(u * 47 - t * 13 + s1) * 0.3 + sin(u * 91 + t * 21 + s2) * 0.15) * lv * 1.5 * r) + think * (cy - exp(-((u - blip) / 0.03) * ((u - blip) / 0.03)) * 0.6 * r * sin((u - blip) * 120)) + a * (cy + sin(2 * tau * u) * sz)"},
 
-    {"type": "text", "note": "channel", "x": "x0", "y": "y0 - 0.32 * r", "width": 160, "font": 16,
-     "text": "CH1  {lv * 2.5:.2f} V", "color": "green", "alpha": 0.863, "every": 4},
-    {"type": "text", "note": "time", "x": "x1 - 2.2 * r", "y": "y0 - 0.32 * r", "width": "2.2 * r", "font": 16, "align": "right",
-     "text": "{mod(t, 1000):06.1f} S", "color": "green", "alpha": 0.863, "every": 4},
+    {"type": "text", "note": "channel", "x": "x0", "y": "y0 - 0.32 * r", "box_width": 160, "font": 16,
+     "text": "CH1  {lv * 2.5:.2f} V", "color": "green", "alpha": 0.863, "frames": 4},
+    {"type": "text", "note": "time", "x": "x1 - 2.2 * r", "y": "y0 - 0.32 * r", "box_width": "2.2 * r", "font": 16, "align": "right",
+     "text": "{mod(t, 1000):06.1f} S", "color": "green", "alpha": 0.863, "frames": 4},
 
     {"type": "rect", "note": "plate under the number rows", "if": "rows_count > 0",
      "x1": "floor(x0 + 0.1 * r)", "y1": "floor(y0 + 0.1 * r)",
      "x2": "floor(x0 + 0.1 * r) + floor(2.3 * r) - 1", "y2": "floor(y0 + 0.1 * r) + floor(1.35 * r) - 1",
      "color": "plate", "alpha": 0.863},
     {"type": "log", "id": "rows", "note": "number rows print while thinking and clear when the look leaves",
-     "x": "x0 + 0.18 * r", "y": "y0 + 0.18 * r", "rows": 5, "line_height": "0.24 * r", "width": 220, "font": 16,
+     "x": "x0 + 0.18 * r", "y": "y0 + 0.18 * r", "rows": 5, "line_height": "0.24 * r", "box_width": 220, "font": 16,
      "line": "{rand(0, 9999):04d}  {rand(0, 9999):04d}  {rand(0, 9999):04d}",
-     "every": 4, "push": "think > 0.4", "pop": "m < 0.2",
+     "frames": 4, "push": "think > 0.4", "pop": "m < 0.2",
      "color": "green", "alpha": "(100 + k * 36) / 255"}
   ]
 }

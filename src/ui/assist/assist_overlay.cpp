@@ -11,8 +11,31 @@
 #include "src/core/power/power_manager.h"
 #include "src/devices/device.h"
 #include "src/fonts/ui_fonts.h"
+#include "src/ui/assist/assist_screen.h"
 #include "src/ui/assist/assist_style_catalog.h"
 #include "src/ui/assist/assist_styles.h"
+
+#if HOMETILES_ASSIST_DATA_SCREENS
+#include <FS.h>
+#include <esp_heap_caps.h>
+
+#include "src/audio/assist_contract.h"
+#include "src/ui/assist/assist_screen_files.h"
+
+// The fonts every panel carries; the engine refuses other sizes.
+const lv_font_t* assist_screen_font(int px) {
+  switch (px) {
+    case 16: return &ui_font_16;
+    case 20: return &ui_font_20;
+    case 24: return &ui_font_24;
+    case 28: return &ui_font_28;
+    case 32: return &ui_font_32;
+    case 40: return &ui_font_40;
+    case 48: return &ui_font_48;
+    default: return nullptr;
+  }
+}
+#endif
 
 namespace assist_overlay {
 namespace {
@@ -58,6 +81,95 @@ bool g_tear_free = false;
 // Simulated speech for the preview: syllable bursts with pauses.
 float g_sim_target = 0.0f;
 uint32_t g_sim_next_ms = 0;
+
+#if HOMETILES_ASSIST_DATA_SCREENS
+// Screens from data (assist_screen.h): the chosen style drawn from its screen
+// file, /assist/<id>.json on the microSD card or in the internal storage when
+// present, else the built-in copy. A file that does not load falls back to the
+// compiled style.
+constexpr const char* kScreenDir = "/assist/";
+assist_screen::Screen* g_screen = nullptr;  // one fixed block, PSRAM, kept
+char* g_file_text = nullptr;                // file read buffer, PSRAM, kept
+lv_obj_t* g_painter = nullptr;
+bool g_data = false;            // the shown style comes from a screen file
+bool g_skip_logged = false;     // fill-budget note once per showing
+
+void onPaint(lv_event_t* e) {
+  if (!g_data) return;
+  lv_area_t coords;
+  lv_obj_get_coords(lv_event_get_current_target_obj(e), &coords);
+  assist_screen::draw(g_screen, lv_event_get_layer(e), coords.x1, coords.y1);
+}
+
+// Loads the screen file for a style; false keeps the compiled style.
+bool loadScreenFile(AssistScreenStyle style) {
+  const uint8_t index = static_cast<uint8_t>(style);
+  if (index >= assist_contract::kScreenStyleCount) return false;
+  const char* id = assist_contract::kScreenStyleIds[index];
+  if (!g_screen) {
+    void* memory = heap_caps_malloc(assist_screen::screenSize(), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!memory) memory = heap_caps_malloc(assist_screen::screenSize(), MALLOC_CAP_8BIT);
+    if (!memory) {
+      Serial.printf("[Assist] Screen files off: no memory for %u bytes\n", static_cast<unsigned>(assist_screen::screenSize()));
+      return false;
+    }
+    g_screen = assist_screen::init(memory);
+  }
+  const char* text = nullptr;
+  size_t length = 0;
+  const char* source = "built-in";
+  char path[48];
+  snprintf(path, sizeof(path), "%s%s.json", kScreenDir, id);
+  // The card first (uploads through the Web Admin file manager), then the
+  // internal storage. sdReadyCached: no card probe in the UI path.
+  fs::FS* store = nullptr;
+  if (Device::sdReadyCached() && Device::sdFS().exists(path)) {
+    store = &Device::sdFS();
+    source = "microSD";
+  } else if (Device::storageReady() && Device::storageFS().exists(path)) {
+    store = &Device::storageFS();
+    source = "internal storage";
+  }
+  if (store) {
+    File file = store->open(path, FILE_READ);
+    const size_t size = file ? file.size() : 0;
+    if (size > 0 && size <= assist_screen::kMaxFileBytes) {
+      if (!g_file_text) {
+        g_file_text = static_cast<char*>(heap_caps_malloc(assist_screen::kMaxFileBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+      }
+      if (g_file_text && file.read(reinterpret_cast<uint8_t*>(g_file_text), size) == size) {
+        text = g_file_text;
+        length = size;
+      }
+    } else {
+      Serial.printf("[Assist] Screen file %s on the %s skipped: %u bytes (limit %u)\n", path, source,
+                    static_cast<unsigned>(size), static_cast<unsigned>(assist_screen::kMaxFileBytes));
+    }
+    if (file) file.close();
+    if (!text) source = "built-in";
+  }
+  if (!text) {
+    for (size_t i = 0; i < assist_screen_files::kFileCount; ++i) {
+      if (!strcmp(assist_screen_files::kFiles[i].id, id)) {
+        text = assist_screen_files::kFiles[i].text;
+        length = assist_screen_files::kFiles[i].length;
+      }
+    }
+  }
+  if (!text) return false;
+  char error[160];
+  const uint32_t started = millis();
+  if (!assist_screen::load(g_screen, text, length, error, sizeof(error))) {
+    Serial.printf("[Assist] Screen file %s (%s) refused, using the built-in style: %s\n", id, source, error);
+    return false;
+  }
+  const assist_screen::Info& in = assist_screen::info(g_screen);
+  Serial.printf("[Assist] Screen file %s (%s) loaded in %lu ms: %lu shapes, %lu steps per frame at most\n", id, source,
+                static_cast<unsigned long>(millis() - started), static_cast<unsigned long>(in.frame_cmds),
+                static_cast<unsigned long>(in.frame_ops));
+  return true;
+}
+#endif
 
 const i18n::Strings& tr() { return i18n::strings(configManager.getConfig().language); }
 
@@ -108,7 +220,16 @@ void onFrame(lv_timer_t*) {
   if (!g_overlay) return;
   const int32_t w = lv_obj_get_width(g_overlay);
   const int32_t h = lv_obj_get_height(g_overlay);
-  const float base_r = assist_styles::baseRadius(g_style, static_cast<float>(w), static_cast<float>(h));
+  float base_r = assist_styles::baseRadius(g_style, static_cast<float>(w), static_cast<float>(h));
+  float label_r = 2.1f;
+#if HOMETILES_ASSIST_DATA_SCREENS
+  if (g_data) {
+    const assist_screen::Reach& reach =
+        assist_screen::info(g_screen).reach[assist_screen::shapeOf(static_cast<float>(w), static_cast<float>(h))];
+    base_r = assist_screen::baseRadius(reach, static_cast<float>(w), static_cast<float>(h));
+    label_r = reach.label_r;
+  }
+#endif
   // Without the tear-free path a larger radius would move faster than the
   // tuned ~5 px a frame: the clock runs slower instead.
   const float pace =
@@ -140,10 +261,28 @@ void onFrame(lv_timer_t*) {
   const float dt = t - g_last_t;
   frame.dt = dt < 0.0f ? 0.0f : (dt > 0.05f * pace ? 0.05f * pace : dt);
   g_last_t = t;
+#if HOMETILES_ASSIST_DATA_SCREENS
+  if (g_data) {
+    assist_screen::Inputs in{frame.t, frame.dt, frame.level, frame.mode, frame.answering, frame.r,
+                             frame.cx, frame.cy, frame.w, frame.h};
+    assist_screen::frame(g_screen, in);
+    lv_area_t areas[8];
+    const int n = assist_screen::dirty(g_screen, areas, 8);
+    for (int i = 0; i < n; ++i) lv_obj_invalidate_area(g_painter, &areas[i]);
+    if (assist_screen::skippedShapes(g_screen) && !g_skip_logged) {
+      g_skip_logged = true;
+      Serial.printf("[Assist] Screen file over its fill budget: %lu shapes left out\n",
+                    static_cast<unsigned long>(assist_screen::skippedShapes(g_screen)));
+    }
+  } else {
+    assist_styles::frame(g_style, frame);
+  }
+#else
   assist_styles::frame(g_style, frame);
+#endif
 
-  // The label sits below the widest halo the styles reach.
-  lv_obj_set_y(g_label, static_cast<int32_t>(frame.cy + base_r * 2.1f));
+  // The label sits below the widest halo the styles reach (a screen file says where).
+  lv_obj_set_y(g_label, static_cast<int32_t>(frame.cy + base_r * label_r));
 }
 
 void onTap(lv_event_t*) {
@@ -186,13 +325,40 @@ void create() {
 void show(AssistUiPhase phase, AssistScreenStyle style) {
   if (!g_overlay) create();
   // Only the chosen style's objects exist; a new style replaces them.
-  if (!g_style_built || style != g_style) {
+  bool rebuild = !g_style_built || style != g_style;
+#if HOMETILES_ASSIST_DATA_SCREENS
+  rebuild = true;  // the screen file is read at every showing (an upload shows next time)
+#endif
+  if (rebuild) {
     lv_obj_clean(g_stage);
-    assist_styles::create(style, g_stage);
     g_style = style;
     g_style_built = true;
-    lv_obj_set_style_text_color(g_label, lv_color_hex(assist_styles::labelColor(style)), 0);
+    uint32_t label_color = assist_styles::labelColor(style);
+#if HOMETILES_ASSIST_DATA_SCREENS
+    g_painter = nullptr;
+    g_data = loadScreenFile(style);
+    if (g_data) {
+      g_painter = lv_obj_create(g_stage);
+      lv_obj_remove_style_all(g_painter);
+      lv_obj_remove_flag(g_painter, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_remove_flag(g_painter, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_size(g_painter, LV_PCT(100), LV_PCT(100));
+      lv_obj_add_event_cb(g_painter, onPaint, LV_EVENT_DRAW_MAIN, nullptr);
+      label_color = assist_screen::info(g_screen).label_color;
+    } else {
+      assist_styles::create(style, g_stage);
+    }
+#else
+    assist_styles::create(style, g_stage);
+#endif
+    lv_obj_set_style_text_color(g_label, lv_color_hex(label_color), 0);
   }
+#if HOMETILES_ASSIST_DATA_SCREENS
+  if (g_data) {
+    assist_screen::reset(g_screen, lv_rand(1, 0x7FFFFFFF));
+    g_skip_logged = false;
+  }
+#endif
   g_started_tick = lv_tick_get();
   g_level = 0.0f;
   g_appear = 0.0f;
@@ -203,7 +369,11 @@ void show(AssistUiPhase phase, AssistScreenStyle style) {
   lv_obj_move_foreground(g_overlay);
   if (!g_timer) g_timer = lv_timer_create(onFrame, kFramePeriodMs, nullptr);
   onFrame(nullptr);
+#if HOMETILES_ASSIST_DATA_SCREENS
+  Serial.printf("[Assist] Screen shown (style %u, %s)\n", static_cast<unsigned>(style), g_data ? "screen file" : "built-in");
+#else
   Serial.printf("[Assist] Screen shown (style %u)\n", static_cast<unsigned>(style));
+#endif
 }
 
 void hide() {

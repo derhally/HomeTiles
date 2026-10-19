@@ -35,7 +35,7 @@
     "lit": "floor(level * 10 + 0.5)"
   },
   "layouts": {
-    "tall": {"note": "readouts above and below the rings", "reach": {"half_r": 2.0, "side_r": 0, "side_px": 0}, "vars": {
+    "tall": {"note": "readouts above and below the rings", "reach": {"half_r": 2.0, "side_r": 0, "side_px": 0, "up_r": 3.0, "down_r": 4.0}, "vars": {
       "by": "cy - 2.55 * r",
       "bx": "cx - 64",
       "lx": "cx + 1.66 * r * cos(-pi * 0.56)",
@@ -122,10 +122,10 @@
     {"type": "poly", "note": "right callout", "round": false, "width": 2, "color": "cyan", "alpha": 0.59,
      "points": [["rx", "ry"], ["r2x", "r2y"], ["r3x", "r3y"]]},
 
-    {"type": "text", "note": "level readout", "x": "bx", "y": "by - 0.38 * r", "width": 90, "font": 32,
-     "text": "{lv * 100:03d}", "color": "white", "every": 4},
-    {"type": "text", "x": "bx + 0.78 * r", "y": "by - 0.2 * r", "width": 90, "font": 16,
-     "text": "PK {peak * 100:03d}", "color": "cyan", "alpha": 0.7, "every": 4},
+    {"type": "text", "note": "level readout", "x": "bx", "y": "by - 0.38 * r", "box_width": 90, "font": 32,
+     "text": "{lv * 100:03d}", "color": "white", "frames": 4},
+    {"type": "text", "x": "bx + 0.78 * r", "y": "by - 0.2 * r", "box_width": 90, "font": 16,
+     "text": "PK {peak * 100:03d}", "color": "cyan", "alpha": 0.7, "frames": 4},
     {"type": "rect", "note": "level meter", "repeat": 10, "as": "k",
      "let": {"mx": "bx + 0.03 * r + k * 0.08 * r", "my": "by + 0.24 * r", "mw": "max(2, 0.05 * r)", "mh": "max(2, 0.14 * r)"},
      "x1": "floor(mx) - floor(mw / 2)", "y1": "floor(my) - floor(mh / 2)",
@@ -133,10 +133,10 @@
      "color": "k >= 8 ? amber : cyan", "alpha": "k < lit ? 0.9 : 0.15"},
 
     {"type": "log", "note": "hex column, faster while thinking", "x": "hx", "y": "hy - 2.1 * row", "rows": 4,
-     "line_height": "row", "width": 110, "font": 16, "fill": true,
-     "line": "{rand(0, 255):02X} {rand(0, 255):02X}", "every": "mode - answer > 0.5 ? 3 : 18",
+     "line_height": "row", "box_width": 110, "font": 16, "fill": true,
+     "line": "{rand(0, 255):02X} {rand(0, 255):02X}", "frames": "mode - answer > 0.5 ? 3 : 18",
      "color": "k == 3 ? amber : cyan", "alpha": "(115 + k * 38) / 255"},
-    {"type": "text", "note": "clock", "x": "hx", "y": "hy + 2 * row", "width": 110, "font": 16,
-     "text": "T+{mod(t, 100):04.1f}", "color": "cyan", "alpha": 0.59, "every": 4}
+    {"type": "text", "note": "clock", "x": "hx", "y": "hy + 2 * row", "box_width": 110, "font": 16,
+     "text": "T+{mod(t, 100):04.1f}", "color": "cyan", "alpha": 0.59, "frames": 4}
   ]
 }
