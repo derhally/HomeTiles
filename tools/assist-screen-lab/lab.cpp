@@ -32,7 +32,7 @@
 #include <string>
 #include <vector>
 
-#include "engine/assist_screen.h"
+#include "src/ui/assist/assist_screen.h"
 #include "src/fonts/ui_fonts.h"
 #include "src/ui/assist/assist_styles.cpp"
 #include "src/ui/assist/assist_styles_lines.cpp"
@@ -43,8 +43,6 @@
 
 using speaker::AssistScreenStyle;
 
-// lv_math.c defines it, but LVGL 9.6 declares it in no public header.
-extern "C" void lv_rand_set_seed(uint32_t seed);
 
 // The fonts every panel carries (ui_fonts.h without the 480x480 extras).
 const lv_font_t* assist_screen_font(int px) {
@@ -243,6 +241,7 @@ struct Lab {
 };
 
 Lab* g_lab = nullptr;
+bool g_table = false;  // --table: one README row per screen instead of the numbers
 
 uint32_t rnd(Lab& lab, uint32_t lo, uint32_t hi) {
   lab.seed = lab.seed * 1103515245u + 12345u;
@@ -266,18 +265,16 @@ void onFlush(lv_display_t* d, const lv_area_t* area, uint8_t* data) {
   lv_display_flush_ready(d);
 }
 
+const assist_screen::Reach& fileReach(const Lab& lab) {
+  return assist_screen::info(lab.screen).reach[assist_screen::shapeOf(lab.w, lab.h)];
+}
+
 float baseRadius(const Lab& lab) {
   if (lab.show_builtin && lab.builtin_style >= 0) {
     return assist_styles::baseRadius(static_cast<AssistScreenStyle>(lab.builtin_style), lab.w, lab.h);
   }
-  // assist_styles::baseRadius with the file's reach.
-  // The reach of the layout for this screen's shape.
-  const assist_screen::Reach& in = assist_screen::info(lab.screen).reach[assist_screen::shapeOf(lab.w, lab.h)];
-  float r = (lab.w < lab.h ? lab.w : lab.h) * 0.17f;
-  const float half = lab.w / 2.0f - 8.0f;
-  r = fminf(r, (half - (in.side_r > 0 ? 0.0f : in.side_px)) / (in.half_r > 0 ? in.half_r : 2.0f));
-  if (in.side_r > 0) r = fminf(r, (half - in.side_px) / in.side_r);
-  return r < 1 ? 1 : r;
+  // The shared formula with the reach of the layout for this screen's shape.
+  return assist_screen::baseRadius(fileReach(lab), lab.w, lab.h);
 }
 
 void restart(Lab& lab) {
@@ -319,7 +316,7 @@ bool loadScreen(Lab& lab) {
     return false;
   }
   const assist_screen::Info& in = assist_screen::info(lab.screen);
-  printf("%s: \"%s\" (%s) ok: worst case %lu shapes and %lu expression steps per frame (limits %lu, %lu); "
+  if (!g_table) printf("%s: \"%s\" (%s) ok: worst case %lu shapes and %lu expression steps per frame (limits %lu, %lu); "
          "screen memory %lu KB\n",
          lab.path.c_str(), in.name, in.id, static_cast<unsigned long>(in.frame_cmds),
          static_cast<unsigned long>(in.frame_ops), static_cast<unsigned long>(assist_screen::kMaxFrameCmds),
@@ -423,7 +420,9 @@ double step(Lab& lab) {
       }
     }
   }
-  lv_obj_set_y(lab.label, static_cast<int32_t>(cy + base_r * 2.1f));
+  // The label sits below the screen: the built-in styles' 2.1 r, or the file's label_r.
+  const float label_r = lab.show_builtin || !lab.loaded ? 2.1f : fileReach(lab).label_r;
+  lv_obj_set_y(lab.label, static_cast<int32_t>(cy + base_r * label_r));
   lv_timer_handler();
   return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 }
@@ -445,6 +444,15 @@ void showBuiltin(Lab& lab, bool on) {
 }
 
 // ---- Headless: one PNG per phase (file left, built-in right with --compare) ----
+// 15183 -> "15,183"; 132796 -> "133k".
+std::string grouped(unsigned long v) {
+  std::string out = std::to_string(v);
+  for (int i = static_cast<int>(out.size()) - 3; i > 0; i -= 3) out.insert(static_cast<size_t>(i), ",");
+  return out;
+}
+
+std::string kilo(double v) { return std::to_string(static_cast<long>(v / 1000.0 + 0.5)) + "k"; }
+
 int headless(Lab& lab, const std::string& dir, bool compare, bool timing) {
   std::error_code made;
   std::filesystem::create_directories(dir, made);
@@ -504,7 +512,19 @@ int headless(Lab& lab, const std::string& dir, bool compare, bool timing) {
       fprintf(stderr, "Cannot write %s\n", file);
       return 1;
     }
-    printf("%s\n", file);
+    if (!g_table) printf("%s\n", file);
+  }
+  if (g_table) {
+    // | Screen | Worst case shapes / steps per frame | Redrawn px/frame, file vs built-in |
+    std::string row = "| " + std::string(in.name) + " | " + grouped(in.frame_cmds) + " / " + grouped(in.frame_ops) + " | ";
+    for (int pass = 0; pass < (both ? 2 : 1); ++pass) {
+      if (pass) row += " vs ";
+      for (int phase = 0; phase < 3; ++phase) {
+        row += kilo(static_cast<double>(px[pass][phase]) / frames[phase]) + (phase < 2 ? " / " : "");
+      }
+    }
+    printf("%s |\n", row.c_str());
+    return 0;
   }
   if (timing) {
     for (int pass = 0; pass < (both ? 2 : 1); ++pass) {
@@ -740,6 +760,9 @@ int main(int argc, char** argv) {
     } else if (!strncmp(a, "--png=", 6)) {
       png_dir = a + 6;
     } else if (!strcmp(a, "--compare")) {
+      compare = true;
+    } else if (!strcmp(a, "--table")) {
+      g_table = true;
       compare = true;
     } else if (!strcmp(a, "--frames")) {
       timing = true;

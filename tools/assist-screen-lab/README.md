@@ -2,8 +2,8 @@
 
 A desktop prototype for Assist screens loaded from data instead of compiled
 into the firmware. A screen is a JSON file ([FORMAT.md](FORMAT.md)). A small
-engine (`engine/assist_screen.*`) compiles the file, checks it against the
-panel's limits, and draws it every frame with LVGL 9.6.
+engine (`src/ui/assist/assist_screen.*`) compiles the file, checks it against
+the panel's limits, and draws it every frame with LVGL 9.6.
 
 The lab runs that engine on Linux, WSL or Windows with the firmware's own LVGL
 version, fonts and frame loop. It can also show the built-in style of the same
@@ -11,9 +11,9 @@ id beside the file, for comparison.
 
 How it works, why, and the plan for the firmware: [docs-dev/assist-screens.md](../../docs-dev/assist-screens.md).
 
-Nothing here is in the firmware yet. The engine is written to move into
-`src/ui/assist/` unchanged: it has no Arduino, no allocation after `init()`,
-and LVGL draw calls only.
+The engine is in the firmware tree but compiled only into test builds with
+`HOMETILES_ASSIST_DATA_SCREENS=1` (see the design document); it has no
+Arduino, no allocation after `init()`, and LVGL draw calls only.
 
 ## Build
 
@@ -63,59 +63,77 @@ Headless, without a window:
 
 ```sh
 lab [file or folder ...] --png=out --compare --frames [--size=WxH]
+lab tools/assist-screen-lab/screens --png=out --table     # the Results table below
 ```
 
 This writes one PNG per phase, with the built-in style on the right when
 `--compare` is given, and prints time and redrawn pixels per frame for both.
+`--table` prints one row of the Results table per screen instead. Runs repeat
+exactly: the simulated voice and LVGL's `lv_rand` start from fixed seeds.
 `LAB_DIRTY=1` also prints every redraw area.
 
 ## Results (1024x600, the 7B)
 
-Every built-in style has a file. Each one matches its built-in style in every
-phase, also at 800x480, 1280x800, 720x720 and 480x800. Light Disc's trails turn
-at random, so where they run differs from run to run, as it does on the panel.
-Atom, Reactor and Dot Halo shade their balls with `grad`.
+Every built-in style has a file. In the render test the files match their
+built-in styles in every phase at 1024x600, 800x480, 480x480 and 720x1280
+(Sentinel and Phosphor on wide sizes only, since their square and tall layouts
+differ on purpose): at most 6 % of the pixels differ, from the random parts
+(Phosphor's noise, Light Disc's trails). Atom, Reactor and Dot Halo shade their
+balls with `grad`.
+
+Generated with `lab tools/assist-screen-lab/screens --png=out --table`:
 
 | Screen | Worst case shapes / steps per frame | Redrawn px/frame, file vs built-in (listen / think / answer) |
 | --- | --- | --- |
-| Sentinel | 144 / 15,183 | 133k / 125k / 127k vs 218k / 181k / 178k |
-| Iris | 109 / 8,183 | 49k / 129k / 108k vs 27k / 128k / 118k |
-| Phosphor | 299 / 9,147 | 187k / 99k / 134k vs 272k / 281k / 280k |
-| Atom | 18 / 1,755 | 225k / 171k / 235k vs 224k / 171k / 233k |
-| Reactor | 15 / 1,278 | 216k / 151k / 163k vs 211k / 148k / 161k |
-| Dot Halo | 35 / 4,633 | 165k / 101k / 167k vs 281k / 519k / 276k |
-| Voice Pills | 5 / 766 | 99k / 38k / 98k vs 96k / 25k / 96k |
-| Light Disc | 105 / 5,433 | 241k / 105k / 155k vs 377k / 120k / 133k |
-| Lens | 15 / 1,420 | 82k / 74k / 75k vs 87k / 80k / 79k |
+| Atom | 18 / 2,401 | 225k / 171k / 235k vs 224k / 171k / 233k |
+| Dot Halo | 35 / 5,668 | 165k / 101k / 167k vs 281k / 519k / 276k |
+| Iris | 109 / 9,943 | 49k / 129k / 108k vs 27k / 128k / 118k |
+| Lens | 15 / 1,453 | 82k / 74k / 75k vs 87k / 80k / 79k |
+| Light Disc | 113 / 4,900 | 241k / 105k / 155k vs 377k / 120k / 133k |
+| Phosphor | 299 / 12,625 | 187k / 99k / 134k vs 272k / 281k / 280k |
+| Reactor | 15 / 1,292 | 216k / 151k / 163k vs 211k / 148k / 161k |
+| Sentinel | 144 / 18,303 | 133k / 125k / 127k vs 218k / 181k / 178k |
+| Voice Pills | 5 / 887 | 99k / 38k / 98k vs 96k / 25k / 96k |
 
-Redrawn pixels are what the panel has to paint, which is its main cost.
-The files redraw less than the built-in styles because only the elements whose
-drawing changed are redrawn. The panel's limits are 1200 shapes and 60,000
-steps.
+Redrawn pixels are what the panel has to paint, which is its main cost. Dot
+Halo, Lens, Phosphor and Sentinel redraw less than their built-in styles,
+because only the elements whose drawing changed are redrawn; Atom and Reactor
+about the same; Iris (listening), Light Disc (answering) and Voice Pills
+(thinking) redraw more in one phase each. Steps are weighted (FORMAT.md); the
+limits are 1,200 shapes and 60,000 steps. Milliseconds on a desktop say little
+about a panel: the design document lists what still needs measuring on S3 and
+P4 hardware.
 
 ## Device limits
 
-Every limit is checked at load, so a file the lab accepts cannot exceed them
-on the panel:
+The limits are checked at load, and the painted area as each frame is built,
+so a file the lab accepts cannot exceed them on the panel:
 
-- fixed memory (one block of about 145 KB)
-- bounded file size, values, expression code, names, elements, polylines and
-  text
-- worst-case shapes and expression steps per frame
-- only the panel's font sizes
+- fixed memory (one block of about 108 KB)
+- bounded file size, values, expression code, names, elements, polylines,
+  history and text
+- worst-case shapes and weighted expression steps per frame
+- at most 6 screens' worth of painted area per frame; radii clamped to the
+  screen diagonal
+- only the panel's font sizes; fixed text parts of at most 8 bytes
 - NaN and infinity become 0; coordinates are clamped
 
-See the table in [FORMAT.md](FORMAT.md#panel-limits).
-`tools/tests/assist/test-assist-screen-files.mjs` loads every file in `screens/`, runs
-them through every phase and checks that broken files are refused.
+See the table in [FORMAT.md](FORMAT.md#panel-limits). Tests:
 
-## Next steps for the firmware (not done)
+- `tools/tests/assist/test-assist-screen-files.mjs` loads every file, runs it
+  through every phase, checks that broken and hostile files are refused or
+  stay within the budget, and runs a few thousand mutated copies of the nine
+  files under ASan/UBSan.
+- `tools/tests/assist/test-assist-screen-render.mjs` builds the lab, renders
+  every screen at four sizes next to its built-in style and compares the
+  pixels, and checks that a second run repeats them exactly.
 
-1. Move `engine/` into `src/ui/assist/` and let the overlay draw a loaded
-   screen in place of a built-in style.
-2. Store files in LittleFS (`/assist/<id>.json`). The Web Admin uploads them,
-   or downloads them from a gallery page, and the panel compiles each one
-   before keeping it.
-3. List file screens after the built-in ones. Their `needs` feed
-   `assist_style_catalog`, so the Settings list and the Bridge select offer
-   only screens the panel can show.
+## On a panel (test builds)
+
+Firmware built with `--define HOMETILES_ASSIST_DATA_SCREENS=1` draws the style
+picked in Settings from its screen file: `/assist/<id>.json` on the microSD
+card (upload it with the Web Admin file manager), else in the internal
+storage, else the built-in copy (`src/ui/assist/assist_screen_files.h`,
+generated by `node tools/generate-assist-screens.mjs`). The file is read each
+time the screen opens. A file that is refused falls back to the compiled style
+and logs why (`[Assist] Screen file ... refused`).
