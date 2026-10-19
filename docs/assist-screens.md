@@ -50,7 +50,7 @@ Without a file, the panel uses its built-in copy of the style. A file the panel 
 With the Bridge, screen files can live in Home Assistant instead of on a card:
 
 1. Put the `.json` files in the `hometiles/assist_screens` folder of your Home Assistant configuration (the Bridge creates it). Each file needs its own `id`; the nine built-in names are taken.
-2. Run the **Reload Assist screens** action (`tab5_lvgl.reload_assist_screens`) in **Developer tools → Actions**, or restart Home Assistant.
+2. Wait up to a minute: the Bridge checks the folder by itself. To send it at once, run the **Reload Assist screens** action (`tab5_lvgl.reload_assist_screens`) in **Developer tools → Actions**.
 3. The screens appear after the built-in styles in **Settings → Assist** on the panel, by their names, and in the panel's **Assist screen** select in Home Assistant.
 
 The panel keeps a copy of the chosen screen, so it still shows when Home Assistant is offline. A screen the panel cannot use shows the built-in style instead; the select's `screen_error` attribute and the Home Assistant log say why.
