@@ -913,7 +913,7 @@ float callFn(Screen* s, uint8_t fn, const float* a) {
     case fPow: return powf(a[0], a[1]);
     case fLog: return a[0] > 0 ? logf(a[0]) : 0.0f;
     case fHash: {
-      // The built-in styles' fixed per-index fraction (assist_styles_lines.cpp).
+      // The fixed per-index fraction the former C++ line styles used.
       const int i = whole(a[0]), salt = whole(a[1]);
       int v = (i * 7 + salt * 13) % 23;
       if (v < 0) v += 23;

@@ -18,7 +18,9 @@ const overlay = read('src/ui/assist/assist_overlay.cpp');
 const speaker = read('src/audio/speaker.cpp');
 const styles = read('src/ui/assist/assist_styles.cpp');
 // The overlay works the offer out from the shown screen and hands it over.
-assert.match(overlay, /assist_style_catalog::available\(assist_style_catalog::features\(w, h, g_tear_free\)\)/);
+assert.match(overlay, /assist_style_catalog::available\(assist_style_catalog::features\(w, h, g_tear_free\),/);
+// Without screen files the file-only styles are not offered.
+assert.match(overlay, /HOMETILES_ASSIST_STYLES_OFF \|\s*\(HOMETILES_ASSIST_DATA_SCREENS \? 0u : assist_style_catalog::kFileStyles\)/);
 assert.match(overlay, /speaker::setAvailableAssistScreenStyles\(offered\);/);
 assert.match(overlay, /Device::kCapabilities\.tear_free_ui && w == Device::kScreenWidth && h == Device::kScreenHeight/);
 assert.match(overlay, /assist_styles::baseRadius\(g_style,/);

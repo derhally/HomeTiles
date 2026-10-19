@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -65,23 +65,23 @@ assert.match(contract, /"atom",\s*"reactor",\s*"dot_halo",\s*"voice_pills",\s*"s
 assert.match(speaker, /g_screen_style\.store\(style < kAssistScreenStyleCount \? style : 0\);/);
 assert.match(speaker, /prefs\.putUChar\(kPrefsScreenStyleKey, g_screen_style\.load\(\)\);/);
 const styles = read('src/ui/assist/assist_styles.cpp');
-const lines = read('src/ui/assist/assist_styles_lines.cpp');
 for (const ns of ['atom', 'reactor', 'halo', 'pills']) {
   assert.match(styles, new RegExp(`namespace ${ns} \\{`));
   assert.match(styles, new RegExp(`${ns}::create\\(parent\\)`));
   assert.match(styles, new RegExp(`${ns}::frame\\(f\\)`));
 }
-for (const ns of ['sentinel', 'phosphor', 'disc', 'lens', 'iris']) {
-  assert.match(lines, new RegExp(`namespace ${ns} \\{`));
-  assert.match(styles, new RegExp(`${ns}::create\\(parent\\)`));
-  assert.match(styles, new RegExp(`${ns}::frame\\(f\\)`));
-}
-// The line styles paint from a draw callback and invalidate only their box.
-for (const ns of ['sentinel', 'phosphor', 'iris']) {
-  const body = lines.slice(lines.indexOf(`namespace ${ns} {`), lines.indexOf(`}  // namespace ${ns}`));
-  assert.match(body, /createPainter\(parent, onDraw/);
-  assert.match(body, /invalidateBox\(/);
-}
+// Sentinel, Phosphor, Light Disc, Lens and Iris are screen files only: no
+// C++ left, built into every panel with Assist, and Atom stands in if one
+// cannot load.
+assert.ok(!existsSync(resolve(root, 'src/ui/assist/assist_styles_lines.cpp')));
+const catalogHeader = read('src/ui/assist/assist_style_catalog.h');
+assert.match(catalogHeader, /kFileStyles = \(1u << 4\) \| \(1u << 5\) \| \(1u << 6\) \| \(1u << 7\) \| \(1u << 8\);/);
+const files = read('src/ui/assist/assist_screen_files.h');
+for (const id of ['sentinel', 'phosphor', 'light_disc', 'lens', 'iris']) assert.match(files, new RegExp(`\\{"${id}", k`));
+for (const id of ['atom', 'reactor', 'dot_halo', 'voice_pills']) assert.doesNotMatch(files, new RegExp(`\\{"${id}", k`));
+assert.match(read('src/ui/assist/assist_data_screens.h'), /#if defined\(HOMETILES_SPEAKER\)\s*#define HOMETILES_ASSIST_DATA_SCREENS 1/);
+assert.match(overlay, /HOMETILES_ASSIST_DATA_SCREENS \? 0u : assist_style_catalog::kFileStyles/);
+assert.match(overlay, /unavailable, showing Atom/);
 // The label follows the style's palette through the central hook (a screen
 // file brings its own label colour in test builds).
 assert.match(overlay, /uint32_t label_color = assist_styles::labelColor\(style\);/);
@@ -93,7 +93,7 @@ assert.match(rebuild, /lv_obj_clean\(g_stage\);/);
 assert.match(rebuild, /#else\s*assist_styles::create\(style, g_stage\);\s*#endif/);
 // Screen files (HOMETILES_ASSIST_DATA_SCREENS test builds) fall back to the
 // compiled style when they do not load.
-assert.match(rebuild, /g_data = loadScreenFile\(style\);\s*if \(g_data\) \{[\s\S]*\} else \{\s*assist_styles::create\(style, g_stage\);\s*\}/);
+assert.match(rebuild, /g_data = loadScreenFile\(style\);\s*if \(g_data\) \{[\s\S]*\} else \{[\s\S]*assist_styles::create\(style, g_stage\);\s*\}/);
 assert.match(overlay, /refused, using the built-in style/);
 
 // Phase contract: any wake word or Assist start listens; a normal end of the
@@ -139,7 +139,7 @@ assert.match(sketch, /if \(assist_overlay::serviceSleep\(\)\) \{\s*was_asleep = 
 const frame = overlay.slice(overlay.indexOf('void onFrame('), overlay.indexOf('void onTap('));
 assert.doesNotMatch(frame, /lv_obj_create|lv_.*_create\(|malloc|new /);
 for (const [source, ns] of [[styles, 'atom'], [styles, 'reactor'], [styles, 'halo'], [styles, 'pills'],
-  [lines, 'sentinel'], [lines, 'phosphor'], [lines, 'disc'], [lines, 'lens'], [lines, 'iris']]) {
+]) {
   const body = source.slice(source.indexOf(`namespace ${ns} {`));
   const styleFrame = body.slice(body.indexOf('void frame('), body.indexOf(`}  // namespace ${ns}`));
   const code = styleFrame.replace(/\/\/[^\n]*/g, '');
@@ -147,5 +147,5 @@ for (const [source, ns] of [[styles, 'atom'], [styles, 'reactor'], [styles, 'hal
   // Label text changes reuse static buffers (no label realloc per frame).
   assert.doesNotMatch(code, /lv_label_set_text\(|lv_label_set_text_fmt\(/, `${ns} sets only static label text`);
 }
-assert.doesNotMatch(overlay + styles + lines, /lv_obj_set_style_opa\(|LV_BLEND_MODE_ADDITIVE/);
+assert.doesNotMatch(overlay + styles, /lv_obj_set_style_opa\(|LV_BLEND_MODE_ADDITIVE/);
 console.log('Assist overlay checks passed.');

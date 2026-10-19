@@ -27,17 +27,16 @@
 // - Untrusted input: bounded JSON nesting and expression depth, NaN and
 //   infinity become 0, coordinates are clamped.
 //
-// The engine is compiled only with HOMETILES_ASSIST_DATA_SCREENS=1; the types
-// and baseRadius() below are always available. Loop task (LVGL) only.
+// The engine is compiled with HOMETILES_ASSIST_DATA_SCREENS (on for every
+// panel with Assist, assist_data_screens.h); the types and baseRadius() below
+// are always available. Loop task (LVGL) only.
 
 #include <stddef.h>
 #include <stdint.h>
 
 #include <lvgl.h>
 
-#ifndef HOMETILES_ASSIST_DATA_SCREENS
-#define HOMETILES_ASSIST_DATA_SCREENS 0
-#endif
+#include "src/ui/assist/assist_data_screens.h"
 
 namespace assist_screen {
 
