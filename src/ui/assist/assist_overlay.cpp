@@ -83,6 +83,32 @@ bool g_tear_free = false;
 // Simulated speech for the preview: syllable bursts with pauses.
 float g_sim_target = 0.0f;
 uint32_t g_sim_next_ms = 0;
+// The screen hidden under the overlay (assist_overlay.h), cleared when it is
+// deleted meanwhile.
+lv_obj_t* g_hidden_screen = nullptr;
+
+void onHiddenScreenDeleted(lv_event_t*) { g_hidden_screen = nullptr; }
+
+// Hides the active screen under the overlay, following a screen change.
+void coverScreen() {
+  lv_obj_t* screen = lv_screen_active();
+  if (screen == g_hidden_screen) return;
+  if (g_hidden_screen) {
+    lv_obj_remove_event_cb(g_hidden_screen, onHiddenScreenDeleted);
+    lv_obj_remove_flag(g_hidden_screen, LV_OBJ_FLAG_HIDDEN);
+  }
+  g_hidden_screen = screen;
+  if (!screen) return;
+  lv_obj_add_event_cb(screen, onHiddenScreenDeleted, LV_EVENT_DELETE, nullptr);
+  lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
+}
+
+void uncoverScreen() {
+  if (!g_hidden_screen) return;
+  lv_obj_remove_event_cb(g_hidden_screen, onHiddenScreenDeleted);
+  lv_obj_remove_flag(g_hidden_screen, LV_OBJ_FLAG_HIDDEN);
+  g_hidden_screen = nullptr;
+}
 
 #if HOMETILES_ASSIST_DATA_SCREENS
 // Screens from data (assist_screen.h): the chosen style drawn from its screen
@@ -422,6 +448,7 @@ void show(AssistUiPhase phase, AssistScreenStyle style) {
   g_floor_db = -60.0f;
   lv_obj_remove_flag(g_overlay, LV_OBJ_FLAG_HIDDEN);
   lv_obj_move_foreground(g_overlay);
+  coverScreen();
   if (!g_timer) g_timer = lv_timer_create(onFrame, kFramePeriodMs, nullptr);
   onFrame(nullptr);
 #if HOMETILES_ASSIST_DATA_SCREENS
@@ -436,6 +463,7 @@ void hide() {
     lv_timer_delete(g_timer);
     g_timer = nullptr;
   }
+  uncoverScreen();
   if (g_overlay) lv_obj_add_flag(g_overlay, LV_OBJ_FLAG_HIDDEN);
   assist_timing::end();
   Serial.println("[Assist] Screen hidden");
@@ -486,6 +514,8 @@ void service() {
     return;
   }
   if (g_shown == AssistUiPhase::Idle) show(phase, speaker::assistScreenStyle());
+  // A screen loaded meanwhile (navigation, a popup's close) hides too.
+  coverScreen();
   if (phase != g_shown) {
     g_shown = phase;
     lv_label_set_text(g_label, phaseText(phase));

@@ -12,8 +12,11 @@
 //
 // Every style is a handful of plain LVGL objects moved by one 33 ms timer:
 // no canvas, no layers and no allocation per frame. Only the sphere's area
-// redraws, and the overlay is opaque, so the UI underneath does not. Only
-// the chosen style's objects exist; changing the style replaces them.
+// redraws. The screen underneath is hidden while the overlay shows: LVGL
+// looks for a covering object only among the screen's children, so an
+// opaque overlay on the top layer would still have the whole tile grid
+// drawn under every changed pixel (on the 7B that was most of each frame).
+// Only the chosen style's objects exist; changing the style replaces them.
 //
 // Threading: every function runs on the Arduino loop task.
 
