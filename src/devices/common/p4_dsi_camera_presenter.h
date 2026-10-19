@@ -124,12 +124,16 @@ class Presenter {
   struct Rect {
     int32_t x1, y1, x2, y2;
   };
-  static constexpr uint8_t kMaxUiRects = 8;
+  // Bands of one LVGL refresh (36 rows on the 7B: 17 per full-height area,
+  // a few areas per frame). Past the limit they fold into one bounding box.
+  static constexpr uint8_t kMaxUiRects = 48;
 
   bool uiFlipUsable() const {
     return ui_flip_ && ready_ && !double_buffer_active_ && !full_frames_;
   }
-  static void addRect(Rect* rects, uint8_t* count, int32_t x, int32_t y,
+  // Adds a rectangle; past kMaxUiRects everything folds into one bounding
+  // box and *folded says so (a box also covers what was not written).
+  static void addRect(Rect* rects, uint8_t* count, bool* folded, int32_t x, int32_t y,
                       int32_t w, int32_t h);
   bool copyRect(uint16_t* to, const uint16_t* from, const Rect& rect) const;
   bool copyFullFrame(uint16_t* to, uint16_t* from) const;
@@ -198,6 +202,7 @@ class Presenter {
   // region every frame, so nearly nothing is copied).
   Rect ui_frame_rects_[kMaxUiRects] = {};
   uint8_t ui_frame_count_ = 0;
+  bool ui_frame_folded_ = false;
   Rect ui_sync_rects_[kMaxUiRects] = {};
   uint8_t ui_sync_count_ = 0;
 };
