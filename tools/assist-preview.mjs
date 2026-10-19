@@ -5,11 +5,12 @@
 // saved as a PNG.
 //
 // Usage: node tools/assist-preview.mjs [style ...] [--frames] [--size=WxH]
-//   style    atom reactor dot_halo voice_pills sentinel phosphor light_disc
-//            lens iris (default: all)
+//   style    atom reactor dot_halo voice_pills (default: all; the other
+//            styles are screen files, drawn by tools/assist-screen-lab)
 //   --frames also prints the host's draw time per frame of each phase, as a
 //            rough cost comparison between the styles
-//   --size   the screen, default 1024x600
+//   --size   the screen, default 1024x600; every style renders, also one the
+//            panel would not offer at that size (assist_style_catalog.h)
 //
 // Output: build/assist-preview/<style>-<phase>.png
 // Needs LVGL 9.6.0 and a host compiler (tools/lib/lvgl-host.mjs); prints SKIP
@@ -25,7 +26,9 @@ import {lvglHost} from './lib/lvgl-host.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const option = name => args.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
-const STYLES = ['atom', 'reactor', 'dot_halo', 'voice_pills', 'sentinel', 'phosphor', 'light_disc', 'lens', 'iris'];
+// Sentinel, Phosphor, Light Disc, Lens and Iris are screen files now: the
+// Assist Screen Lab (tools/assist-screen-lab) draws them.
+const STYLES = ['atom', 'reactor', 'dot_halo', 'voice_pills'];
 const selected = args.filter(a => !a.startsWith('--'));
 for (const s of selected) if (!STYLES.includes(s)) throw new Error(`unknown style ${s}`);
 const styles = selected.length ? selected : STYLES;
@@ -52,7 +55,6 @@ const harness = String.raw`
 #include <chrono>
 #include <vector>
 #include "src/ui/assist/assist_styles.cpp"
-#include "src/ui/assist/assist_styles_lines.cpp"
 
 using speaker::AssistScreenStyle;
 static const int kW = ${W}, kH = ${H};
@@ -98,7 +100,7 @@ int main(int argc, char** argv) {
   lv_timer_handler();
 
   // The overlay's frame loop: 33 ms frames, eased level, mode and pop-in.
-  const float base_r = (kW < kH ? kW : kH) * 0.17f;
+  const float base_r = assist_styles::baseRadius(static_cast<AssistScreenStyle>(style), kW, kH);
   float level = 0, mode = 0, appear = 0, sim_target = 0, last_t = 0;
   uint32_t sim_next = 0, now = 0;
   const char* texts[3] = {"Listening…", "Thinking…", "Answering…"};

@@ -2,7 +2,7 @@
 
 #include <math.h>
 
-#include "src/ui/assist/assist_styles_lines.h"
+#include "src/ui/assist/assist_screen.h"
 #include "src/ui/assist/assist_styles_shared.h"
 
 namespace assist_styles {
@@ -296,16 +296,50 @@ void frame(const Frame& f) {
 
 }  // namespace
 
+namespace {
+
+// How far a style reaches sideways from its centre: half_r * r, and for a
+// style with fixed-width readouts also side_r * r + side_px. Soft glows that
+// fade out may reach further. Screen files state the same (assist_screen.h).
+assist_screen::Reach makeReach(float half_r, float side_r = 0.0f, float side_px = 0.0f) {
+  assist_screen::Reach out;
+  out.half_r = half_r;
+  out.side_r = side_r;
+  out.side_px = side_px;
+  return out;
+}
+
+assist_screen::Reach reach(AssistScreenStyle style) {
+  switch (style) {
+    case AssistScreenStyle::Sentinel: return makeReach(3.95f, 3.27f, 110.0f);  // number left, hex column right
+    case AssistScreenStyle::Phosphor: return makeReach(3.55f);                // the scope box
+    case AssistScreenStyle::LightDisc: return makeReach(1.75f, 0.0f, 22.0f);  // outer ring and its glow
+    case AssistScreenStyle::Lens: return makeReach(1.75f);                    // the plate
+    case AssistScreenStyle::Iris: return makeReach(2.2f);                     // the corner brackets
+    case AssistScreenStyle::Atom:
+    case AssistScreenStyle::Reactor:
+    case AssistScreenStyle::DotHalo:
+    case AssistScreenStyle::VoicePills: break;
+  }
+  return makeReach(2.0f);
+}
+
+}  // namespace
+
+float baseRadius(AssistScreenStyle style, float w, float h) { return assist_screen::baseRadius(reach(style), w, h); }
+
 void create(AssistScreenStyle style, lv_obj_t* parent) {
   switch (style) {
     case AssistScreenStyle::Reactor: reactor::create(parent); return;
     case AssistScreenStyle::DotHalo: halo::create(parent); return;
     case AssistScreenStyle::VoicePills: pills::create(parent); return;
-    case AssistScreenStyle::Sentinel: sentinel::create(parent); return;
-    case AssistScreenStyle::Phosphor: phosphor::create(parent); return;
-    case AssistScreenStyle::LightDisc: disc::create(parent); return;
-    case AssistScreenStyle::Lens: lens::create(parent); return;
-    case AssistScreenStyle::Iris: iris::create(parent); return;
+    // Sentinel, Phosphor, Light Disc, Lens and Iris are screen files
+    // (assist_style_catalog::kFileStyles); Atom stands in if one cannot load.
+    case AssistScreenStyle::Sentinel:
+    case AssistScreenStyle::Phosphor:
+    case AssistScreenStyle::LightDisc:
+    case AssistScreenStyle::Lens:
+    case AssistScreenStyle::Iris:
     case AssistScreenStyle::Atom: break;
   }
   atom::create(parent);
@@ -316,11 +350,11 @@ void frame(AssistScreenStyle style, const Frame& f) {
     case AssistScreenStyle::Reactor: reactor::frame(f); return;
     case AssistScreenStyle::DotHalo: halo::frame(f); return;
     case AssistScreenStyle::VoicePills: pills::frame(f); return;
-    case AssistScreenStyle::Sentinel: sentinel::frame(f); return;
-    case AssistScreenStyle::Phosphor: phosphor::frame(f); return;
-    case AssistScreenStyle::LightDisc: disc::frame(f); return;
-    case AssistScreenStyle::Lens: lens::frame(f); return;
-    case AssistScreenStyle::Iris: iris::frame(f); return;
+    case AssistScreenStyle::Sentinel:
+    case AssistScreenStyle::Phosphor:
+    case AssistScreenStyle::LightDisc:
+    case AssistScreenStyle::Lens:
+    case AssistScreenStyle::Iris:
     case AssistScreenStyle::Atom: break;
   }
   atom::frame(f);

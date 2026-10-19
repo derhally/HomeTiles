@@ -117,8 +117,17 @@ enum class AssistScreenStyle : uint8_t {
   Iris = 8
 };
 constexpr uint8_t kAssistScreenStyleCount = 9;
-AssistScreenStyle assistScreenStyle();  // any task
-void setAssistScreenStyle(AssistScreenStyle style);  // loop task
+// The shown style: the stored one when this panel offers it, else the first
+// offered (assist_style_catalog.h). Any task.
+AssistScreenStyle assistScreenStyle();
+// Stores a pick; styles the panel does not offer are ignored. Loop task.
+void setAssistScreenStyle(AssistScreenStyle style);
+// The styles this panel offers (bit n = style n; Atom always). The overlay
+// sets them once it knows the screen. Any task / loop task.
+uint32_t availableAssistScreenStyles();
+void setAvailableAssistScreenStyles(uint32_t mask);
+// Republishes the Assist status (the screen files changed: assist_screen_store.h).
+void assistStatusChanged();
 
 // "audio_output" flag in the Bridge capabilities: codec found and ready.
 bool bridgeCapability();
