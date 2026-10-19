@@ -149,7 +149,7 @@ for (const board of boards) {
     flag.indexOf('#include "src/devices/device_select.h"') < flag.indexOf('#if defined(HOMETILES_LOCAL_CAMERA)'),
     `${label}: the capability sees HOMETILES_LOCAL_CAMERA`);
   assert.match(flag, /#if defined\(HOMETILES_LOCAL_CAMERA\)\ninline constexpr bool kBuiltinCamera = true;\n#else\ninline constexpr bool kBuiltinCamera = false;\n#endif/);
-  assert.match(flag, /Device::Capabilities\{(?:(?:true|false), ){6}kBuiltinCamera\}/, `${label}: capability`);
+  assert.match(flag, /Device::Capabilities\{(?:(?:true|false), ){6}kBuiltinCamera(?:, (?:true|false))?\}/, `${label}: capability`);
 }
 
 // The 5-inch display's MIPI PHY supply in its board description: the
