@@ -2,9 +2,12 @@
 // LVGL 9.6 renderer, fonts and frame loop as the panel, in a desktop window
 // (SDL2) or headless to PNG files. Built by build.mjs.
 //
-//   lab <screen.json> [--size=1024x600] [--png=DIR] [--compare] [--frames]
+//   lab [screen.json | folder ...] [--size=1024x600] [--png=DIR] [--compare] [--frames]
+//
+// Without a path it opens every screen in tools/assist-screen-lab/screens.
 //
 // Window keys:
+//   Left Right previous / next screen (also Tab, Shift+Tab)
 //   1 2 3      listening / thinking / answering     A  auto cycle (default)
 //   V          simulated voice on/off (off: hold the mouse, higher = louder)
 //   B          show the built-in style with the same id, for comparison
@@ -21,6 +24,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <string>
@@ -155,6 +159,26 @@ long mtimeOf(const std::string& path) {
   return stat(path.c_str(), &st) == 0 ? static_cast<long>(st.st_mtime) : 0;
 }
 
+// A file as it is, a folder as its .json files in name order.
+bool addPaths(const std::string& path, std::vector<std::string>* out) {
+  std::error_code err;
+  if (!std::filesystem::is_directory(path, err)) {
+    out->push_back(path);
+    return true;
+  }
+  std::vector<std::string> found;
+  for (const auto& entry : std::filesystem::directory_iterator(path, err)) {
+    if (entry.is_regular_file() && entry.path().extension() == ".json") found.push_back(entry.path().string());
+  }
+  std::sort(found.begin(), found.end());
+  if (found.empty()) {
+    fprintf(stderr, "No .json screens in %s\n", path.c_str());
+    return false;
+  }
+  out->insert(out->end(), found.begin(), found.end());
+  return true;
+}
+
 // ---- The panel's frame loop (assist_overlay.cpp onFrame) ----
 struct Lab {
   int w = 1024, h = 600;
@@ -165,12 +189,15 @@ struct Lab {
   lv_obj_t* builtin = nullptr;  // the built-in style's objects
   lv_obj_t* label = nullptr;
   lv_obj_t* message = nullptr;  // load errors
+  lv_obj_t* name = nullptr;     // the screen's name for a moment after switching
   assist_screen::Screen* screen = nullptr;
   std::vector<uint8_t> memory;
   bool loaded = false;
   bool show_builtin = false;
   int builtin_style = -1;
-  std::string path;
+  std::vector<std::string> paths;  // the screens to switch between
+  int current = 0;
+  std::string path;                // paths[current]
   long mtime = 0;
   // Animation inputs, eased like the overlay.
   float level = 0, mode = 0, appear = 0, last_t = 0;
@@ -316,6 +343,11 @@ void setup(Lab& lab) {
   lv_obj_set_style_text_font(lab.message, &ui_font_20, 0);
   lv_label_set_long_mode(lab.message, LV_LABEL_LONG_WRAP);
   lv_obj_add_flag(lab.message, LV_OBJ_FLAG_HIDDEN);
+  lab.name = lv_label_create(scr);
+  lv_obj_align(lab.name, LV_ALIGN_TOP_RIGHT, -12, 10);
+  lv_obj_set_style_text_color(lab.name, lv_color_hex(0x8A93A6), 0);
+  lv_obj_set_style_text_font(lab.name, &ui_font_20, 0);
+  lv_obj_add_flag(lab.name, LV_OBJ_FLAG_HIDDEN);
   lab.memory.assign(assist_screen::screenSize(), 0);
   lab.screen = assist_screen::init(lab.memory.data());
 }
@@ -469,21 +501,33 @@ int main(int argc, char** argv) {
     } else if (a[0] == '-') {
       fprintf(stderr, "Unknown option %s\n", a);
       return 2;
-    } else {
-      lab.path = a;
+    } else if (!addPaths(a, &lab.paths)) {
+      return 2;
     }
   }
-  if (lab.path.empty()) {
-    fprintf(stderr, "Usage: lab <screen.json> [--size=WxH] [--png=DIR] [--compare] [--frames]\n");
+#if defined(LAB_SCREENS_DIR)
+  if (lab.paths.empty() && !addPaths(LAB_SCREENS_DIR, &lab.paths)) return 2;
+#endif
+  if (lab.paths.empty()) {
+    fprintf(stderr, "Usage: lab [screen.json | folder ...] [--size=WxH] [--png=DIR] [--compare] [--frames]\n");
     return 2;
   }
   setup(lab);
+  if (!png_dir.empty()) {
+    int status = 0;
+    for (const std::string& path : lab.paths) {
+      lab.path = path;
+      if (!loadScreen(lab) || headless(lab, png_dir, compare, timing) != 0) status = 1;
+    }
+    return status;
+  }
+  lab.path = lab.paths[0];
   const bool ok = loadScreen(lab);
-  if (!png_dir.empty()) return ok ? headless(lab, png_dir, compare, timing) : 1;
 #if defined(LAB_NO_SDL)
   fprintf(stderr, "Built without SDL2: use --png=DIR\n");
   return ok ? 0 : 1;
 #else
+  (void)ok;
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     fprintf(stderr, "SDL: %s\n", SDL_GetError());
     return 1;
@@ -498,7 +542,19 @@ int main(int argc, char** argv) {
   for (int i = 0; i < 7; ++i) {
     if (kSizes[i][0] == lab.w && kSizes[i][1] == lab.h) size_index = i;
   }
-  uint32_t cycle_start = 0, last_title = 0, shot_no = 0;
+  uint32_t cycle_start = 0, last_title = 0, shot_no = 0, name_until = 0;
+  // Shows the screen's name (and its place in the list) for a moment.
+  auto announce = [&]() {
+    char text[96];
+    const assist_screen::Info& in = assist_screen::info(lab.screen);
+    snprintf(text, sizeof(text), "%s  %d/%d", lab.loaded ? in.name : "(error)", lab.current + 1,
+             static_cast<int>(lab.paths.size()));
+    lv_label_set_text(lab.name, text);
+    lv_obj_remove_flag(lab.name, LV_OBJ_FLAG_HIDDEN);
+    name_until = SDL_GetTicks() + 2500;
+    last_title = 0;
+  };
+  if (lab.paths.size() > 1) announce();
   double ms_sum = 0;
   uint64_t px_sum = 0;
   int frames = 0;
@@ -519,6 +575,18 @@ int main(int argc, char** argv) {
           cycle_start = lab.now;
           setPhase(lab, 0);
           restart(lab);
+        }
+        const bool back = k == SDLK_LEFT || (k == SDLK_TAB && (ev.key.keysym.mod & KMOD_SHIFT));
+        if ((back || k == SDLK_RIGHT || k == SDLK_TAB) && lab.paths.size() > 1) {
+          const int n = static_cast<int>(lab.paths.size());
+          lab.current = (lab.current + (back ? n - 1 : 1)) % n;
+          lab.path = lab.paths[lab.current];
+          const bool was_builtin = lab.show_builtin;
+          loadScreen(lab);
+          // Keep comparing when the next screen has a built-in style too.
+          showBuiltin(lab, was_builtin && lab.builtin_style >= 0);
+          lv_obj_invalidate(lv_screen_active());
+          announce();
         }
         if (k == SDLK_v) lab.simulate = !lab.simulate;
         if (k == SDLK_b) showBuiltin(lab, !lab.show_builtin);
@@ -548,6 +616,10 @@ int main(int argc, char** argv) {
     }
     // Reload when the file changes on disk.
     if (lab.now % 495 == 0 && mtimeOf(lab.path) != lab.mtime) loadScreen(lab);
+    if (name_until && SDL_GetTicks() > name_until) {
+      lv_obj_add_flag(lab.name, LV_OBJ_FLAG_HIDDEN);
+      name_until = 0;
+    }
     lab.redrawn_px = 0;
     ms_sum += step(lab);
     px_sum += lab.redrawn_px;
@@ -560,8 +632,9 @@ int main(int argc, char** argv) {
       last_title = SDL_GetTicks();
       char title[256];
       const assist_screen::Info& in = assist_screen::info(lab.screen);
-      snprintf(title, sizeof(title), "%s %dx%d | %s | %s | %lu shapes max, %lu steps max | %.0f px/frame | %.2f ms/frame here",
-               lab.show_builtin ? "BUILT-IN" : (lab.loaded ? in.name : "(error)"), lab.w, lab.h,
+      snprintf(title, sizeof(title), "%s%s %d/%d %dx%d | %s | %s | %lu shapes max, %lu steps max | %.0f px/frame | %.2f ms/frame here",
+               lab.show_builtin ? "BUILT-IN " : "", lab.loaded ? in.name : "(error)", lab.current + 1,
+               static_cast<int>(lab.paths.size()), lab.w, lab.h,
                kPhaseText[lab.phase], lab.simulate ? "simulated voice" : "mouse voice",
                static_cast<unsigned long>(in.frame_cmds), static_cast<unsigned long>(in.frame_ops),
                static_cast<double>(px_sum) / frames, ms_sum / frames);
