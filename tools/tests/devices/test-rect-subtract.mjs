@@ -19,7 +19,11 @@ assert.match(presenter, /#include "src\/devices\/common\/rect_subtract\.h"/);
 // Before the swap, the shown frame's rectangles minus this frame's writes go
 // into the hidden framebuffer; the camera and flip-off paths copy in full.
 const commit = presenter.slice(presenter.indexOf('void Presenter::commitUi() {'));
-assert.match(commit, /rect_subtract::outside\(rect_subtract::Box\{r\.x1, r\.y1, r\.x2, r\.y2\},\s*written, ui_frame_count_, pieces, 32\)/);
+assert.match(commit, /rect_subtract::outside\(rect_subtract::Box\{r\.x1, r\.y1, r\.x2, r\.y2\}, written, written_count,\s*pieces, 32\)/);
+// A frame whose rectangles folded into one box copies in full: the box also covers gaps it never wrote.
+// Consecutive bands of one area merge into one exact rectangle, so a frame never folds.
+assert.match(presenter, /if \(last\.x1 == rect\.x1 && last\.x2 == rect\.x2 && last\.y2 \+ 1 == rect\.y1\) \{\s*last\.y2 = rect\.y2;/);
+assert.match(read('src/devices/common/p4_dsi_camera_presenter.h'), /static constexpr uint8_t kMaxUiRects = 48;/);
 assert.ok(commit.indexOf('rect_subtract::outside(') < commit.indexOf('esp_lcd_panel_draw_bitmap(panel_, 0, 0, 1, 1, hidden)'), 'the copy precedes the swap');
 assert.equal((presenter.match(/finishUiSwap\(\);\s*syncHidden\(\);/g) || []).length, 3, 'begin, full frames and flip-off sync in full');
 assert.ok(!/ui_refresh_areas_/.test(presenter), 'no LVGL refresh areas needed');
