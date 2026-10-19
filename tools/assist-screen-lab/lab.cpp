@@ -43,6 +43,9 @@
 
 using speaker::AssistScreenStyle;
 
+// lv_math.c defines it, but LVGL 9.6 declares it in no public header.
+extern "C" void lv_rand_set_seed(uint32_t seed);
+
 // The fonts every panel carries (ui_fonts.h without the 480x480 extras).
 const lv_font_t* assist_screen_font(int px) {
   switch (px) {
@@ -268,11 +271,12 @@ float baseRadius(const Lab& lab) {
     return assist_styles::baseRadius(static_cast<AssistScreenStyle>(lab.builtin_style), lab.w, lab.h);
   }
   // assist_styles::baseRadius with the file's reach.
-  const assist_screen::Info& in = assist_screen::info(lab.screen);
+  // The reach of the layout for this screen's shape.
+  const assist_screen::Reach& in = assist_screen::info(lab.screen).reach[assist_screen::shapeOf(lab.w, lab.h)];
   float r = (lab.w < lab.h ? lab.w : lab.h) * 0.17f;
   const float half = lab.w / 2.0f - 8.0f;
-  r = fminf(r, (half - (in.reach_side_r > 0 ? 0.0f : in.reach_side_px)) / (in.reach_half_r > 0 ? in.reach_half_r : 2.0f));
-  if (in.reach_side_r > 0) r = fminf(r, (half - in.reach_side_px) / in.reach_side_r);
+  r = fminf(r, (half - (in.side_r > 0 ? 0.0f : in.side_px)) / (in.half_r > 0 ? in.half_r : 2.0f));
+  if (in.side_r > 0) r = fminf(r, (half - in.side_px) / in.side_r);
   return r < 1 ? 1 : r;
 }
 
@@ -453,6 +457,9 @@ int headless(Lab& lab, const std::string& dir, bool compare, bool timing) {
   const char* names[3] = {"listening", "thinking", "answering"};
   const assist_screen::Info& in = assist_screen::info(lab.screen);
   const bool both = compare && lab.builtin_style >= 0;
+  if ((in.needs & assist_screen::kNeedWide) && assist_screen::shapeOf(lab.w, lab.h) != assist_screen::kWide) {
+    printf("%s needs a wide screen: the panel would not offer it at %dx%d\n", in.id, lab.w, lab.h);
+  }
   std::vector<std::vector<uint32_t>> shots[2];
   double ms[2][3] = {};
   uint64_t px[2][3] = {};
@@ -461,6 +468,9 @@ int headless(Lab& lab, const std::string& dir, bool compare, bool timing) {
     showBuiltin(lab, pass == 1);
     lab.now = 0;
     lab.seed = 12345;
+    // Built-in styles draw with lv_rand: the same start for every screen and
+    // pass, whatever was rendered before.
+    lv_rand_set_seed(0x1234ABCDu);
     lab.sim_next = 0;
     lv_obj_invalidate(lv_screen_active());
     restart(lab);
@@ -914,15 +924,21 @@ int main(int argc, char** argv) {
       snprintf(title, sizeof(title), "Assist Screen Lab | %s", lab.entries[lab.current].name.c_str());
       SDL_SetWindowTitle(window, title);
       // snprintf: LVGL's own printf has no %f.
-      char stats[128];
+      char stats[200];
       if (lab.show_builtin) {
         snprintf(stats, sizeof(stats), "%s: %.0fk px/frame  %.2f ms here",
                  lab.builtin_only ? "Built-in style, no screen file yet" : "Built-in style", static_cast<double>(px_sum) / frames / 1000.0,
                  ms_sum / frames);
       } else {
-        snprintf(stats, sizeof(stats), "Screen file: %lu shapes, %lu steps max  %.0fk px/frame  %.2f ms here",
+        // Which layout shows, and whether the panel would offer the screen here.
+        const assist_screen::Shape shape = assist_screen::shapeOf(lab.w, lab.h);
+        const char* const shapes[] = {"wide", "square", "tall"};
+        const bool hidden = (in.needs & assist_screen::kNeedWide) && shape != assist_screen::kWide;
+        snprintf(stats, sizeof(stats), "Screen file: %lu shapes, %lu steps max  %.0fk px/frame  %.2f ms here  |  %s %s%s",
                  static_cast<unsigned long>(in.frame_cmds), static_cast<unsigned long>(in.frame_ops),
-                 static_cast<double>(px_sum) / frames / 1000.0, ms_sum / frames);
+                 static_cast<double>(px_sum) / frames / 1000.0, ms_sum / frames, shapes[shape],
+                 (in.layouts >> shape) & 1 ? "layout" : "(the file's own)",
+                 hidden ? "  |  needs a wide screen: the panel would not offer it here" : "");
       }
       lv_label_set_text(lab.bar_stats, stats);
       ms_sum = 0;

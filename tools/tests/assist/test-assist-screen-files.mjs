@@ -1,5 +1,5 @@
 // Host regression for Assist screens from data (tools/assist-screen-lab):
-// the Sentinel, Iris and Phosphor files load within the panel limits and run
+// every built-in style's file (screens/*.json) loads within the panel limits and runs
 // frames through every phase, and files that break a limit are refused with
 // a message instead of loading (a downloaded file must not hurt the panel).
 // Rendering is compared with the built-in styles by the lab itself
@@ -106,6 +106,44 @@ int main(int argc, char** argv) {
     printf("FAIL: clamping\n");
     return 1;
   }
+  // A name is a var or a color, never both (the color won silently).
+  refused(file("", ", \"colors\": {\"core\": \"#E0F2FE\"}, \"vars\": {\"core\": 1}"), "already a color");
+  refused(file("{\"type\": \"line\", \"let\": {\"core\": 1}, \"x1\": 0, \"y1\": 0, \"x2\": 1, \"y2\": 1}",
+               ", \"colors\": {\"core\": \"#E0F2FE\"}"), "already a color");
+  refused(file("", ", \"colors\": {\"r\": \"#E0F2FE\"}"), "already a name");
+  // Layouts: per shape, reach and derived vars change; "on" hides elements.
+  refused(file("", ", \"layouts\": {\"round\": {}}"), "round");
+  refused(file("", ", \"layouts\": {\"tall\": {\"vars\": {\"nope\": 1}}}"), "nope");
+  refused(file("", ", \"vars\": {\"k\": {\"init\": 0}}, \"layouts\": {\"tall\": {\"vars\": {\"k\": 1}}}"), "state");
+  refused(file("{\"type\": \"disc\", \"on\": [\"round\"], \"x\": 0, \"y\": 0, \"radius\": 5}"), "shape");
+  if (!loadText(file("{\"type\": \"disc\", \"x\": \"px\", \"y\": 50, \"radius\": 5},"
+                     "{\"type\": \"disc\", \"on\": [\"tall\"], \"x\": \"20 + 100 * tall\", \"y\": 50, \"radius\": 5}",
+                     ", \"vars\": {\"px\": 10}, \"reach\": {\"half_r\": 3},"
+                     " \"layouts\": {\"tall\": {\"reach\": {\"half_r\": 2}, \"vars\": {\"px\": 60}}}"))) {
+    printf("FAIL: %s\n", error);
+    return 1;
+  }
+  const assist_screen::Info& lay = assist_screen::info(screen);
+  if (lay.reach[assist_screen::kWide].half_r != 3 || lay.reach[assist_screen::kTall].half_r != 2 ||
+      lay.layouts != (1u << assist_screen::kTall) || assist_screen::shapeOf(1024, 600) != assist_screen::kWide ||
+      assist_screen::shapeOf(720, 720) != assist_screen::kSquare || assist_screen::shapeOf(480, 800) != assist_screen::kTall) {
+    printf("FAIL: layout info\n");
+    return 1;
+  }
+  for (int tall = 0; tall < 2; ++tall) {
+    assist_screen::reset(screen, 1);
+    const float w = tall ? 480 : 1024, h = tall ? 800 : 600;
+    assist_screen::frame(screen, assist_screen::Inputs{0, 0, 0, 0, false, 50, w / 2, h / 2, w, h});
+    const int m = assist_screen::dirty(screen, areas, 8);
+    // Wide: one disc at x 10. Tall: the layout moves it to 60 and the tall-only disc shows at 120.
+    const int want = tall ? 2 : 1;
+    if (static_cast<int>(assist_screen::commandCount(screen)) != want || m < 1) { printf("FAIL: on/shape\n"); return 1; }
+    const int32_t x1 = areas[0].x1;
+    if ((tall && (x1 > 55 || areas[m - 1].x2 < 120)) || (!tall && (x1 > 5 || areas[0].x2 > 20))) {
+      printf("FAIL: layout var (%d..%d)\n", static_cast<int>(x1), static_cast<int>(areas[m - 1].x2));
+      return 1;
+    }
+  }
   puts("limits ok");
   return 0;
 }
@@ -119,17 +157,25 @@ fs.writeFileSync(source, program);
 const build = spawnSync(host.cxx, [...host.flags, '-std=c++17', '-O1', '-I', lab, source,
   path.join(lab, 'engine/assist_screen.cpp'), host.archive, '-lm', '-o', binary], {encoding: 'utf8'});
 assert.equal(build.status, 0, build.stdout + build.stderr);
-const screens = ['sentinel', 'iris', 'phosphor'].map(id => path.join(lab, 'screens', `${id}.json`));
+// One file per built-in style, in speaker::AssistScreenStyle order.
+const ids = ['atom', 'reactor', 'dot_halo', 'voice_pills', 'sentinel', 'phosphor', 'light_disc', 'lens', 'iris'];
+const screens = ids.map(id => path.join(lab, 'screens', `${id}.json`));
 const run = spawnSync(binary, screens, {encoding: 'utf8'});
 assert.equal(run.status, 0, run.stdout + run.stderr);
 const lines = run.stdout.trim().split('\n');
 assert.equal(lines.at(-1), 'limits ok');
-for (const id of ['sentinel', 'iris', 'phosphor']) {
+for (const id of ids) {
   assert.ok(lines.some(line => line.startsWith(`${id} `)), `${id} ran`);
 }
 // The files name the panel features they need like the style catalog does.
 const needs = id => JSON.parse(fs.readFileSync(path.join(lab, 'screens', `${id}.json`), 'utf8')).needs ?? [];
-assert.deepEqual(needs('sentinel'), ['wide']);
-assert.deepEqual(needs('phosphor'), ['wide']);
-assert.deepEqual(needs('iris'), []);
-console.log('assist screen files ok: ' + lines.slice(0, 3).join(', '));
+// Sentinel and Phosphor bring their own square and tall layouts instead of
+// needing a wide screen like the built-in styles.
+for (const id of ['sentinel', 'phosphor']) {
+  const layouts = JSON.parse(fs.readFileSync(path.join(lab, 'screens', `${id}.json`), 'utf8')).layouts ?? {};
+  assert.deepEqual(Object.keys(layouts).sort(), ['square', 'tall'], `${id} layouts`);
+  assert.deepEqual(needs(id), []);
+}
+assert.deepEqual(needs('light_disc'), ['tear_free']);
+for (const id of ['atom', 'reactor', 'dot_halo', 'voice_pills', 'lens', 'iris']) assert.deepEqual(needs(id), []);
+console.log('assist screen files ok: ' + lines.slice(0, ids.length).join(', '));
