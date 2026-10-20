@@ -25,7 +25,10 @@ assert.match(overlay, /assist_timing::setPhase\(phase == AssistUiPhase::Answerin
 
 // --- the Web Admin reads it ---
 const routes = read('src/web/server/web_admin.cpp');
-assert.match(routes, /server\.on\("\/api\/assist-timing", HTTP_GET,\s*guarded\(\[this\]\(\) \{ this->handleAssistTiming\(\); \}\)\);/);
+// Beta builds and HOMETILES_ASSIST_TIMING only: release builds carry no counters, card or endpoints.
+assert.match(read('src/ui/assist/assist_timing.h'), /defined\(HOMETILES_TEST_BETA\) \|\| defined\(HOMETILES_ASSIST_TIMING\)/);
+assert.match(routes, /#if HOMETILES_ASSIST_TIMING_ACTIVE\s*server\.on\("\/api\/assist-timing", HTTP_GET,\s*guarded\(\[this\]\(\) \{ this->handleAssistTiming\(\); \}\)\);/);
+assert.match(read('src/web/server/render/web_admin_html.cpp'), /if \(HOMETILES_ASSIST_TIMING_ACTIVE && speaker::supported\(\)\) \{/);
 assert.match(routes, /server\.on\("\/api\/assist-timing\/reset", HTTP_POST,\s*guarded\(\[this\]\(\) \{ this->handleAssistTimingReset\(\); \}\)\);/);
 const handlers = read('src/web/server/handlers/web_admin_diagnostics.cpp');
 assert.match(handlers, /void WebAdminServer::handleAssistTiming\(\) \{[\s\S]*?DisplayManager::drawBufferDescription\(band, sizeof\(band\)\);[\s\S]*?assist_timing::toJson\(screens\);/);
@@ -33,7 +36,7 @@ assert.match(handlers, /void WebAdminServer::handleAssistTimingReset\(\) \{[^}]*
 const html = read('src/web/server/render/web_admin_html.cpp');
 // The card sits in the diagnostics page, on speaker panels only, with every
 // header from the central translations.
-const card = html.slice(html.indexOf('if (speaker::supported()) {'), html.indexOf('id="assist_timing_rows"'));
+const card = html.slice(html.indexOf('if (HOMETILES_ASSIST_TIMING_ACTIVE && speaker::supported()) {'), html.indexOf('id="assist_timing_rows"'));
 assert.ok(card.includes('tr.assist_timing_title'), 'card title translated');
 for (const f of ['screen', 'phase', 'frames', 'draw', 'copy', 'pixels', 'engine', 'interval', 'late']) {
   assert.ok(card.includes(`tr.assist_timing_${f}`), `column ${f} translated`);
@@ -189,7 +192,7 @@ int main() {
 }
 `);
 const exe = path.join(work, 'timing');
-const build = spawnSync(cxx, ['-std=c++17', '-Wall', '-Wextra', '-Werror', '-I', stubs, '-I', root, main,
+const build = spawnSync(cxx, ['-std=c++17', '-Wall', '-Wextra', '-Werror', '-DHOMETILES_ASSIST_TIMING', '-I', stubs, '-I', root, main,
   path.join(root, 'src/ui/assist/assist_timing.cpp'), '-o', exe], {encoding: 'utf8'});
 assert.equal(build.status, 0, build.stdout + build.stderr);
 const run = spawnSync(exe, [], {encoding: 'utf8'});
