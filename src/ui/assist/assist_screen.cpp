@@ -2289,15 +2289,8 @@ void arcAngles(const Cmd& c, int32_t* start, int32_t* end) {
 void drawCmd(const Screen* s, const Cmd& c, lv_layer_t* layer, const lv_area_t& clip, int32_t ox, int32_t oy,
              const assist_raster::Target* fast) {
   if (!cmdReaches(c, clip, ox, oy)) return;
-  // Lines, polylines, arcs and discs go straight into the band
-  // (assist_raster.h); dashed lines, rectangles and text through LVGL's draw
-  // tasks.
-  if (fast && c.kind == cDisc) {
-    assist_raster::disc(*fast, ox + static_cast<int32_t>(c.a - c.c), oy + static_cast<int32_t>(c.b - c.c),
-                        ox + static_cast<int32_t>(c.a + c.c), oy + static_cast<int32_t>(c.b + c.c), lv_color_hex(c.color),
-                        c.opa, (c.flags & cfGrad) != 0, lv_color_hex(static_cast<uint32_t>(c.d)));
-    return;
-  }
+  // Lines, polylines and arcs go straight into the band (assist_raster.h);
+  // dashed lines, discs, rectangles and text through LVGL's draw tasks.
   if (fast && (c.kind == cLine || c.kind == cPoly || c.kind == cArc) && !(c.kind == cLine && c.x1 && c.x2)) {
     const lv_color_t color = lv_color_hex(c.color);
     const bool round = (c.flags & cfRound) != 0;
