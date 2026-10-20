@@ -2,6 +2,8 @@
 
 #if HOMETILES_ASSIST_DATA_SCREENS
 
+#include "src/ui/assist/assist_raster.h"
+
 #include <ctype.h>
 #include <math.h>
 #include <new>
@@ -2271,8 +2273,49 @@ bool cmdReaches(const Cmd& c, const lv_area_t& clip, int32_t ox, int32_t oy) {
   }
 }
 
-void drawCmd(const Screen* s, const Cmd& c, lv_layer_t* layer, const lv_area_t& clip, int32_t ox, int32_t oy) {
+// An arc command's angles as lv_draw_arc takes them: 0 to 360 for a full ring,
+// else both in 0..359.
+void arcAngles(const Cmd& c, int32_t* start, int32_t* end) {
+  if (c.e - c.d >= 360.0f) {
+    *start = 0;
+    *end = 360;
+    return;
+  }
+  int32_t a0 = static_cast<int32_t>(c.d) % 360, a1 = static_cast<int32_t>(c.e) % 360;
+  *start = a0 < 0 ? a0 + 360 : a0;
+  *end = a1 < 0 ? a1 + 360 : a1;
+}
+
+void drawCmd(const Screen* s, const Cmd& c, lv_layer_t* layer, const lv_area_t& clip, int32_t ox, int32_t oy,
+             const assist_raster::Target* fast) {
   if (!cmdReaches(c, clip, ox, oy)) return;
+  // Lines, polylines and arcs go straight into the band (assist_raster.h);
+  // dashed lines, discs, rectangles and text through LVGL's draw tasks.
+  if (fast && (c.kind == cLine || c.kind == cPoly || c.kind == cArc) && !(c.kind == cLine && c.x1 && c.x2)) {
+    const lv_color_t color = lv_color_hex(c.color);
+    const bool round = (c.flags & cfRound) != 0;
+    if (c.kind == cLine) {
+      assist_raster::line(*fast, ox + static_cast<int32_t>(c.a), oy + static_cast<int32_t>(c.b),
+                          ox + static_cast<int32_t>(c.c), oy + static_cast<int32_t>(c.d), c.width, color, c.opa, round);
+    } else if (c.kind == cPoly) {
+      const int16_t (*pts)[2] = &s->points[c.x1];
+      const float h = c.width / 2.0f + 1.0f;
+      for (int k = 1; k < c.x2; ++k) {
+        if (!reaches(clip, ox, oy, fminf(pts[k - 1][0], pts[k][0]) - h, fminf(pts[k - 1][1], pts[k][1]) - h,
+                     fmaxf(pts[k - 1][0], pts[k][0]) + h, fmaxf(pts[k - 1][1], pts[k][1]) + h)) {
+          continue;
+        }
+        assist_raster::line(*fast, ox + pts[k - 1][0], oy + pts[k - 1][1], ox + pts[k][0], oy + pts[k][1], c.width,
+                            color, c.opa, round);
+      }
+    } else {
+      int32_t a0, a1;
+      arcAngles(c, &a0, &a1);
+      assist_raster::arc(*fast, ox + static_cast<int32_t>(c.a), oy + static_cast<int32_t>(c.b),
+                         static_cast<int32_t>(c.c), c.width, a0, a1, color, c.opa, round);
+    }
+    return;
+  }
   {
     switch (c.kind) {
       case cLine:
@@ -2322,14 +2365,10 @@ void drawCmd(const Screen* s, const Cmd& c, lv_layer_t* layer, const lv_area_t& 
         dsc.center.x = ox + static_cast<int32_t>(c.a);
         dsc.center.y = oy + static_cast<int32_t>(c.b);
         dsc.radius = static_cast<uint16_t>(c.c);
-        if (c.e - c.d >= 360.0f) {
-          dsc.start_angle = 0;
-          dsc.end_angle = 360;
-        } else {
-          int32_t a0 = static_cast<int32_t>(c.d) % 360, a1 = static_cast<int32_t>(c.e) % 360;
-          dsc.start_angle = a0 < 0 ? a0 + 360 : a0;
-          dsc.end_angle = a1 < 0 ? a1 + 360 : a1;
-        }
+        int32_t a0, a1;
+        arcAngles(c, &a0, &a1);
+        dsc.start_angle = a0;
+        dsc.end_angle = a1;
         lv_draw_arc(layer, &dsc);
         break;
       }
@@ -2393,10 +2432,12 @@ void drawCmd(const Screen* s, const Cmd& c, lv_layer_t* layer, const lv_area_t& 
 // band are issued (each lv_draw_* call allocates a draw task).
 void draw(const Screen* s, lv_layer_t* layer, int32_t ox, int32_t oy) {
   const lv_area_t clip = layer->_clip_area;
+  assist_raster::Target band;
+  const assist_raster::Target* fast = assist_raster::target(layer, &band) ? &band : nullptr;
   for (int r = 0; r < s->region_count; ++r) {
     const Region& region = s->regions[r];
     if (!region.valid || !reaches(clip, ox, oy, region.box.x1, region.box.y1, region.box.x2, region.box.y2)) continue;
-    for (uint32_t i = region.first_cmd; i < region.end_cmd; ++i) drawCmd(s, s->cmds[i], layer, clip, ox, oy);
+    for (uint32_t i = region.first_cmd; i < region.end_cmd; ++i) drawCmd(s, s->cmds[i], layer, clip, ox, oy, fast);
   }
 }
 

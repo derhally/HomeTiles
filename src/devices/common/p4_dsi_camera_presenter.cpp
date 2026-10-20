@@ -1,5 +1,6 @@
 #include "src/devices/common/p4_dsi_camera_presenter.h"
 #include "src/devices/common/p4_dsi_cpu_rotate.h"
+#include "src/devices/common/rect_subtract.h"
 
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 
@@ -226,7 +227,7 @@ bool Presenter::noteUiWrite(int32_t x, int32_t y, int32_t w, int32_t h,
     if (ppa_writer && !syncFramebufferSpan(hidden, x, y, w, h, true)) {
       return false;
     }
-    addRect(ui_frame_rects_, &ui_frame_count_, x, y, w, h);
+    addRect(ui_frame_rects_, &ui_frame_count_, &ui_frame_folded_, x, y, w, h);
     return true;
   }
   uint16_t* active = activeFramebuffer();
@@ -248,6 +249,7 @@ bool Presenter::begin(bool covers_panel) {
   if (ui_flip_) {
     commitUi();
     finishUiSwap();
+    syncHidden();
   }
   finishPendingSwap();
   uint16_t* active = activeFramebuffer();
@@ -580,6 +582,7 @@ bool Presenter::beginFullFrames() {
   if (ui_flip_) {
     commitUi();
     finishUiSwap();
+    syncHidden();
   }
   finishPendingSwap();
   uint16_t* active = activeFramebuffer();
@@ -688,14 +691,25 @@ void Presenter::end() {
                 static_cast<unsigned>(active_index_));
 }
 
-void Presenter::addRect(Rect* rects, uint8_t* count, int32_t x, int32_t y,
+void Presenter::addRect(Rect* rects, uint8_t* count, bool* folded, int32_t x, int32_t y,
                         int32_t w, int32_t h) {
   const Rect rect{x, y, x + w - 1, y + h - 1};
+  // LVGL flushes one area as bands from the top: the band under the last
+  // rectangle, with the same columns, extends it exactly.
+  if (*count > 0) {
+    Rect& last = rects[*count - 1];
+    if (last.x1 == rect.x1 && last.x2 == rect.x2 && last.y2 + 1 == rect.y1) {
+      last.y2 = rect.y2;
+      return;
+    }
+  }
   if (*count < kMaxUiRects) {
     rects[(*count)++] = rect;
     return;
   }
-  // Out of slots: fold everything into one bounding rectangle.
+  // Out of slots (more areas than LVGL can hold invalid, so never): fold
+  // everything into one bounding rectangle.
+  *folded = true;
   Rect& all = rects[0];
   for (uint8_t i = 1; i < *count; ++i) {
     if (rects[i].x1 < all.x1) all.x1 = rects[i].x1;
@@ -743,10 +757,12 @@ void Presenter::setUiFlip(bool enabled) {
   if (!enabled) {
     commitUi();
     finishUiSwap();
+    syncHidden();
   }
   ui_flip_ = enabled;
   ui_back_valid_ = false;
   ui_frame_count_ = 0;
+  ui_frame_folded_ = false;
   ui_sync_count_ = 0;
   Serial.printf("[Display/%s] Tear-free UI %s\n",
                 config_.device_name ? config_.device_name : "P4",
@@ -766,6 +782,9 @@ void Presenter::finishUiSwap() {
     Serial.printf("[Display/%s] UI swap not confirmed by a refresh\n",
                   config_.device_name ? config_.device_name : "P4");
   }
+}
+
+void Presenter::syncHidden() {
   uint16_t* shown = activeFramebuffer();
   uint16_t* hidden = inactiveFramebuffer();
   for (uint8_t i = 0; i < ui_sync_count_ && ui_back_valid_; ++i) {
@@ -785,6 +804,7 @@ uint16_t* Presenter::uiFramebuffer() {
     }
     ui_back_valid_ = true;
     ui_frame_count_ = 0;
+  ui_frame_folded_ = false;
   }
   return hidden;
 }
@@ -792,6 +812,36 @@ uint16_t* Presenter::uiFramebuffer() {
 void Presenter::commitUi() {
   if (!uiFlipUsable() || ui_frame_count_ == 0) return;
   uint16_t* hidden = inactiveFramebuffer();
+  uint16_t* shown = activeFramebuffer();
+  // The shown frame's rectangles, where this frame did not write them, are
+  // still missing from the hidden framebuffer: copy that rest over now, while
+  // the panel certainly does not scan it.
+  {
+    // A folded frame (addRect) knows its writes only as one box; the
+    // pixels of that box it did not write stay as they are until redrawn
+    // (unreachable in practice: LVGL holds at most 32 invalid areas).
+    const uint8_t written_count = ui_frame_count_;
+    rect_subtract::Box written[kMaxUiRects];
+    for (uint8_t i = 0; i < written_count; ++i) {
+      const Rect& r = ui_frame_rects_[i];
+      written[i] = rect_subtract::Box{r.x1, r.y1, r.x2, r.y2};
+    }
+    for (uint8_t i = 0; i < ui_sync_count_ && ui_back_valid_; ++i) {
+      const Rect& r = ui_sync_rects_[i];
+      rect_subtract::Box pieces[32];
+      const int n = rect_subtract::outside(rect_subtract::Box{r.x1, r.y1, r.x2, r.y2}, written, written_count,
+                                           pieces, 32);
+      if (n < 0) {
+        if (!copyRect(hidden, shown, r)) ui_back_valid_ = false;
+        continue;
+      }
+      for (int k = 0; k < n && ui_back_valid_; ++k) {
+        const Rect piece{pieces[k].x1, pieces[k].y1, pieces[k].x2, pieces[k].y2};
+        if (!copyRect(hidden, shown, piece)) ui_back_valid_ = false;
+      }
+    }
+    ui_sync_count_ = 0;
+  }
   // The rows were already written back by the writers; a one-pixel draw of
   // the framebuffer's own memory only switches the scanout at the next
   // refresh (ESP-IDF DPI driver, no copy).
@@ -805,6 +855,7 @@ void Presenter::commitUi() {
       copyRect(activeFramebuffer(), hidden, ui_frame_rects_[i]);
     }
     ui_frame_count_ = 0;
+  ui_frame_folded_ = false;
     return;
   }
   // See present(): only a refresh after this point confirms the new buffer.
@@ -813,6 +864,7 @@ void Presenter::commitUi() {
   for (uint8_t i = 0; i < ui_frame_count_; ++i) ui_sync_rects_[i] = ui_frame_rects_[i];
   ui_sync_count_ = ui_frame_count_;
   ui_frame_count_ = 0;
+  ui_frame_folded_ = false;
   ui_swap_pending_ = true;
 }
 

@@ -218,16 +218,18 @@ example `/assist/atom.json` on the microSD card, or comes from Home Assistant
 
 ## On a panel
 
-Every panel with Assist compiles the engine, the five file-only styles'
-built-in copies (19 KB, `assist_screen_files.h`) and the overlay path; the
-C++ code of those five styles is gone (-17.8 KB flash, -3 KB RAM).
+Every panel with Assist compiles the engine, the nine styles' built-in
+files (26 KB, `assist_screen_files.h`) and the overlay path; the C++ code of
+the five line styles is gone (-17.8 KB flash, -3 KB RAM).
 
 - Each time the Assist screen opens, the overlay loads, in this order: the
   screen chosen in Home Assistant, `/assist/<id>.json` for the picked style on
   the microSD card (upload it with the Web Admin file manager) or in the
-  internal storage, then the built-in copy of a file-only style. Atom,
-  Reactor, Dot Halo and Voice Pills without such a file draw their C++ style.
-  The load time and the file's worst-case cost are logged.
+  internal storage, then the built-in copy of the style's file (all nine are
+  built in since the 7B showed the engine drawing about twice as many pixels
+  per millisecond as the C++ styles' LVGL objects). Atom, Reactor, Dot Halo
+  and Voice Pills draw their C++ style only when no file loads. The load time
+  and the file's worst-case cost are logged.
 - A refused file falls back to the C++ style, Atom for a file-only one, and
   logs the reason (`[Assist] Screen file <id> (microSD) refused, using the
   built-in style: ...`); the panel never shows a broken screen. A build
@@ -237,6 +239,19 @@ C++ code of those five styles is gone (-17.8 KB flash, -3 KB RAM).
   with the same easing, pacing and tear-free rules; the painter is one LVGL
   object whose areas are invalidated from `dirty()`.
 - A frame over the fill budget logs once per showing.
+- Lines, polylines and arcs are not handed to LVGL's draw tasks but drawn
+  straight into the band LVGL is rendering (`src/ui/assist/assist_raster.*`):
+  LVGL's software renderer runs masks over a skewed line's or an arc's whole
+  bounding box, so a diagonal line costs its box and a thin ring its disc,
+  while the rasterizer visits only the pixels along the shape, with coverage
+  from the distance to the edge for the anti-aliasing and LVGL's own RGB565
+  mixing. This is safe because LVGL's single software draw unit executes
+  every earlier draw task before the draw callback goes on, so the direct
+  write lands over the right pixels; a threaded LVGL, a second draw unit or
+  the PPA unit switch it off at compile time, and a band that is not RGB565,
+  byte-swapped RGB565 or XRGB8888 keeps LVGL's path. Dashed lines, discs,
+  rectangles and text stay LVGL draw tasks. Only edge pixels differ from
+  LVGL's drawing (`test-assist-raster.mjs`, `test-assist-screen-render.mjs`).
 
 ## Screens from Home Assistant
 
@@ -296,10 +311,123 @@ So the engine with the screen store costs about 49 KB of flash over C++ only,
 and saves 2.7 KB of static RAM (the line styles' state); the engine's 108 KB
 block comes from PSRAM at runtime. Panels without Assist do not compile it.
 
-Still needed on hardware: milliseconds per frame and per load on the S3 and
-the P4 for every file, internal/PSRAM minimum free while the screen shows, and
-whether the engine's hot data (slots, code, draw list) should sit in internal
-RAM on the S3 instead of PSRAM.
+### Frame times
+
+The panel measures its own frames (`src/ui/assist/assist_timing.*`): while
+the Assist screen shows, every LVGL refresh that drew is one frame with its
+draw time (refresh start to ready: rendering plus the copies into the display
+memory), the share spent in the flush callback (the copies), the pixels
+flushed and whether it ran over the 33 ms frame period; the overlay adds its
+own work per timer tick (the engine's frame, the invalidation) and the
+interval between ticks. Count, average, maximum and a 1 ms histogram for the
+95th percentile are kept per screen id and phase in a 17 KB PSRAM block; the
+opening frame (the whole screen) is kept apart. **Web Admin > Settings >
+Diagnostics > Assist screen drawing** shows the table (`/api/assist-timing`,
+Refresh, Reset); Preview in Settings > Audio plays every phase of a style.
+
+Desktop lab (1024x600, XRGB8888, this computer; the panel's figures are what
+count), time per frame of the file with LVGL's draw tasks against the direct
+rasterizer, listening / thinking / answering:
+
+| File | LVGL draw tasks | Direct rasterizer | Share |
+| --- | --- | --- | --- |
+| `iris.json` | 0.69 / 1.38 / 1.26 ms | 0.29 / 0.62 / 0.54 ms | 42-45 % |
+| `phosphor.json` | 0.82 / 0.39 / 1.17 ms | 0.44 / 0.25 / 0.57 ms | 49-64 % |
+| `reactor.json` | 0.87 / 0.65 / 0.58 ms | 0.52 / 0.42 / 0.47 ms | 60-81 % |
+| `sentinel.json` | 0.92 / 0.89 / 0.94 ms | 0.59 / 0.61 / 0.62 ms | 64-69 % |
+| `lens.json` | 0.71 / 0.66 / 0.74 ms | 0.51 / 0.46 / 0.52 ms | 70-72 % |
+| `atom.json` | 1.16 / 1.29 / 1.30 ms | 1.13 / 0.81 / 1.10 ms | 63-97 % |
+| `light_disc.json`, `dot_halo.json`, `voice_pills.json`, the robots | within 10 % (discs, no long lines) | | |
+
+The pictures differ in edge pixels only: at most 1.3 % of a screen's pixels
+by the render test's rule, the ring and axis-aligned lines pixel for pixel,
+thin diagonal lines slightly crisper (symmetric coverage where LVGL's mask
+leans to one side).
+
+Measured on the 7B (Zeid, 2026-10-19/20, Settings > Audio > Preview per
+style, tables in `build/perf-logs/panel-*.txt` of the thread's worktree):
+before any change every style took 70-120 ms per frame (8-12 frames a
+second), the engine's own work 1-4 ms of it, the copies into the display
+memory 17-49 ms, and the rest LVGL rendering at about 0.3 ms per 1,000
+changed pixels whatever the style drew. The rasterizer alone changed little
+on the panel; the cost was the tile grid rendered under the overlay for
+every changed pixel (LVGL treats only a screen's children as covers), and
+the two copies per frame. With the screen hidden under the overlay, the
+reduced pre-swap copy (p4_dsi_camera_presenter) and the rasterizer, draw
+time per frame in the listening phase, before -> after:
+
+| Style | Before | After, -Os | After, -O2 |
+| --- | --- | --- | --- |
+| Phosphor | 73 ms | 30 ms | 25 ms |
+| Iris | 74 ms | 36 ms | 29 ms |
+| Lens | 52 ms | 36 ms | 31 ms |
+| Voice Pills | 38 ms | 22 ms | 23 ms |
+| Dot Halo | 66 ms | 42 ms | 40 ms |
+| Reactor | 82 ms | 49 ms | 46 ms |
+| Sentinel | 72 ms | 53 ms | 45 ms |
+| Light Disc | 127 ms | 57 ms | 47 ms |
+| Atom | 94 ms | 71 ms | 68 ms |
+
+(Every style measured through its file, all nine built in. -O2 is a
+whole-firmware build, `tools/build-firmware-local.sh --optimize -O2
+--build-path <own cache>`: 720 KB more flash, 10-20 % faster file styles,
+nothing for the copy; left off by decision (Zeid, 2026-10-20), the Tab5 has
+no room for it, and the S3 showed no gain earlier.)
+
+Opening a screen fell from about 72 ms to 30-44 ms and the copies to 6-25
+ms per frame; the panel renders into the SRAM band (36 lines). Tried and
+reverted: a direct disc fill in the rasterizer (Atom 71 -> 82 ms on the
+panel although faster on the host: the disc styles are bound by the
+panel's blending speed on large translucent halos, about 3-4 million
+blended pixels a second however they are issued) and skipping the
+post-swap copy by LVGL's refresh areas (stale pixels on the panel, never
+reproduced on the host). Still open: direct rendering into the two
+framebuffers (no band copy at all); the S3; internal/PSRAM minimum free
+while the screen shows.
+
+## What the 7B taught (drawing speed, 2026-10-19/20)
+
+Findings from the measurement rounds on Zeid's Waveshare 7B (1024x600, RGB565,
+LVGL 9.6 rendering into a 36-line SRAM band, tear-free double buffering),
+kept here because the host told a different story every time:
+
+1. **Measure on the panel, not the host.** The desktop lab (x86, -O1,
+   XRGB8888) ranked costs wrongly twice: the direct line/arc rasterizer cut
+   host frames by half and moved the panel by 10 % at most; a direct disc
+   fill was faster on the host and slower on the panel. Host numbers only
+   show what a change does to the engine's own work; the panel's cost is in
+   LVGL's per-pixel blending and in memory copies. The diagnostics card
+   (`assist_timing.*`) exists so that every change is measured on the panel.
+2. **An opaque object on `lv_layer_top()` is not a cover.** LVGL looks for the
+   topmost opaque object only among the active screen's children, so the
+   whole tile grid was rendered under every changed pixel of the Assist
+   overlay, every frame. Hiding the active screen while the overlay shows
+   (`coverScreen()` in `assist_overlay.cpp`) was the single largest gain.
+   Any future full-screen overlay on the top layer has the same problem.
+3. **The tear-free path paid twice per frame.** Each band was copied into
+   the hidden framebuffer, and after the swap the frame's rectangles were
+   copied again into the other framebuffer. The second copy now happens
+   before the swap and only for the pixels this frame did not redraw
+   (`rect_subtract.h`, one exact rectangle per LVGL area): an animation
+   redraws the same region every frame, so almost nothing is copied. Two
+   rules came out of it: never subtract a folded bounding box (it covers
+   pixels that were not written), and do not derive the skipped area from
+   LVGL's invalid areas (that version left stale pixels on the panel while
+   every host model of it was clean; the cause was never found).
+4. **The engine is free.** Evaluating a screen file costs 1-4 ms per frame;
+   the draw list, hashing and invalidation are not where the time goes.
+5. **Blending is the floor.** The 7B blends roughly 3-4 million RGB565
+   pixels a second through LVGL whatever issues them. Styles made of large
+   translucent halos (Atom's three glows of up to 200 px radius, Reactor,
+   Dot Halo) overdraw 1.5-2 times the changed area and stay at 13-20 frames
+   a second; styles made of lines and thin arcs (Phosphor, Lens, the
+   robots) reach 30. The remaining fixed cost is the band copy (6-25 ms a
+   frame), which only direct rendering into the framebuffers removes.
+6. **-O2 is worth 10-20 % on the file styles and nothing on the copies**, for
+   720 KB of flash; left off (`--optimize` in the build script documents it).
+7. **The four C++ styles drew slower than their files** (Atom 207k pixels in
+   74 ms against Phosphor's 203k in 30 ms), so all nine styles are files
+   now, the C++ kept as the fallback.
 
 ## The lab
 

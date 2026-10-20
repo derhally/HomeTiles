@@ -25,6 +25,7 @@
 #include "src/core/diagnostics/crash_log.h"
 #include "src/core/firmware/firmware_version.h"
 #include "src/core/i18n/i18n.h"
+#include "src/audio/speaker.h"
 #include "src/devices/device.h"
 #include "src/types/clock/clock_format.h"
 #include "src/types/clock/web_html.h"
@@ -2471,7 +2472,59 @@ autocomplete="new-password" value=")html";
   html += R"html(
 </div>
 </div>
+</div>)html";
+
+  // Frame times of the Assist screen (assist_timing.h), on panels with a
+  // speaker only. The rows come from /api/assist-timing when the page shows.
+  if (speaker::supported()) {
+    html += R"html(
+<div class="settings-section">
+<div class="section-title">)html";
+    html += tr.assist_timing_title;
+    html += R"html(</div>
+<div class="settings-grid">
+<div class="settings-full">
+<div class="settings-note">)html";
+    html += tr.assist_timing_note;
+    html += R"html(</div>
+<div class="settings-note">)html";
+    html += tr.assist_timing_band;
+    html += R"html(: <span id="assist_timing_band"></span></div>
+<div class="settings-actions">
+<button class="btn" type="button" onclick="loadAssistTiming()">)html";
+    html += tr.assist_timing_refresh;
+    html += R"html(</button>
+<button class="btn btn-secondary" type="button" onclick="resetAssistTiming()">)html";
+    html += tr.assist_timing_reset;
+    html += R"html(</button>
 </div>
+<div class="file-manager-table-wrap">
+<table class="file-manager-table" id="assist_timing_table">
+<thead>
+<tr>)html";
+    const char* const headers[] = {tr.assist_timing_screen, tr.assist_timing_phase,    tr.assist_timing_frames,
+                                   tr.assist_timing_draw,   tr.assist_timing_copy,     tr.assist_timing_pixels,
+                                   tr.assist_timing_engine, tr.assist_timing_interval, tr.assist_timing_late};
+    for (const char* header : headers) {
+      html += "<th>";
+      html += header;
+      html += "</th>";
+    }
+    html += R"html(</tr>
+</thead>
+<tbody id="assist_timing_rows">
+<tr><td colspan="9">)html";
+    html += tr.assist_timing_empty;
+    html += R"html(</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>)html";
+  }
+
+  html += R"html(
 </section>
 </div>
 </div>

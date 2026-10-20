@@ -26,6 +26,8 @@
 #include "src/core/display/dma2d_arbiter.h"
 #endif
 #include "src/web/server/handlers/web_admin_handler_utils.h"
+#include "src/ui/assist/assist_timing.h"
+#include "src/core/display/display_manager.h"
 
 using namespace web_admin_handlers;
 
@@ -633,4 +635,28 @@ void WebAdminServer::handleSdDiagnosticsDownload() {
   report += "The card completed mkdir/write/read/remove successfully.\n";
 
   send_report();
+}
+
+// Frame times of the Assist screen (assist_timing.h), per screen and phase.
+void WebAdminServer::handleAssistTiming() {
+  webAdminMarkActivity();
+  // The draw buffer LVGL renders into first: frame times depend on it.
+  char band[48];
+  DisplayManager::drawBufferDescription(band, sizeof(band));
+  String json = "{\"band\":\"";
+  for (const char* c = band; *c; ++c) {
+    if (*c != '"' && *c != '\\') json += *c;
+  }
+  json += "\",";
+  String screens;
+  assist_timing::toJson(screens);
+  json += screens.substring(1);  // the screens object without its opening brace
+  server.sendHeader("Cache-Control", "no-store");
+  sendChunkedResponse(server, 200, "application/json", json);
+}
+
+void WebAdminServer::handleAssistTimingReset() {
+  webAdminMarkActivity();
+  assist_timing::reset();
+  server.send(200, "application/json", "{\"success\":true}");
 }
