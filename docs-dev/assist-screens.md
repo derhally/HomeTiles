@@ -344,7 +344,7 @@ by the render test's rule, the ring and axis-aligned lines pixel for pixel,
 thin diagonal lines slightly crisper (symmetric coverage where LVGL's mask
 leans to one side).
 
-Measured on the 7B (Zeid, 2026-10-19/20, Settings > Audio > Preview per
+Measured on a 7B (2026-10-19/20, Settings > Audio > Preview per
 style, tables in `build/perf-logs/panel-*.txt` of the thread's worktree):
 before any change every style took 70-120 ms per frame (8-12 frames a
 second), the engine's own work 1-4 ms of it, the copies into the display
@@ -371,7 +371,7 @@ time per frame in the listening phase, before -> after:
 (Every style measured through its file, all nine built in. -O2 is a
 whole-firmware build, `tools/build-firmware-local.sh --optimize -O2
 --build-path <own cache>`: 720 KB more flash, 10-20 % faster file styles,
-nothing for the copy; left off by decision (Zeid, 2026-10-20), the Tab5 has
+nothing for the copy; left off by decision (2026-10-20), the Tab5 has
 no room for it, and the S3 showed no gain earlier.)
 
 Opening a screen fell from about 72 ms to 30-44 ms and the copies to 6-25
@@ -387,7 +387,7 @@ while the screen shows.
 
 ## What the 7B taught (drawing speed, 2026-10-19/20)
 
-Findings from the measurement rounds on Zeid's Waveshare 7B (1024x600, RGB565,
+Findings from the measurement rounds on a Waveshare 7B (1024x600, RGB565,
 LVGL 9.6 rendering into a 36-line SRAM band, tear-free double buffering),
 kept here because the host told a different story every time:
 
