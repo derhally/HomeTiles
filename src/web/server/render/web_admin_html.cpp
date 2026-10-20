@@ -26,6 +26,7 @@
 #include "src/core/firmware/firmware_version.h"
 #include "src/core/i18n/i18n.h"
 #include "src/audio/speaker.h"
+#include "src/ui/assist/assist_timing.h"
 #include "src/devices/device.h"
 #include "src/types/calendar/calendar_model.h"
 #include "src/types/clock/clock_format.h"
@@ -2537,9 +2538,10 @@ autocomplete="new-password" value=")html";
 </div>
 </div>)html";
 
-  // Frame times of the Assist screen (assist_timing.h), on panels with a
-  // speaker only. The rows come from /api/assist-timing when the page shows.
-  if (speaker::supported()) {
+  // Frame times of the Assist screen (assist_timing.h): a maintainer's tool
+  // in the beta builds, on panels with a speaker only. The rows come from
+  // /api/assist-timing when the page shows.
+  if (HOMETILES_ASSIST_TIMING_ACTIVE && speaker::supported()) {
     html += R"html(
 <div class="settings-section">
 <div class="section-title">)html";
