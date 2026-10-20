@@ -1,9 +1,12 @@
 // Generates src/ui/assist/assist_screen_files.h: the Assist screen files
 // (tools/assist-screen-lab/screens/*.json) built into firmware compiled with
-// HOMETILES_ASSIST_DATA_SCREENS: the styles that exist only as files
-// (assist_style_catalog.h kFileStyles). Atom, Reactor, Dot Halo and Voice Pills
-// are C++; their files and the examples (robot.json, ...) are for the lab and
-// the microSD card. Each file is minified and loses its "note" texts.
+// HOMETILES_ASSIST_DATA_SCREENS: one per built-in style id. The overlay draws
+// every style from its file (the engine draws about twice as many pixels per
+// millisecond as the LVGL objects of the C++ styles, measured on the 7B); Atom,
+// Reactor, Dot Halo and Voice Pills keep their C++ as the fallback when a file
+// cannot load, the others (assist_style_catalog.h kFileStyles) fall back to
+// Atom. The examples (robot.json, ...) are for the lab and the microSD card.
+// Each file is minified and loses its "note" texts.
 //
 // Usage: node tools/generate-assist-screens.mjs [--check]
 import fs from 'node:fs';
@@ -22,13 +25,10 @@ const strip = value => {
   return value;
 };
 
-// The style ids (src/audio/assist_contract.h kScreenStyleIds) whose bit is set
-// in assist_style_catalog.h kFileStyles.
+// The style ids (src/audio/assist_contract.h kScreenStyleIds).
 const contract = fs.readFileSync(path.join(root, 'src/audio/assist_contract.h'), 'utf8');
 const styleIds = [...contract.match(/kScreenStyleIds\[\] = \{([^}]*)\}/)[1].matchAll(/"([a-z_]+)"/g)].map(m => m[1]);
-const catalog = fs.readFileSync(path.join(root, 'src/ui/assist/assist_style_catalog.h'), 'utf8');
-const fileBits = [...catalog.match(/kFileStyles = ([^;]*);/)[1].matchAll(/1u << (\d+)/g)].map(m => Number(m[1]));
-const fileStyles = new Set(fileBits.map(bit => styleIds[bit]));
+const fileStyles = new Set(styleIds);
 const files = fs.readdirSync(screens).filter(f => f.endsWith('.json') && fileStyles.has(f.replace('.json', ''))).sort().map(f => {
   const json = strip(JSON.parse(fs.readFileSync(path.join(screens, f), 'utf8')));
   const text = JSON.stringify(json);
