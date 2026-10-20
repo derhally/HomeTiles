@@ -1,5 +1,7 @@
 #include "src/ui/assist/assist_timing.h"
 
+#if HOMETILES_ASSIST_TIMING_ACTIVE
+
 #include <Arduino.h>
 #include <lvgl.h>
 #include <string.h>
@@ -290,3 +292,5 @@ void toJson(String& out) {
 }
 
 }  // namespace assist_timing
+
+#endif  // HOMETILES_ASSIST_TIMING_ACTIVE
