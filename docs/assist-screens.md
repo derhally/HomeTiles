@@ -3,11 +3,11 @@
 The animated screen HomeTiles shows while Assist listens, thinks and answers can come from a small JSON file instead of the firmware. Anyone can make a new look, try it in a desktop lab, and put it on a panel without building firmware.
 
 !!! warning "Preview"
-    Screens from files are a preview and not in a release yet. Panels with Assist draw five of the built-in styles (Sentinel, Phosphor, Light Disc, Lens, Iris) from files; Atom, Reactor, Dot Halo and Voice Pills stay built in. Not every board has been measured yet.
+    Screens from files are a preview and not in a release yet. Panels with Assist draw all nine built-in styles from files, with an engine that draws faster than the former C++ styles. Not every board has been measured yet.
 
 ## The Built-in Styles as Files { data-toc-label="Built-in styles" }
 
-All nine styles in **Settings → Assist** exist as files that draw the same picture as the built-in style: Atom, Reactor, Dot Halo, Voice Pills, Sentinel, Phosphor, Light Disc, Lens and Iris.
+All nine styles in **Settings → Assist** are screen files built into the firmware: Atom, Reactor, Dot Halo, Voice Pills, Sentinel, Phosphor, Light Disc, Lens and Iris.
 
 <figure class="ht-screenshot">
 <img src="../images/assist-screens-styles.png" alt="The nine Assist screen styles while thinking: Atom, Reactor, Dot Halo, Voice Pills, Sentinel, Phosphor, Light Disc, Lens and Iris" width="1220" height="725" loading="lazy">
