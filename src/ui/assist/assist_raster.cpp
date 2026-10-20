@@ -377,4 +377,77 @@ void arc(const Target& t, int32_t cx, int32_t cy, int32_t radius, int32_t width,
   }
 }
 
+
+void disc(const Target& t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, lv_color_t color, uint8_t opa, bool shaded,
+          lv_color_t bottom) {
+  if (opa == 0 || x2 < x1 || y2 < y1) return;
+  const int32_t w = x2 - x1 + 1, h = y2 - y1 + 1;
+  // The circle inscribed in the box: radius half the shorter side, centred.
+  const float r = static_cast<float>(w < h ? w : h) * 0.5f;
+  const float cxf = static_cast<float>(x1) + static_cast<float>(w) * 0.5f;
+  const float cyf = static_cast<float>(y1) + static_cast<float>(h) * 0.5f;
+  const float reach = r + 1.0f;
+  int32_t py1 = y1, py2 = y2;
+  if (py1 < t.clip.y1) py1 = t.clip.y1;
+  if (py2 > t.clip.y2) py2 = t.clip.y2;
+  const uint32_t c32_top = lv_color_to_u32(color), c32_bottom = lv_color_to_u32(bottom);
+  for (int32_t py = py1; py <= py2; ++py) {
+    const float yc = static_cast<float>(py) + 0.5f;
+    const float dy = yc - cyf;
+    const float d2 = reach * reach - dy * dy;
+    if (d2 <= 0.0f) continue;
+    const float half = sqrtf(d2);
+    int32_t px1, px2;
+    if (!span(cxf - half, cxf + half, t.clip.x1 > x1 ? t.clip.x1 : x1, t.clip.x2 < x2 ? t.clip.x2 : x2, &px1, &px2)) continue;
+    // The row's colour: a straight blend from the top row to the bottom one.
+    lv_color_t row_color = color;
+    if (shaded && h > 1) {
+      const uint32_t mix = static_cast<uint32_t>((py - y1) * 255 / (h - 1));
+      const uint32_t c = mix888(c32_bottom, c32_top, mix);
+      row_color = lv_color_make((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
+    }
+    Row row_at = row(t, py, row_color, opa);
+    // Full pixels inside as one plain run, the distance test only near the edge.
+    const float inner = sqrtf(fmax3(0.0f, (r - 1.5f) * (r - 1.5f) - dy * dy));
+    int32_t ix1 = static_cast<int32_t>(ceilf(cxf - inner)), ix2 = static_cast<int32_t>(floorf(cxf + inner)) - 1;
+    if (ix1 < px1) ix1 = px1;
+    if (ix2 > px2) ix2 = px2;
+    if (r <= 2.0f) ix2 = ix1 - 1;
+    for (int32_t px = px1; px < ix1 && px <= px2; ++px) {
+      const float dx = static_cast<float>(px) + 0.5f - cxf;
+      row_at.put(px, sat(r + 0.5f - sqrtf(dx * dx + dy * dy)));
+    }
+    if (ix1 <= ix2) {
+      if (t.wide) {
+        uint32_t* p = reinterpret_cast<uint32_t*>(row_at.row) + (ix1 - t.buf.x1);
+        if (opa >= 255) {
+          for (int32_t px = ix1; px <= ix2; ++px, ++p) *p = row_at.c32;
+        } else {
+          for (int32_t px = ix1; px <= ix2; ++px, ++p) *p = mix888(row_at.c32, *p, opa);
+        }
+      } else if (t.swapped) {
+        uint16_t* p = reinterpret_cast<uint16_t*>(row_at.row) + (ix1 - t.buf.x1);
+        const uint16_t swapped = __builtin_bswap16(row_at.c16);
+        if (opa >= 255) {
+          for (int32_t px = ix1; px <= ix2; ++px, ++p) *p = swapped;
+        } else {
+          for (int32_t px = ix1; px <= ix2; ++px, ++p) *p = __builtin_bswap16(mix565(row_at.c16, __builtin_bswap16(*p), opa));
+        }
+      } else {
+        uint16_t* p = reinterpret_cast<uint16_t*>(row_at.row) + (ix1 - t.buf.x1);
+        if (opa >= 255) {
+          for (int32_t px = ix1; px <= ix2; ++px, ++p) *p = row_at.c16;
+        } else {
+          for (int32_t px = ix1; px <= ix2; ++px, ++p) *p = mix565(row_at.c16, *p, opa);
+        }
+      }
+    }
+    for (int32_t px = (ix2 + 1 > px1 ? ix2 + 1 : px1); px <= px2; ++px) {
+      if (px >= ix1 && px <= ix2) continue;
+      const float dx = static_cast<float>(px) + 0.5f - cxf;
+      row_at.put(px, sat(r + 0.5f - sqrtf(dx * dx + dy * dy)));
+    }
+  }
+}
+
 }  // namespace assist_raster
