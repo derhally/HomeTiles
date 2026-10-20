@@ -62,7 +62,7 @@ footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
 <div class="wrap">
   <header>
     <h1>Assist Sphere Options</h1>
-    <p class="lede">Twelve looks for the Assist voice screen. Each preview is a 1024 × 600 panel, scaled down, with a simulated voice driving it. Options A to D are built only from circles, pills and arcs. Options E to I add lines, polylines and short number labels, still without per-pixel effects, so each can be drawn by LVGL on the ESP32-P4. Options J to L are drawn from Assist screen files, the JSON the panel loads. On the panel, A to I are screen files too (A to D also stay in C++ as a fallback), and J to L come from Home Assistant through the Bridge.</p>
+    <p class="lede">Twelve looks for the Assist voice screen. Each preview is a 1024 × 600 panel, scaled down, with a simulated voice driving it. Options A to D are built only from circles, pills and arcs. Options E to I add lines, polylines and short number labels, still without per-pixel effects, so each can be drawn by LVGL on the ESP32-P4. Options J to L are drawn from Assist screen files, the JSON the panel loads. On the panel every option is a screen file: A to I are built into the firmware, and J to L come from Home Assistant through the Bridge. The panel's screen-file engine draws them faster than the hand-written C++ styles it replaced.</p>
   </header>
 
   <div class="controls" role="group" aria-label="Phase">
@@ -808,7 +808,7 @@ footer { color: var(--muted); font-size: 14px; max-width: 70ch; }
 
 
 <script>
-// Options J and K are Assist screen files (tools/assist-screen-lab/FORMAT.md):
+// Options J to L are Assist screen files (tools/assist-screen-lab/FORMAT.md):
 // this small renderer evaluates the same JSON the panel loads, in panel pixels
 // (1024x600), with the shared phase switch and a simulated voice.
 (() => {
