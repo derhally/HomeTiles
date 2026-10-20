@@ -77,8 +77,12 @@ assert.ok(!existsSync(resolve(root, 'src/ui/assist/assist_styles_lines.cpp')));
 const catalogHeader = read('src/ui/assist/assist_style_catalog.h');
 assert.match(catalogHeader, /kFileStyles = \(1u << 4\) \| \(1u << 5\) \| \(1u << 6\) \| \(1u << 7\) \| \(1u << 8\);/);
 const files = read('src/ui/assist/assist_screen_files.h');
-for (const id of ['sentinel', 'phosphor', 'light_disc', 'lens', 'iris']) assert.match(files, new RegExp(`\\{"${id}", k`));
-for (const id of ['atom', 'reactor', 'dot_halo', 'voice_pills']) assert.doesNotMatch(files, new RegExp(`\\{"${id}", k`));
+// Every style's file is built in: the engine draws about twice as fast as
+// the C++ styles' objects on the 7B; the four C++ styles stay the fallback.
+for (const id of ['atom', 'reactor', 'dot_halo', 'voice_pills', 'sentinel', 'phosphor', 'light_disc', 'lens', 'iris']) {
+  assert.match(files, new RegExp(`\\{"${id}", k`));
+}
+assert.doesNotMatch(files, /\{"robot", k|\{"retro_robot", k/);
 assert.match(read('src/ui/assist/assist_data_screens.h'), /#if defined\(HOMETILES_SPEAKER\)\s*#define HOMETILES_ASSIST_DATA_SCREENS 1/);
 assert.match(overlay, /HOMETILES_ASSIST_DATA_SCREENS \? 0u : assist_style_catalog::kFileStyles/);
 assert.match(overlay, /unavailable, showing Atom/);
