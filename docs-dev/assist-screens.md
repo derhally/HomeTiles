@@ -356,25 +356,32 @@ the two copies per frame. With the screen hidden under the overlay, the
 reduced pre-swap copy (p4_dsi_camera_presenter) and the rasterizer, draw
 time per frame in the listening phase, before -> after:
 
-| Style | Before | After |
-| --- | --- | --- |
-| Phosphor (file) | 73 ms | 30 ms |
-| Iris (file) | 74 ms | 35 ms |
-| Lens (file) | 52 ms | 36 ms |
-| Light Disc (file) | 127 ms | 57 ms |
-| Sentinel (file) | 72 ms | 52 ms |
-| Voice Pills (C++) | 38 ms | 25 ms |
-| Dot Halo (C++) | 66 ms | 48 ms |
-| Reactor (C++) | 82 ms | 59 ms |
-| Atom (C++) | 94 ms | 74 ms |
+| Style | Before | After, -Os | After, -O2 |
+| --- | --- | --- | --- |
+| Phosphor | 73 ms | 30 ms | 25 ms |
+| Iris | 74 ms | 36 ms | 29 ms |
+| Lens | 52 ms | 36 ms | 31 ms |
+| Voice Pills | 38 ms | 22 ms | 23 ms |
+| Dot Halo | 66 ms | 42 ms | 40 ms |
+| Reactor | 82 ms | 49 ms | 46 ms |
+| Sentinel | 72 ms | 53 ms | 45 ms |
+| Light Disc | 127 ms | 57 ms | 47 ms |
+| Atom | 94 ms | 71 ms | 68 ms |
+
+(Every style measured through its file, all nine built in; -O2 is a
+whole-firmware build option that costs 720 KB of flash and is not the
+repository default.)
 
 Opening a screen fell from about 72 ms to 30-44 ms and the copies to 6-25
-ms per frame. The file path draws about twice as many pixels per
-millisecond as the C++ styles (Phosphor 203k pixels in 30 ms, Atom 207k in
-74 ms). Still open: which draw buffer the panel renders into (the card's
-"Render band" line), an -O2 build, the four C++ styles through their files,
-and direct rendering into the two framebuffers (no band copy at all); the
-S3; internal/PSRAM minimum free while the screen shows.
+ms per frame; the panel renders into the SRAM band (36 lines). Tried and
+reverted: a direct disc fill in the rasterizer (Atom 71 -> 82 ms on the
+panel although faster on the host: the disc styles are bound by the
+panel's blending speed on large translucent halos, about 3-4 million
+blended pixels a second however they are issued) and skipping the
+post-swap copy by LVGL's refresh areas (stale pixels on the panel, never
+reproduced on the host). Still open: direct rendering into the two
+framebuffers (no band copy at all); the S3; internal/PSRAM minimum free
+while the screen shows.
 
 ## The lab
 
