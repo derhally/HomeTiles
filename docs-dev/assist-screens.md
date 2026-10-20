@@ -385,6 +385,50 @@ reproduced on the host). Still open: direct rendering into the two
 framebuffers (no band copy at all); the S3; internal/PSRAM minimum free
 while the screen shows.
 
+## What the 7B taught (drawing speed, 2026-10-19/20)
+
+Findings from the measurement rounds on Zeid's Waveshare 7B (1024x600, RGB565,
+LVGL 9.6 rendering into a 36-line SRAM band, tear-free double buffering),
+kept here because the host told a different story every time:
+
+1. **Measure on the panel, not the host.** The desktop lab (x86, -O1,
+   XRGB8888) ranked costs wrongly twice: the direct line/arc rasterizer cut
+   host frames by half and moved the panel by 10 % at most; a direct disc
+   fill was faster on the host and slower on the panel. Host numbers only
+   show what a change does to the engine's own work; the panel's cost is in
+   LVGL's per-pixel blending and in memory copies. The diagnostics card
+   (`assist_timing.*`) exists so that every change is measured on the panel.
+2. **An opaque object on `lv_layer_top()` is not a cover.** LVGL looks for the
+   topmost opaque object only among the active screen's children, so the
+   whole tile grid was rendered under every changed pixel of the Assist
+   overlay, every frame. Hiding the active screen while the overlay shows
+   (`coverScreen()` in `assist_overlay.cpp`) was the single largest gain.
+   Any future full-screen overlay on the top layer has the same problem.
+3. **The tear-free path paid twice per frame.** Each band was copied into
+   the hidden framebuffer, and after the swap the frame's rectangles were
+   copied again into the other framebuffer. The second copy now happens
+   before the swap and only for the pixels this frame did not redraw
+   (`rect_subtract.h`, one exact rectangle per LVGL area): an animation
+   redraws the same region every frame, so almost nothing is copied. Two
+   rules came out of it: never subtract a folded bounding box (it covers
+   pixels that were not written), and do not derive the skipped area from
+   LVGL's invalid areas (that version left stale pixels on the panel while
+   every host model of it was clean; the cause was never found).
+4. **The engine is free.** Evaluating a screen file costs 1-4 ms per frame;
+   the draw list, hashing and invalidation are not where the time goes.
+5. **Blending is the floor.** The 7B blends roughly 3-4 million RGB565
+   pixels a second through LVGL whatever issues them. Styles made of large
+   translucent halos (Atom's three glows of up to 200 px radius, Reactor,
+   Dot Halo) overdraw 1.5-2 times the changed area and stay at 13-20 frames
+   a second; styles made of lines and thin arcs (Phosphor, Lens, the
+   robots) reach 30. The remaining fixed cost is the band copy (6-25 ms a
+   frame), which only direct rendering into the framebuffers removes.
+6. **-O2 is worth 10-20 % on the file styles and nothing on the copies**, for
+   720 KB of flash; left off (`--optimize` in the build script documents it).
+7. **The four C++ styles drew slower than their files** (Atom 207k pixels in
+   74 ms against Phosphor's 203k in 30 ms), so all nine styles are files
+   now, the C++ kept as the fallback.
+
 ## The lab
 
 The lab runs the engine with the firmware's LVGL 9.6 renderer, fonts and the
