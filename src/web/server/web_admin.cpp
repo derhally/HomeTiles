@@ -4,6 +4,7 @@
 #include "src/web/server/web_admin_utils.h"
 #include "src/web/server/auth/web_admin_auth.h"
 #include "src/core/diagnostics/loop_stall.h"
+#include "src/ui/assist/assist_timing.h"
 #include "src/network/transport/network_transport.h"
 #include "src/video/local_camera/local_camera.h"
 
@@ -283,10 +284,12 @@ bool WebAdminServer::start() {
               guarded([this]() { this->handleCrashLogDownload(); }));
     server.on("/api/sd-diagnostics", HTTP_GET,
               guarded([this]() { this->handleSdDiagnosticsDownload(); }));
+#if HOMETILES_ASSIST_TIMING_ACTIVE
     server.on("/api/assist-timing", HTTP_GET,
               guarded([this]() { this->handleAssistTiming(); }));
     server.on("/api/assist-timing/reset", HTTP_POST,
               guarded([this]() { this->handleAssistTimingReset(); }));
+#endif
     routes_registered = true;
   }
 
