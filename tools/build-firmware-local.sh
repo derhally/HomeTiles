@@ -4,6 +4,12 @@
 #
 # Usage: tools/build-firmware-local.sh --profile <name> [--define NAME[=VALUE]]...
 #          [--output-dir DIR] [--build-path DIR] [--skip-tests] [--clean] [--fast]
+#          [--optimize FLAGS]
+#
+# --optimize replaces the core's -Os for the sketch and its libraries (not the
+# prebuilt ESP-IDF). -O2 measured 10-20 % faster Assist screen frames on the
+# 7B for 720 KB more flash (docs-dev/assist-screens.md); it is not the
+# default and the Tab5 has no room for it. Use its own --build-path.
 #
 # Requires arduino-cli with esp32:esp32@3.3.7 and the libraries pinned in
 # sketch.yaml installed in ~/.arduino15 and ~/Arduino/libraries (see the
@@ -22,6 +28,7 @@ build_path=""
 skip_tests=0
 clean=0
 fast=0
+optimize=""
 extra_defines=()
 
 while [ $# -gt 0 ]; do
@@ -33,6 +40,7 @@ while [ $# -gt 0 ]; do
     --skip-tests) skip_tests=1; shift ;;
     --clean) clean=1; shift ;;
     --fast) fast=1; shift ;;
+    --optimize) optimize="$2"; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -192,6 +200,10 @@ build_args=(
   --build-property "compiler.cpp.flags=$platform_cpp_flags -fno-exceptions"
   --build-property "compiler.c.elf.extra_flags=$elf_flags"
 )
+if [ -n "$optimize" ]; then
+  [[ "$optimize" =~ ^-O[0-3sz]$ ]] || { echo "Invalid --optimize (use -O0..-O3, -Os, -Oz): $optimize" >&2; exit 1; }
+  build_args+=(--build-property "compiler.optimization_flags=$optimize")
+fi
 
 # arduino-cli reinstalls sketch.yaml profile dependencies (and the stock
 # ESP-Hosted archive) when it sees the profile file, so hide it while compiling.
