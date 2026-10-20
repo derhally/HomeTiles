@@ -218,16 +218,18 @@ example `/assist/atom.json` on the microSD card, or comes from Home Assistant
 
 ## On a panel
 
-Every panel with Assist compiles the engine, the five file-only styles'
-built-in copies (19 KB, `assist_screen_files.h`) and the overlay path; the
-C++ code of those five styles is gone (-17.8 KB flash, -3 KB RAM).
+Every panel with Assist compiles the engine, the nine styles' built-in
+files (26 KB, `assist_screen_files.h`) and the overlay path; the C++ code of
+the five line styles is gone (-17.8 KB flash, -3 KB RAM).
 
 - Each time the Assist screen opens, the overlay loads, in this order: the
   screen chosen in Home Assistant, `/assist/<id>.json` for the picked style on
   the microSD card (upload it with the Web Admin file manager) or in the
-  internal storage, then the built-in copy of a file-only style. Atom,
-  Reactor, Dot Halo and Voice Pills without such a file draw their C++ style.
-  The load time and the file's worst-case cost are logged.
+  internal storage, then the built-in copy of the style's file (all nine are
+  built in since the 7B showed the engine drawing about twice as many pixels
+  per millisecond as the C++ styles' LVGL objects). Atom, Reactor, Dot Halo
+  and Voice Pills draw their C++ style only when no file loads. The load time
+  and the file's worst-case cost are logged.
 - A refused file falls back to the C++ style, Atom for a file-only one, and
   logs the reason (`[Assist] Screen file <id> (microSD) refused, using the
   built-in style: ...`); the panel never shows a broken screen. A build
@@ -342,11 +344,37 @@ by the render test's rule, the ring and axis-aligned lines pixel for pixel,
 thin diagonal lines slightly crisper (symmetric coverage where LVGL's mask
 leans to one side).
 
-Still needed on hardware: the 7B's before/after table from the diagnostics
-card for every style and phase (listening, thinking, answering), the S3,
-internal/PSRAM minimum free while the screen shows, and whether the engine's
-hot data (slots, code, draw list) should sit in internal RAM on the S3
-instead of PSRAM.
+Measured on the 7B (Zeid, 2026-10-19/20, Settings > Audio > Preview per
+style, tables in `build/perf-logs/panel-*.txt` of the thread's worktree):
+before any change every style took 70-120 ms per frame (8-12 frames a
+second), the engine's own work 1-4 ms of it, the copies into the display
+memory 17-49 ms, and the rest LVGL rendering at about 0.3 ms per 1,000
+changed pixels whatever the style drew. The rasterizer alone changed little
+on the panel; the cost was the tile grid rendered under the overlay for
+every changed pixel (LVGL treats only a screen's children as covers), and
+the two copies per frame. With the screen hidden under the overlay, the
+reduced pre-swap copy (p4_dsi_camera_presenter) and the rasterizer, draw
+time per frame in the listening phase, before -> after:
+
+| Style | Before | After |
+| --- | --- | --- |
+| Phosphor (file) | 73 ms | 30 ms |
+| Iris (file) | 74 ms | 35 ms |
+| Lens (file) | 52 ms | 36 ms |
+| Light Disc (file) | 127 ms | 57 ms |
+| Sentinel (file) | 72 ms | 52 ms |
+| Voice Pills (C++) | 38 ms | 25 ms |
+| Dot Halo (C++) | 66 ms | 48 ms |
+| Reactor (C++) | 82 ms | 59 ms |
+| Atom (C++) | 94 ms | 74 ms |
+
+Opening a screen fell from about 72 ms to 30-44 ms and the copies to 6-25
+ms per frame. The file path draws about twice as many pixels per
+millisecond as the C++ styles (Phosphor 203k pixels in 30 ms, Atom 207k in
+74 ms). Still open: which draw buffer the panel renders into (the card's
+"Render band" line), an -O2 build, the four C++ styles through their files,
+and direct rendering into the two framebuffers (no band copy at all); the
+S3; internal/PSRAM minimum free while the screen shows.
 
 ## The lab
 
