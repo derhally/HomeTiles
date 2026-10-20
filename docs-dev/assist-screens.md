@@ -368,9 +368,11 @@ time per frame in the listening phase, before -> after:
 | Light Disc | 127 ms | 57 ms | 47 ms |
 | Atom | 94 ms | 71 ms | 68 ms |
 
-(Every style measured through its file, all nine built in; -O2 is a
-whole-firmware build option that costs 720 KB of flash and is not the
-repository default.)
+(Every style measured through its file, all nine built in. -O2 is a
+whole-firmware build, `tools/build-firmware-local.sh --optimize -O2
+--build-path <own cache>`: 720 KB more flash, 10-20 % faster file styles,
+nothing for the copy; left off by decision (Zeid, 2026-10-20), the Tab5 has
+no room for it, and the S3 showed no gain earlier.)
 
 Opening a screen fell from about 72 ms to 30-44 ms and the copies to 6-25
 ms per frame; the panel renders into the SRAM band (36 lines). Tried and
