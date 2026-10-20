@@ -23,10 +23,22 @@
 
 #include <WString.h>
 
+// Measuring is a maintainer's tool: compiled into the beta builds and into a
+// build with HOMETILES_ASSIST_TIMING; release builds carry no counters, no
+// card and no endpoints (the calls below are empty then).
+#if (defined(HOMETILES_ISSUE38_BETA) || defined(HOMETILES_TEST_BETA) || defined(HOMETILES_ASSIST_TIMING)) && \
+    !defined(HOMETILES_ASSIST_TIMING_ACTIVE)
+#define HOMETILES_ASSIST_TIMING_ACTIVE 1
+#endif
+#ifndef HOMETILES_ASSIST_TIMING_ACTIVE
+#define HOMETILES_ASSIST_TIMING_ACTIVE 0
+#endif
+
 namespace assist_timing {
 
 enum Phase : uint8_t { kListening, kThinking, kAnswering, kPhaseCount };
 
+#if HOMETILES_ASSIST_TIMING_ACTIVE
 // Hooks the default display's refresh events once (idempotent).
 void attach();
 
@@ -43,5 +55,14 @@ void reset();
 
 // Every screen's numbers as JSON ({"screens":[...]}, times in microseconds).
 void toJson(String& out);
+#else
+inline void attach() {}
+inline void begin(const char*, bool) {}
+inline void setPhase(Phase) {}
+inline void end() {}
+inline void noteFrame(uint32_t) {}
+inline void reset() {}
+inline void toJson(String& out) { out += "{\"screens\":[]}"; }
+#endif
 
 }  // namespace assist_timing
