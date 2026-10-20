@@ -57,4 +57,10 @@ void line(const Target& t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32
 void arc(const Target& t, int32_t cx, int32_t cy, int32_t radius, int32_t width, int32_t start_deg, int32_t end_deg,
          lv_color_t color, uint8_t opa, bool round_ends);
 
+// A filled disc inscribed in the box x1..x2, y1..y2 (inclusive, like
+// lv_draw_rect with LV_RADIUS_CIRCLE), optionally shaded from color at its
+// top row to bottom at its bottom row like LVGL's vertical gradient.
+void disc(const Target& t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, lv_color_t color, uint8_t opa, bool shaded,
+          lv_color_t bottom);
+
 }  // namespace assist_raster

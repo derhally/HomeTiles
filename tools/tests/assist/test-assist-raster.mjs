@@ -69,6 +69,8 @@ static void shapes(const assist_raster::Target& t, lv_color_t c) {
   assist_raster::arc(t, 100, 80, 30, 3, 0, 360, c, 255, false);   // a full ring
   assist_raster::arc(t, 50, 60, 12, 12, 0, 360, c, 255, false);   // a filled disc (width = radius)
   assist_raster::arc(t, 150, 50, 14, 20, 300, 60, c, 128, false); // a sector past 360, half opaque
+  assist_raster::disc(t, 20, 90, 40, 110, c, 255, false, c);        // a plain disc
+  assist_raster::disc(t, 150, 90, 180, 120, lv_color_hex(0xFF0000), 255, true, lv_color_hex(0x0000FF)); // shaded
 }
 static int plain() {
   const lv_color_t c = lv_color_hex(0x33CCFF);
@@ -110,10 +112,13 @@ static int plain() {
   // The filled disc has no hole; the ring has one; a line's middle is solid;
   // the half-opaque sector is neither background nor the colour.
   // (100, 62) lies in both rings' holes, away from the skew line through the centre.
-  printf("disc_centre %d ring_hole_bg %d ring_body %d line_mid %d hor_rows %d%d%d ver %d%d%d half %d\\n",
+  // The shaded disc: red at its top row, blue at its bottom, its corner untouched.
+  const uint32_t top = at(p888, 165, 90), low = at(p888, 165, 120), corner = at(p888, 150, 90);
+  printf("disc_centre %d ring_hole_bg %d ring_body %d line_mid %d hor_rows %d%d%d ver %d%d%d half %d plain %d shade %d\\n",
          solid(50, 60), at(p565, 100, 62) == bg565, solid(100 + 30 - 1, 80), solid(85, 70),
          solid(100, 124), solid(100, 125), solid(100, 126), solid(174, 70), solid(175, 70), solid(176, 70),
-         at(p565, 150 + 10, 50) != bg565 && !solid(150 + 10, 50));
+         at(p565, 150 + 10, 50) != bg565 && !solid(150 + 10, 50), solid(30, 100) && at(p565, 21, 91) == bg565,
+         (top >> 16) > 0xE0 && (top & 0xFF) < 0x20 && (low & 0xFF) > 0xE0 && (low >> 16) < 0x20 && corner == bg888);
   return 0;
 }
 
@@ -126,13 +131,14 @@ static void flush(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
   for (int y = a->y1; y <= a->y2; ++y) for (int x = a->x1; x <= a->x2; ++x) g_fb[y * g_w + x] = *src++ & 0xFFFFFF;
   lv_display_flush_ready(d);
 }
-struct Shape { int kind; int a, b, c, d, w, s, e; bool round; uint8_t opa; };
+struct Shape { int kind; int a, b, c, d, w, s, e; bool round; uint8_t opa; };  // kind 2: disc (a,b centre, c radius, d = shaded)
 static const Shape kShapes[] = {
   {0, 20, 20, 220, 140, 1, 0, 0, false, 255}, {0, 20, 140, 220, 20, 3, 0, 0, true, 255},
   {0, 120, 10, 125, 150, 2, 0, 0, false, 255}, {0, 10, 80, 230, 84, 5, 0, 0, true, 160},
   {0, 60, 30, 180, 36, 7, 0, 0, false, 255}, {1, 120, 80, 50, 4, 0, 360, 0, false, 255},
   {1, 120, 80, 60, 3, 20, 110, 0, true, 255}, {1, 120, 80, 70, 8, 200, 340, 0, false, 200},
   {1, 60, 120, 25, 25, 0, 360, 0, false, 255}, {1, 180, 120, 20, 6, 350, 30, 0, true, 255},
+  {2, 40, 40, 18, 0, 0, 0, 0, false, 255}, {2, 200, 60, 30, 1, 0, 0, 0, false, 200}, {2, 120, 80, 12, 1, 0, 0, 0, false, 255},
 };
 static void paint(lv_event_t* e) {
   lv_layer_t* layer = lv_event_get_layer(e);
@@ -150,6 +156,17 @@ static void paint(lv_event_t* e) {
         dsc.width = s.w; dsc.round_start = dsc.round_end = s.round;
         dsc.p1.x = s.a; dsc.p1.y = s.b; dsc.p2.x = s.c; dsc.p2.y = s.d;
         lv_draw_line(layer, &dsc);
+      }
+    } else if (s.kind == 2) {
+      const lv_color_t low = lv_color_hex(0x0E7490);
+      if (g_direct) {
+        assist_raster::disc(t, s.a - s.c, s.b - s.c, s.a + s.c, s.b + s.c, c, s.opa, s.d != 0, low);
+      } else {
+        lv_draw_rect_dsc_t dsc; lv_draw_rect_dsc_init(&dsc); dsc.base.layer = layer; dsc.bg_color = c; dsc.bg_opa = s.opa;
+        dsc.radius = LV_RADIUS_CIRCLE;
+        if (s.d) { const lv_color_t stops[2] = {c, low}; lv_grad_init_stops(&dsc.bg_grad, stops, nullptr, nullptr, 2); lv_grad_vertical_init(&dsc.bg_grad); }
+        lv_area_t area{s.a - s.c, s.b - s.c, s.a + s.c, s.b + s.c};
+        lv_draw_rect(layer, &dsc, &area);
       }
     } else if (g_direct) {
       assist_raster::arc(t, s.a, s.b, s.c, s.d, s.s, s.e, c, s.opa, s.round);
@@ -221,7 +238,7 @@ const lines = Object.fromEntries(run.stdout.trim().split('\n').map(l => [l.split
 const [, outside, , inside] = lines.outside.split(' ');
 assert.equal(Number(outside), 0, 'no pixel outside the clip changed');
 assert.ok(Number(inside) > 1500, `shapes drawn inside the clip (${inside} px)`);
-assert.equal(lines.disc_centre, 'disc_centre 1 ring_hole_bg 1 ring_body 1 line_mid 1 hor_rows 110 ver 010 half 1',
+assert.equal(lines.disc_centre, 'disc_centre 1 ring_hole_bg 1 ring_body 1 line_mid 1 hor_rows 110 ver 010 half 1 plain 1 shade 1',
   'the shapes land like lv_draw_line / lv_draw_arc would put them');
 const m = lines.differ.match(/differ (\d+) drawn_fast (\d+) drawn_slow (\d+) far (\d+) total (\d+)/);
 const [differ, drawnFast, drawnSlow, far, total] = m.slice(1).map(Number);
