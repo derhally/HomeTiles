@@ -16,14 +16,11 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
 const overlay = read('src/ui/assist/assist_overlay.cpp');
 const speaker = read('src/audio/speaker.cpp');
-const styles = read('src/ui/assist/assist_styles.cpp');
 // The overlay works the offer out from the shown screen and hands it over.
 assert.match(overlay, /assist_style_catalog::available\(assist_style_catalog::features\(w, h, g_tear_free\),/);
-// Without screen files the file-only styles are not offered.
-assert.match(overlay, /HOMETILES_ASSIST_STYLES_OFF \|\s*\(HOMETILES_ASSIST_DATA_SCREENS \? 0u : assist_style_catalog::kFileStyles\)/);
+assert.match(overlay, /HOMETILES_ASSIST_STYLES_OFF\);/);
 assert.match(overlay, /speaker::setAvailableAssistScreenStyles\(offered\);/);
 assert.match(overlay, /Device::kCapabilities\.tear_free_ui && w == Device::kScreenWidth && h == Device::kScreenHeight/);
-assert.match(overlay, /assist_styles::baseRadius\(g_style,/);
 // The speaker shows the effective style, refuses styles it does not offer and
 // publishes only the offered ones.
 assert.match(speaker, /assist_style_catalog::effective\(g_screen_style\.load\(\), g_screen_styles\.load\(\)\)/);
@@ -34,7 +31,6 @@ const profiles = fs.readdirSync(path.join(root, 'src/devices'))
   .map(d => path.join('src/devices', d, 'profile.h')).filter(p => fs.existsSync(path.join(root, p)));
 const tearFree = profiles.filter(p => /Capabilities\{[^}]*kBuiltinCamera, true\}/.test(read(p)));
 assert.deepEqual(tearFree, ['src/devices/waveshare_touch_lcd_7b/profile.h']);
-assert.match(styles, /float baseRadius\(AssistScreenStyle style, float w, float h\)/);
 
 function findCompiler() {
   for (const candidate of [process.env.CXX, 'clang++', 'g++', 'c++'].filter(Boolean)) {

@@ -1,12 +1,9 @@
 // Host regression for Assist screens from data: the lab draws every screen
-// file with the firmware's LVGL 9.6 renderer (lab --png --compare). A file
-// with a C++ built-in style (Atom, Reactor, Dot Halo, Voice Pills) must agree
-// with it: up to 6 % of the pixels may differ. The styles that exist only as
-// files (Sentinel, Phosphor, Light Disc, Lens, Iris) and the examples are
-// compared with reference pictures in fixtures/assist-screens (128x75 grey,
-// made with --update from renders that matched the former C++ styles). A
-// second run must give the same pixels (the simulated voice and lv_rand start
-// from fixed seeds).
+// file with the firmware's LVGL 9.6 renderer (lab --png), and each picture is
+// compared with its reference in fixtures/assist-screens (128x75 grey, made
+// with --update; the nine built-in styles' references come from renders that
+// matched the former C++ styles). A second run must give the same pixels (the
+// simulated voice and lv_rand start from fixed seeds).
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
@@ -47,37 +44,16 @@ function readPng(file) {
   return {w, h, px};
 }
 
-// Share of pixels that clearly differ between the file (left) and the
-// built-in style (right), and share of the file's pixels that are drawn.
-function compare(file) {
-  const {w, h, px} = readPng(file);
-  const half = (w - 8) / 2;
-  let differ = 0, drawn = 0;
-  for (let y = 0; y < h; ++y) {
-    for (let x = 0; x < half; ++x) {
-      const a = (y * w + x) * 3, b = (y * w + x + half + 8) * 3;
-      let d = 0;
-      for (let c = 0; c < 3; ++c) d += Math.abs(px[a + c] - px[b + c]);
-      if (d > 60) ++differ;
-      if (Math.abs(px[a] - 0x05) + Math.abs(px[a + 1] - 0x07) + Math.abs(px[a + 2] - 0x0F) > 30) ++drawn;
-    }
-  }
-  return {differ: 100 * differ / (half * h), drawn: 100 * drawn / (half * h)};
-}
-
 const screens = path.join(root, 'tools/assist-screen-lab/screens');
-const withLayouts = new Set(fs.readdirSync(screens).filter(f => f.endsWith('.json'))
-  .filter(f => JSON.parse(fs.readFileSync(path.join(screens, f), 'utf8')).layouts).map(f => f.replace('.json', '')));
-// A 128x75 grey copy of the file's half (box average), for the references.
+// A 128x75 grey copy of the picture (box average), for the references.
 function thumbnail(file) {
   const {w, h, px} = readPng(file);
-  const width = w;  // only single pictures (files without a C++ style)
   const tw = 128, th = 75, out = Buffer.alloc(tw * th);
   for (let ty = 0; ty < th; ++ty) {
     for (let tx = 0; tx < tw; ++tx) {
       let sum = 0, n = 0;
       for (let y = Math.floor(ty * h / th); y < Math.floor((ty + 1) * h / th); ++y) {
-        for (let x = Math.floor(tx * width / tw); x < Math.floor((tx + 1) * width / tw); ++x) {
+        for (let x = Math.floor(tx * w / tw); x < Math.floor((tx + 1) * w / tw); ++x) {
           const p = (y * w + x) * 3;
           sum += (px[p] * 30 + px[p + 1] * 59 + px[p + 2] * 11) / 100;
           ++n;
@@ -95,16 +71,13 @@ if (update) fs.mkdirSync(fixtures, {recursive: true});
 const report = [];
 for (const size of ['1024x600', '800x480', '480x480', '720x1280']) {
   const dir = path.join(out, size);
-  const run = spawnSync(lab, [screens, `--png=${dir}`, '--compare', `--size=${size}`], {encoding: 'utf8'});
+  const run = spawnSync(lab, [screens, `--png=${dir}`, `--size=${size}`], {encoding: 'utf8'});
   assert.equal(run.status, 0, run.stdout + run.stderr);
-  const [w, h] = size.split('x').map(Number);
-  const wide = w >= 1.2 * h;
   const all = fs.readdirSync(dir).filter(f => f.endsWith('.png'));
   const shown = fs.readdirSync(screens).filter(f => f.endsWith('.json')).length;
   assert.equal(all.length, shown * 3, `${size}: every screen in three phases`);
-  let worst = 0, worstRef = 0;
-  // Files without a C++ style: against their reference pictures.
-  for (const f of all.filter(f => !f.endsWith('-compare.png'))) {
+  let worstRef = 0;
+  for (const f of all) {
     const thumb = thumbnail(path.join(dir, f));
     const ref = path.join(fixtures, f.replace('.png', '.gray.gz'));
     if (update) {
@@ -119,22 +92,12 @@ for (const size of ['1024x600', '800x480', '480x480', '720x1280']) {
     assert.ok(share < 4, `${f}: ${share.toFixed(2)} % of the reference picture differs`);
     worstRef = Math.max(worstRef, share);
   }
-  const files = all.filter(f => f.endsWith('-compare.png'));
-  for (const f of files) {
-    const id = f.slice(0, f.indexOf(`-${size}-`));
-    const {differ, drawn} = compare(path.join(dir, f));
-    assert.ok(drawn > 0.5, `${f}: the file drew nothing (${drawn.toFixed(2)} % drawn)`);
-    if (wide || !withLayouts.has(id)) {
-      assert.ok(differ < 6, `${f}: ${differ.toFixed(2)} % of pixels differ from the built-in style`);
-      worst = Math.max(worst, differ);
-    }
-  }
-  report.push(`${size} worst ${worst.toFixed(2)} % vs C++, ${worstRef.toFixed(2)} % vs reference`);
+  report.push(`${size} worst ${worstRef.toFixed(2)} % vs reference`);
 }
 
 // The same run twice gives the same pictures.
 const again = path.join(out, 'again');
-const rerun = spawnSync(lab, [screens, `--png=${again}`, '--compare', '--size=1024x600'], {encoding: 'utf8'});
+const rerun = spawnSync(lab, [screens, `--png=${again}`, '--size=1024x600'], {encoding: 'utf8'});
 assert.equal(rerun.status, 0, rerun.stdout + rerun.stderr);
 for (const f of fs.readdirSync(again)) {
   assert.ok(fs.readFileSync(path.join(again, f)).equals(fs.readFileSync(path.join(out, '1024x600', f))), `${f} repeats`);
