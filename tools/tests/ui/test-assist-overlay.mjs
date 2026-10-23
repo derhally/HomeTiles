@@ -12,7 +12,7 @@ const speaker = read('src/audio/speaker.cpp');
 const overlay = read('src/ui/assist/assist_overlay.cpp');
 const sketch = read('HomeTiles.ino');
 
-// The Assist screen strings and the Settings > Audio Assist group's strings
+// The Assist screen strings and the Settings > Display & Sound Assist group's strings
 // are translated in every locale, read by their place in the schema.
 const fields = ['assist_listening', 'assist_thinking', 'assist_answering'];
 const styleFields = ['settings_assist', 'settings_assist_style', 'assist_style_atom', 'assist_style_reactor',
@@ -39,7 +39,7 @@ for (const table of ['kStringsDe', 'kStringsEn', 'kStringsFr', 'kStringsPl', 'kS
 assert.deepEqual(english, ['Listening…', 'Thinking…', 'Answering…']);
 // The overlay shows them through the central schema.
 for (const f of fields) assert.match(overlay, new RegExp(`tr\\(\\)\\.${f}`));
-// Settings > Audio: the model names the styles in their stored order, saves a
+// Settings > Display & Sound: the model names the styles in their stored order, saves a
 // pick and previews; the page shows them as a dropdown row and a play row.
 const settings = read('src/ui/tabs/settings/tab_settings.cpp');
 for (const f of styleFields.slice(2, 11)) assert.match(settings, new RegExp(`return s\\.${f};`));

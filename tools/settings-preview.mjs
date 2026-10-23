@@ -6,13 +6,10 @@
 // (settings_model.h), so both show the same state.
 //
 // Usage: node tools/settings-preview.mjs [p8 p7 p1024 p43 p4b s3 p4880]
-//        [--page=display|wifi|localization|system|audio|setup] [--open=<row>] [--press=<row>]
+//        [--page=display|wifi|localization|system|setup] [--open=<row>] [--press=<row>]
 //        [--state=off|new|ap|eth|ethwifi|online|wait|code|ok|guide|mqtt] [--step=0..3]
 //        [--dialog=github|restart|unpair|password|pairing|leave]
 //        [--entry=manual|join] [--scroll=bottom] [--drag=up] [--no-mockup]
-// --page=audio (a panel with a speaker: five categories) has no mockup page;
-// use it with --no-mockup. --audio shows the five categories on another page;
-// --state=micoff shows the microphone switched off.
 // --scroll=bottom shows a page taller than its area scrolled to its end;
 // --drag=up drags a finger 200 px up from a row of the page (real LVGL
 // input) and prints the page's scroll ("page scroll N"); with --page=setup
@@ -88,9 +85,7 @@ const language = option('lang') || 'en';
 const keys = option('keys');
 const dialogs = {github: 'git', restart: 'restart', unpair: 'encOff', password: 'pwOff', pairing: 'code', leave: 'wzExit'};
 if (dialog !== undefined && !(dialog in dialogs)) throw new Error(`unknown dialog ${dialog}`);
-const categories = {display: 0, wifi: 1, localization: 2, system: 3, audio: 4, setup: 0};
-// A panel with a speaker (Audio before System).
-const audio = page === 'audio' || process.argv.includes('--audio');
+const categories = {display: 0, wifi: 1, localization: 2, system: 3, setup: 0};
 if (!(page in categories)) throw new Error(`unknown page ${page}`);
 const setup = page === 'setup';
 // The setup's network: step 1 searches unless --state=online (or ap); later steps are online.
@@ -125,8 +120,8 @@ const icons = ['cog', 'window-close', 'monitor', 'wifi', 'wifi-off', 'access-poi
   'pencil-outline', 'eye', 'eye-off', 'lock-outline', 'apple-keyboard-shift', 'apple-keyboard-caps',
   'backspace-outline', 'check-bold', 'shield-check', 'loading', 'cellphone-wireless', 'book-open-variant', 'qrcode',
   'view-grid-plus-outline', 'chevron-left', 'wifi-lock', 'wifi-strength-4-lock', 'wifi-strength-outline',
-  'theme-light-dark', 'page-layout-header', 'tune-variant', 'volume-high', 'volume-off', 'microphone',
-  'microphone-off', 'microphone-settings', 'monitor-speaker', 'palette-outline', 'animation-play-outline',
+  'theme-light-dark', 'page-layout-header', 'tune-variant', 'volume-high', 'microphone', 'microphone-settings',
+  'monitor-speaker', 'palette-outline', 'animation-play-outline',
   'play', 'identifier'];
 const iconTable = icons.map(name => {
   const match = mdi.match(new RegExp(`\\{"${name}", (0x[0-9A-Fa-f]+)\\}`));
@@ -293,11 +288,9 @@ SoundValues sound_values() {
 }
 void volume_changed(int, bool) {}
 void microphone_selected(bool) {}
-// Audio (--page=audio or --audio): 60 %, the microphone on at 30 dB.
-bool audio_available() { return ${audio ? 'true' : 'false'}; }
-AudioValues audio_values() { return {60, true, ${state === 'micoff' ? 'false' : 'true'}, 10, 14}; }
+// The microphone at 30 dB.
+MicGain mic_gain() { return MicGain{10, 14}; }
 unsigned mic_gain_tenths_db(int step) { return step <= 10 ? step * 30 : 330 + (step - 11) * 15; }
-void mic_selected(bool) {}
 void mic_gain_changed(int, bool) {}
 uint8_t assist_style_count() { return 9; }
 const char* assist_style_name(uint8_t index) {
