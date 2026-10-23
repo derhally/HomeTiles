@@ -35,7 +35,7 @@ dot_halo, voice_pills, sentinel, phosphor, light_disc, lens, iris).
 | `name` | Shown name, up to 32 bytes. Settings shows a built-in style's own translated name for the nine built-in ids; `name` is for new ids, like a tile title the user gives. |
 | `needs` | Panel features the screen needs (`assist_style_catalog.h`). `wide` means the screen is at least 1.2 times as wide as tall. `tear_free` means the board swaps framebuffers (the 7B in landscape). A panel without them does not offer the screen. A screen with its own square and tall layouts does not need `wide`. |
 | `label_color` | Colour of the "Listening..." line under the screen. |
-| `reach` | How far the screen reaches, which sets the base radius `r` (`assist_screen::baseRadius`, also used by the built-in styles). `half_r` is the half width in `r` (default 2). `side_r` and `side_px` give `side_r * r + side_px` for readouts with a fixed pixel width. `up_r` and `down_r` (0 = not limited) are how far it reaches above and below the centre. `r` is 17 % of the short side, shrunk so the reach plus an 8 px edge fits. `label_r` places the "Listening..." line below the centre, in `r` (default 2.1). |
+| `reach` | How far the screen reaches, which sets the base radius `r` (`assist_screen::baseRadius`). `half_r` is the half width in `r` (default 2). `side_r` and `side_px` give `side_r * r + side_px` for readouts with a fixed pixel width. `up_r` and `down_r` (0 = not limited) are how far it reaches above and below the centre. `r` is 17 % of the short side, shrunk so the reach plus an 8 px edge fits. `label_r` places the "Listening..." line below the centre, in `r` (default 2.1). |
 | `colors` | Named colours, `"#RRGGBB"`, usable in expressions. |
 | `vars` | Named values, in order (below). |
 | `layouts` | Other reach and vars per screen shape (below). |
@@ -69,7 +69,7 @@ Functions:
 - `sin cos tan asin acos atan atan2 sqrt abs min max clamp clamp01 mix floor ceil round fract mod exp pow log sign`
 - `step(edge, x)` and `smoothstep(a, b, x)`.
 - `mod` is always positive for a positive divisor, like GLSL.
-- `hash(i, salt)` gives the built-in styles' fixed fraction per index, 0..1.
+- `hash(i, salt)` gives a fixed fraction per index, 0..1 (the former C++ styles' own).
 - `rand(lo, hi)` gives a whole number in lo..hi; `frand()` gives 0..1.
 - `prev(var, k)` is a state var's value `k` steps of its history ago (below).
 
