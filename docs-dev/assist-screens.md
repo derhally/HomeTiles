@@ -19,6 +19,13 @@ are gone. Panels without Assist are unchanged.
 | Host tests | `tools/tests/assist/test-assist-screen-files.mjs`, `test-assist-screen-render.mjs` |
 | Which styles a panel offers | `src/ui/assist/assist_style_catalog.h` |
 
+Status (kept here, not in `PROJECT_CONTEXT.md`, which stays within upstream's
+size limit): 7B hardware check passed 2026-10-23 with file-only styles;
+S3 and the other P4 boards still need their timing checked. Screens from
+Home Assistant come from the Bridge branch `assist-screens-from-ha`. Open:
+direct rendering into the framebuffers (the band copy costs 6-25 ms a frame,
+see "Frame times").
+
 ## Why
 
 The Assist overlay offers nine styles (Atom, Reactor, Dot Halo, Voice Pills,
