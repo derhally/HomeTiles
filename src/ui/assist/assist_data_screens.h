@@ -2,9 +2,9 @@
 
 // HOMETILES_ASSIST_DATA_SCREENS: Assist screens drawn from screen files
 // (assist_screen.h). On by default on every panel with Assist (a speaker
-// board): all nine styles are drawn from their built-in files. Atom, Reactor,
-// Dot Halo and Voice Pills keep their C++ style as the fallback when no file
-// loads; Sentinel, Phosphor, Light Disc, Lens and Iris exist only as files.
+// board): all nine styles are drawn from their files, compiled into the
+// firmware (assist_screen_files.h). When no file loads, only the phase text
+// shows. A build without a speaker has no Assist screen at all.
 // A build may set it explicitly (the desktop lab and the host tests do).
 
 #ifndef HOMETILES_ASSIST_DATA_SCREENS

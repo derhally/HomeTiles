@@ -73,7 +73,7 @@ inline constexpr int kMaxLiteralText = 8;        // bytes per literal text part
 inline constexpr int kMaxKeep = 8;               // history values per state var
 inline constexpr int kMaxHistoryVars = 16;
 
-// What the panel feeds the screen every 33 ms frame (assist_styles::Frame).
+// What the panel feeds the screen every 33 ms frame (assist_overlay.cpp).
 struct Inputs {
   float t;          // seconds since the screen opened
   float dt;         // seconds since the last frame
@@ -109,8 +109,7 @@ struct Reach {
 inline float centerY(float h) { return h / 2.0f - h * 0.05f; }
 
 // The base radius on a w x h screen: 17 % of the shorter side, smaller when
-// the reach would leave the screen (an 8 px edge). The built-in styles use it
-// with their own reach (assist_styles::baseRadius).
+// the reach would leave the screen (an 8 px edge).
 inline float baseRadius(const Reach& reach, float w, float h) {
   constexpr float kEdgePx = 8.0f;
   float r = (w < h ? w : h) * 0.17f;

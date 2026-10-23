@@ -14,7 +14,6 @@
 #include "src/fonts/ui_fonts.h"
 #include "src/ui/assist/assist_screen.h"
 #include "src/ui/assist/assist_style_catalog.h"
-#include "src/ui/assist/assist_styles.h"
 #include "src/ui/assist/assist_timing.h"
 
 #if HOMETILES_ASSIST_DATA_SCREENS
@@ -48,6 +47,12 @@ using speaker::AssistUiPhase;
 constexpr uint32_t kFramePeriodMs = 33;
 constexpr uint32_t kActivityRefreshMs = 1000;
 constexpr uint32_t kBackdrop = 0x05070F;
+// The label's color when no screen file loaded (the screen then shows only it).
+constexpr uint32_t kLabelColor = 0xC8D2E6;
+// The base radius the screens were tuned at (1024x600): without the
+// tear-free path a larger one runs the clock slower, so movers stay at about
+// 5 px a frame and a band flush shows no tear line.
+constexpr float kTunedRadius = 102.0f;
 // Preview from Settings: listening, thinking and answering, then it hides.
 constexpr uint32_t kPreviewListenMs = 4000;
 constexpr uint32_t kPreviewThinkMs = 2500;
@@ -244,7 +249,7 @@ bool loadScreenFile(AssistScreenStyle style) {
     if (!text) return false;
     started = millis();
     if (!assist_screen::load(g_screen, text, length, error, sizeof(error))) {
-      Serial.printf("[Assist] Screen file %s (%s) refused, using the built-in style: %s\n", id, source, error);
+      Serial.printf("[Assist] Screen file %s (%s) refused: %s\n", id, source, error);
       return false;
     }
   }
@@ -306,7 +311,8 @@ void onFrame(lv_timer_t*) {
   const uint32_t work_started = micros();
   const int32_t w = lv_obj_get_width(g_overlay);
   const int32_t h = lv_obj_get_height(g_overlay);
-  float base_r = assist_styles::baseRadius(g_style, static_cast<float>(w), static_cast<float>(h));
+  // Without a screen file only the label shows, at the default radius.
+  float base_r = 0.17f * static_cast<float>(w < h ? w : h);
   float label_r = 2.1f;
 #if HOMETILES_ASSIST_DATA_SCREENS
   if (g_data) {
@@ -319,7 +325,7 @@ void onFrame(lv_timer_t*) {
   // Without the tear-free path a larger radius would move faster than the
   // tuned ~5 px a frame: the clock runs slower instead.
   const float pace =
-      g_tear_free || base_r <= assist_styles::kTunedRadius ? 1.0f : assist_styles::kTunedRadius / base_r;
+      g_tear_free || base_r <= kTunedRadius ? 1.0f : kTunedRadius / base_r;
   const float t = static_cast<float>(lv_tick_elaps(g_started_tick)) / 1000.0f * pace;
 
   float target_level = 0.0f;
@@ -334,23 +340,22 @@ void onFrame(lv_timer_t*) {
   g_mode += (target_mode - g_mode) * 0.12f;
   g_appear += (1.0f - g_appear) * 0.18f;
 
-  assist_styles::Frame frame;
-  frame.t = t;
-  frame.level = g_level;
-  frame.mode = g_mode;
-  frame.answering = g_shown == AssistUiPhase::Answering;
-  frame.cx = w / 2.0f;
-  frame.cy = h / 2.0f - h * 0.05f;
-  frame.r = base_r * g_appear;
-  frame.w = static_cast<float>(w);
-  frame.h = static_cast<float>(h);
-  const float dt = t - g_last_t;
-  frame.dt = dt < 0.0f ? 0.0f : (dt > 0.05f * pace ? 0.05f * pace : dt);
+  const float cy = h / 2.0f - h * 0.05f;
+  const float dt_raw = t - g_last_t;
+  const float dt = dt_raw < 0.0f ? 0.0f : (dt_raw > 0.05f * pace ? 0.05f * pace : dt_raw);
   g_last_t = t;
 #if HOMETILES_ASSIST_DATA_SCREENS
   if (g_data) {
-    assist_screen::Inputs in{frame.t, frame.dt, frame.level, frame.mode, frame.answering, frame.r,
-                             frame.cx, frame.cy, frame.w, frame.h};
+    const assist_screen::Inputs in{t,
+                                   dt,
+                                   g_level,
+                                   g_mode,
+                                   g_shown == AssistUiPhase::Answering,
+                                   base_r * g_appear,
+                                   w / 2.0f,
+                                   cy,
+                                   static_cast<float>(w),
+                                   static_cast<float>(h)};
     assist_screen::frame(g_screen, in);
     lv_area_t areas[8];
     const int n = assist_screen::dirty(g_screen, areas, 8);
@@ -360,15 +365,13 @@ void onFrame(lv_timer_t*) {
       Serial.printf("[Assist] Screen file over its fill budget: %lu shapes left out\n",
                     static_cast<unsigned long>(assist_screen::skippedShapes(g_screen)));
     }
-  } else {
-    assist_styles::frame(g_style, frame);
   }
 #else
-  assist_styles::frame(g_style, frame);
+  (void)dt;
 #endif
 
-  // The label sits below the widest halo the styles reach (a screen file says where).
-  lv_obj_set_y(g_label, static_cast<int32_t>(frame.cy + base_r * label_r));
+  // The label sits below the screen's widest halo (its file says where).
+  lv_obj_set_y(g_label, static_cast<int32_t>(cy + base_r * label_r));
   assist_timing::noteFrame(micros() - work_started);
 }
 
@@ -411,7 +414,7 @@ void create() {
 
 void show(AssistUiPhase phase, AssistScreenStyle style) {
   if (!g_overlay) create();
-  // Only the chosen style's objects exist; a new style replaces them.
+  // The chosen style's painter; a new style replaces it.
   bool rebuild = !g_style_built || style != g_style;
 #if HOMETILES_ASSIST_DATA_SCREENS
   rebuild = true;  // the screen file is read at every showing (an upload shows next time)
@@ -420,7 +423,7 @@ void show(AssistUiPhase phase, AssistScreenStyle style) {
     lv_obj_clean(g_stage);
     g_style = style;
     g_style_built = true;
-    uint32_t label_color = assist_styles::labelColor(style);
+    uint32_t label_color = kLabelColor;
 #if HOMETILES_ASSIST_DATA_SCREENS
     g_painter = nullptr;
     g_data = loadScreenFile(style);
@@ -433,14 +436,9 @@ void show(AssistUiPhase phase, AssistScreenStyle style) {
       lv_obj_add_event_cb(g_painter, onPaint, LV_EVENT_DRAW_MAIN, nullptr);
       label_color = assist_screen::info(g_screen).label_color;
     } else {
-      if (assist_style_catalog::kFileStyles & (1u << static_cast<uint8_t>(style))) {
-        Serial.printf("[Assist] Screen file %s unavailable, showing Atom\n",
-                      assist_contract::kScreenStyleIds[static_cast<uint8_t>(style)]);
-      }
-      assist_styles::create(style, g_stage);
+      Serial.printf("[Assist] Screen file %s unavailable, showing only the phase text\n",
+                    assist_contract::kScreenStyleIds[static_cast<uint8_t>(style)]);
     }
-#else
-    assist_styles::create(style, g_stage);
 #endif
     lv_obj_set_style_text_color(g_label, lv_color_hex(label_color), 0);
   }
@@ -475,7 +473,7 @@ void show(AssistUiPhase phase, AssistScreenStyle style) {
   if (!g_timer) g_timer = lv_timer_create(onFrame, kFramePeriodMs, nullptr);
   onFrame(nullptr);
 #if HOMETILES_ASSIST_DATA_SCREENS
-  Serial.printf("[Assist] Screen shown (style %u, %s)\n", static_cast<unsigned>(style), g_data ? "screen file" : "built-in");
+  Serial.printf("[Assist] Screen shown (style %u, %s)\n", static_cast<unsigned>(style), g_data ? "screen file" : "no screen file");
 #else
   Serial.printf("[Assist] Screen shown (style %u)\n", static_cast<unsigned>(style));
 #endif
@@ -507,8 +505,7 @@ void offerStyles() {
   g_tear_free = Device::kCapabilities.tear_free_ui && w == Device::kScreenWidth && h == Device::kScreenHeight;
   const uint32_t offered =
       assist_style_catalog::available(assist_style_catalog::features(w, h, g_tear_free),
-                                      HOMETILES_ASSIST_STYLES_OFF |
-                                          (HOMETILES_ASSIST_DATA_SCREENS ? 0u : assist_style_catalog::kFileStyles));
+                                      HOMETILES_ASSIST_STYLES_OFF);
   speaker::setAvailableAssistScreenStyles(offered);
   Serial.printf("[Assist] Screen styles offered at %ldx%ld%s: 0x%03lX\n", static_cast<long>(w),
                 static_cast<long>(h), g_tear_free ? " (tear-free)" : "", static_cast<unsigned long>(offered));

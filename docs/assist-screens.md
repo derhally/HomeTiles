@@ -66,7 +66,7 @@ node tools/assist-screen-lab/build.mjs
 build/assist-screen-lab/lab
 ```
 
-It needs Node, git, a C++ compiler and, for the window, SDL2 (Linux or WSL: `sudo apt install build-essential libsdl2-dev`). Buttons switch screens, phases and panel sizes, show the built-in style for comparison, and report what a screen costs per frame. Saving the file reloads it.
+It needs Node, git, a C++ compiler and, for the window, SDL2 (Linux or WSL: `sudo apt install build-essential libsdl2-dev`). Buttons switch screens, phases and panel sizes and report what a screen costs per frame. Saving the file reloads it.
 
 ## Limits { data-toc-label="Limits" }
 

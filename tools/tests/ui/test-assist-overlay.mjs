@@ -64,41 +64,30 @@ const contract = read('src/audio/assist_contract.h');
 assert.match(contract, /"atom",\s*"reactor",\s*"dot_halo",\s*"voice_pills",\s*"sentinel",\s*"phosphor",\s*"light_disc",\s*"lens",\s*"iris"/);
 assert.match(speaker, /g_screen_style\.store\(style < kAssistScreenStyleCount \? style : 0\);/);
 assert.match(speaker, /prefs\.putUChar\(kPrefsScreenStyleKey, g_screen_style\.load\(\)\);/);
-const styles = read('src/ui/assist/assist_styles.cpp');
-for (const ns of ['atom', 'reactor', 'halo', 'pills']) {
-  assert.match(styles, new RegExp(`namespace ${ns} \\{`));
-  assert.match(styles, new RegExp(`${ns}::create\\(parent\\)`));
-  assert.match(styles, new RegExp(`${ns}::frame\\(f\\)`));
+// Every style is a screen file only: no C++ style left.
+for (const gone of ['assist_styles.cpp', 'assist_styles.h', 'assist_styles_shared.h', 'assist_styles_lines.cpp']) {
+  assert.ok(!existsSync(resolve(root, `src/ui/assist/${gone}`)), `${gone} is gone`);
 }
-// Sentinel, Phosphor, Light Disc, Lens and Iris are screen files only: no
-// C++ left, built into every panel with Assist, and Atom stands in if one
-// cannot load.
-assert.ok(!existsSync(resolve(root, 'src/ui/assist/assist_styles_lines.cpp')));
-const catalogHeader = read('src/ui/assist/assist_style_catalog.h');
-assert.match(catalogHeader, /kFileStyles = \(1u << 4\) \| \(1u << 5\) \| \(1u << 6\) \| \(1u << 7\) \| \(1u << 8\);/);
+assert.doesNotMatch(overlay, /assist_styles::/);
+assert.doesNotMatch(read('src/ui/assist/assist_style_catalog.h'), /kFileStyles/);
 const files = read('src/ui/assist/assist_screen_files.h');
-// Every style's file is built in: the engine draws about twice as fast as
-// the C++ styles' objects on the 7B; the four C++ styles stay the fallback.
+// Every style's file is built in (the engine draws about twice as fast as
+// the former C++ styles on the 7B).
 for (const id of ['atom', 'reactor', 'dot_halo', 'voice_pills', 'sentinel', 'phosphor', 'light_disc', 'lens', 'iris']) {
   assert.match(files, new RegExp(`\\{"${id}", k`));
 }
 assert.doesNotMatch(files, /\{"robot", k|\{"retro_robot", k/);
 assert.match(read('src/ui/assist/assist_data_screens.h'), /#if defined\(HOMETILES_SPEAKER\)\s*#define HOMETILES_ASSIST_DATA_SCREENS 1/);
-assert.match(overlay, /HOMETILES_ASSIST_DATA_SCREENS \? 0u : assist_style_catalog::kFileStyles/);
-assert.match(overlay, /unavailable, showing Atom/);
-// The label follows the style's palette through the central hook (a screen
-// file brings its own label colour in test builds).
-assert.match(overlay, /uint32_t label_color = assist_styles::labelColor\(style\);/);
+assert.match(overlay, /unavailable, showing only the phase text/);
+// The label takes the screen file's colour (a plain one without a file).
+assert.match(overlay, /uint32_t label_color = kLabelColor;/);
+assert.match(overlay, /label_color = assist_screen::info\(g_screen\)\.label_color;/);
 assert.match(overlay, /lv_obj_set_style_text_color\(g_label, lv_color_hex\(label_color\), 0\);/);
-// Only the chosen style's objects exist: the stage is cleaned, then either
-// the compiled style or a screen file's painter is built.
+// The stage is cleaned, then the screen file's painter is built; without a
+// file nothing is drawn but the phase text.
 const rebuild = overlay.slice(overlay.indexOf('if (rebuild) {'), overlay.indexOf('lv_color_hex(label_color)'));
 assert.match(rebuild, /lv_obj_clean\(g_stage\);/);
-assert.match(rebuild, /#else\s*assist_styles::create\(style, g_stage\);\s*#endif/);
-// Screen files (HOMETILES_ASSIST_DATA_SCREENS test builds) fall back to the
-// compiled style when they do not load.
-assert.match(rebuild, /g_data = loadScreenFile\(style\);\s*if \(g_data\) \{[\s\S]*\} else \{[\s\S]*assist_styles::create\(style, g_stage\);\s*\}/);
-assert.match(overlay, /refused, using the built-in style/);
+assert.match(rebuild, /g_data = loadScreenFile\(style\);\s*if \(g_data\) \{[\s\S]*\} else \{[\s\S]*showing only the phase text/);
 
 // Phase contract: any wake word or Assist start listens; a normal end of the
 // capture thinks; the answer clip answers; its end or a failure is idle.
@@ -142,14 +131,5 @@ assert.match(sketch, /if \(assist_overlay::serviceSleep\(\)\) \{\s*was_asleep = 
 // No per-frame allocation and no layer-forcing opacity on the animated parts.
 const frame = overlay.slice(overlay.indexOf('void onFrame('), overlay.indexOf('void onTap('));
 assert.doesNotMatch(frame, /lv_obj_create|lv_.*_create\(|malloc|new /);
-for (const [source, ns] of [[styles, 'atom'], [styles, 'reactor'], [styles, 'halo'], [styles, 'pills'],
-]) {
-  const body = source.slice(source.indexOf(`namespace ${ns} {`));
-  const styleFrame = body.slice(body.indexOf('void frame('), body.indexOf(`}  // namespace ${ns}`));
-  const code = styleFrame.replace(/\/\/[^\n]*/g, '');
-  assert.doesNotMatch(code, /_create\(|malloc|\bnew\b/, `${ns} allocates nothing per frame`);
-  // Label text changes reuse static buffers (no label realloc per frame).
-  assert.doesNotMatch(code, /lv_label_set_text\(|lv_label_set_text_fmt\(/, `${ns} sets only static label text`);
-}
-assert.doesNotMatch(overlay + styles, /lv_obj_set_style_opa\(|LV_BLEND_MODE_ADDITIVE/);
+assert.doesNotMatch(overlay, /lv_obj_set_style_opa\(|LV_BLEND_MODE_ADDITIVE/);
 console.log('Assist overlay checks passed.');
