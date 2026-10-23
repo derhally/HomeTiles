@@ -2,8 +2,8 @@
 // every built-in style's file (screens/*.json) loads within the panel limits and runs
 // frames through every phase, and files that break a limit are refused with
 // a message instead of loading (a downloaded file must not hurt the panel).
-// Rendering is compared with the built-in styles by the lab itself
-// (lab <file> --png=DIR --compare --frames).
+// Rendering is checked against reference pictures by
+// test-assist-screen-render.mjs (lab <file> --png=DIR --frames).
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';

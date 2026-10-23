@@ -2,10 +2,8 @@
 // (tools/assist-screen-lab/screens/*.json) built into firmware compiled with
 // HOMETILES_ASSIST_DATA_SCREENS: one per built-in style id. The overlay draws
 // every style from its file (the engine draws about twice as many pixels per
-// millisecond as the LVGL objects of the C++ styles, measured on the 7B); Atom,
-// Reactor, Dot Halo and Voice Pills keep their C++ as the fallback when a file
-// cannot load, the others (assist_style_catalog.h kFileStyles) fall back to
-// Atom. The examples (robot.json, ...) are for the lab and the microSD card.
+// millisecond as the former C++ styles did, measured on the 7B); when a file
+// cannot load, only the phase text shows. The examples (robot.json, ...) are for the lab and the microSD card.
 // Each file is minified and loses its "note" texts.
 //
 // Usage: node tools/generate-assist-screens.mjs [--check]

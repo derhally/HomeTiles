@@ -6,8 +6,7 @@ engine (`src/ui/assist/assist_screen.*`) compiles the file, checks it against
 the panel's limits, and draws it every frame with LVGL 9.6.
 
 The lab runs that engine on Linux, WSL or Windows with the firmware's own LVGL
-version, fonts and frame loop. It can also show the built-in style of the same
-id beside the file, for comparison.
+version, fonts and frame loop.
 
 How it works, why, and the plan for the firmware: [docs-dev/assist-screens.md](../../docs-dev/assist-screens.md).
 
@@ -36,14 +35,13 @@ build/assist-screen-lab/lab --size=720x720       # start at another panel size
 build/assist-screen-lab/lab my-screens/          # your own folder of .json screens
 ```
 
-The window lists all nine Assist screens in a button bar under the screen.
-Every one is a file now; a built-in style without a file would show dimmer,
-with the firmware's own drawing.
+The window lists every screen in the folder in a button bar under the
+screen, the nine built-in styles first.
 
 | Bar row | Buttons |
 | --- | --- |
 | Screens | One button per screen |
-| Controls | Auto (cycles the phases), Listening, Thinking, Answering; Built-in (switches a file screen to the built-in style with the same id, for comparison); Voice (simulated, or hold the mouse on the screen: higher means louder); `<` size `>` (1024x600, 1280x800, 800x480, 1280x720, 720x720, 480x800, 720x1280) |
+| Controls | Auto (cycles the phases), Listening, Thinking, Answering; Voice (simulated, or hold the mouse on the screen: higher means louder); `<` size `>` (1024x600, 1280x800, 800x480, 1280x720, 720x720, 480x800, 720x1280) |
 | Numbers | For a file: worst-case shapes and steps per frame, pixels redrawn per frame and time per frame on this computer; then the screen's shape (wide, square, tall) and whether the file has a layout for it ([FORMAT.md](FORMAT.md#layouts)), with a warning when the file needs a wide screen the panel would not offer it on. Redrawn pixels are the panel's main cost; time on this computer is only a rough guide. |
 
 Saving a screen file reloads it, and new, renamed or deleted files in the folder show up in the bar within two seconds, without a restart. Keys do the same as the buttons:
@@ -52,7 +50,6 @@ Saving a screen file reloads it, and new, renamed or deleted files in the folder
 | --- | --- |
 | `←` `→` (or `Tab`, `Shift+Tab`) | Previous or next screen |
 | `1` `2` `3` / `A` | Listening, thinking, answering / auto cycle |
-| `B` | Built-in comparison |
 | `V` | Simulated voice on or off |
 | `[` `]` | Previous or next panel size |
 | `R` | Reload |
@@ -62,30 +59,27 @@ Saving a screen file reloads it, and new, renamed or deleted files in the folder
 Headless, without a window:
 
 ```sh
-lab [file or folder ...] --png=out --compare --frames [--size=WxH]
+lab [file or folder ...] --png=out --frames [--size=WxH]
 lab tools/assist-screen-lab/screens --png=out --table     # the Results table below
 ```
 
-This writes one PNG per phase, with the built-in style on the right when
-`--compare` is given, and prints time and redrawn pixels per frame for both.
+This writes one PNG per phase and prints time and redrawn pixels per frame.
 `--table` prints one row of the Results table per screen instead. Runs repeat
 exactly: the simulated voice and LVGL's `lv_rand` start from fixed seeds.
 `LAB_DIRTY=1` also prints every redraw area.
 
 ## Results (1024x600, the 7B)
 
-Every built-in style has a file. Atom, Reactor, Dot Halo and Voice Pills are
-also C++ in the firmware, and the render test compares them with it (at most
-6 % of the pixels differ). Sentinel, Phosphor, Light Disc, Lens and Iris exist
-only as files now; when they were also C++ they matched the same way (Sentinel
-and Phosphor on wide sizes, since their square and tall layouts differ on
-purpose), and the render test compares them with reference pictures since.
+Every built-in style is a file only; the C++ styles are removed. Each file
+matched its former C++ style within 6 % of the pixels (Sentinel and Phosphor
+on wide sizes, since their square and tall layouts differ on purpose), and
+the render test compares them with reference pictures since.
 Atom, Reactor and Dot Halo shade their balls with `grad`.
 
-Generated with `lab tools/assist-screen-lab/screens --png=out --table` (the
-last five rows' built-in numbers are from their former C++ styles):
+Generated with `lab tools/assist-screen-lab/screens --png=out --table`; the
+numbers after "vs" are from the former C++ styles:
 
-| Screen | Worst case shapes / steps per frame | Redrawn px/frame, file vs built-in (listen / think / answer) |
+| Screen | Worst case shapes / steps per frame | Redrawn px/frame, file vs former C++ (listen / think / answer) |
 | --- | --- | --- |
 | Atom | 18 / 2,401 | 225k / 171k / 235k vs 224k / 171k / 233k |
 | Dot Halo | 35 / 5,668 | 165k / 101k / 167k vs 281k / 519k / 276k |
@@ -98,7 +92,7 @@ last five rows' built-in numbers are from their former C++ styles):
 | Voice Pills | 5 / 887 | 99k / 38k / 98k vs 96k / 25k / 96k |
 
 Redrawn pixels are what the panel has to paint, which is its main cost. Dot
-Halo, Lens, Phosphor and Sentinel redraw less than their built-in styles,
+Halo, Lens, Phosphor and Sentinel redraw less than their former C++ styles,
 because only the elements whose drawing changed are redrawn; Atom and Reactor
 about the same; Iris (listening), Light Disc (answering) and Voice Pills
 (thinking) redraw more in one phase each. Steps are weighted (FORMAT.md); the
@@ -107,8 +101,7 @@ about a panel: the design document lists what still needs measuring on S3 and
 P4 hardware.
 
 Two more screens, `robot.json` and `retro_robot.json`, are examples of new
-looks (pictures in the design document); they have no built-in style to
-compare with.
+looks (pictures in the design document), as is `hologram.json`.
 
 ## Device limits
 
@@ -131,18 +124,17 @@ See the table in [FORMAT.md](FORMAT.md#panel-limits). Tests:
   stay within the budget, and runs a few thousand mutated copies of the nine
   files under ASan/UBSan.
 - `tools/tests/assist/test-assist-screen-render.mjs` builds the lab, renders
-  every screen at four sizes, compares the four C++ styles with their files
-  and the other screens with reference pictures (`--update` makes new ones),
+  every screen at four sizes, compares each with its reference pictures
+  (`--update` makes new ones),
   and checks that a second run repeats them exactly.
 
 ## On a panel
 
-Every panel with Assist draws Sentinel, Phosphor, Light Disc, Lens and Iris
-from their built-in screen files (`src/ui/assist/assist_screen_files.h`,
-generated by `node tools/generate-assist-screens.mjs`) and Atom, Reactor, Dot
-Halo and Voice Pills in C++. A file at `/assist/<id>.json` on the microSD card
+Every panel with Assist draws all nine styles from their built-in screen
+files (`src/ui/assist/assist_screen_files.h`, generated by
+`node tools/generate-assist-screens.mjs`). A file at `/assist/<id>.json` on the microSD card
 (upload it with the Web Admin file manager) or in the internal storage takes a
 style's place, and screens from Home Assistant are listed after the built-in
 styles. The file is read each time the screen opens. A file that is refused
-falls back to the C++ style (Atom for a file-only one) and logs why
-(`[Assist] Screen file ... refused`).
+falls back to the built-in copy and logs why (`[Assist] Screen file ...
+refused`).
