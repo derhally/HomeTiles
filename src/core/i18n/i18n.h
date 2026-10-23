@@ -917,18 +917,14 @@ struct Strings {
   // Settings: the System category's name (Russian brought it into the
   // tables, 2026-10-29).
   const char* settings_system;
-  // Settings > Audio (panels with a speaker): the category, its two groups
-  // and their rows (no colon), the category line while the microphone is off.
-  const char* audio_label;
-  const char* settings_speaker;
+  // Settings > Display & Sound, Sound group: the microphone sensitivity row.
   const char* settings_mic_sensitivity;
-  const char* settings_mic_off;
   // On-panel Assist screen after a wake word: listening, Home Assistant
   // working on the answer, and the answer playing.
   const char* assist_listening;
   const char* assist_thinking;
   const char* assist_answering;
-  // Settings > Audio, Assist group: the Assist screen look (a dropdown row of
+  // Settings > Display & Sound, Assist group: the Assist screen look (a dropdown row of
   // the nine styles in speaker::AssistScreenStyle order) and the row that
   // plays it once.
   const char* settings_assist;
