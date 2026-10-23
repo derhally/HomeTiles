@@ -351,25 +351,12 @@ void volume_changed(int percent, bool final) {
 }
 
 void microphone_selected(bool on) { speaker::setMicEnabled(on, "panel settings"); }
-// ---------- Audio page ----------
 
-bool audio_available() { return speaker::supported(); }
-
-AudioValues audio_values() {
-  AudioValues values;
-  values.volume = static_cast<int>(speaker::volume() * 100.0f + 0.5f);
-  values.mic_available = speaker::micCapability();
-  values.mic_on = speaker::micEnabled();
-  values.mic_gain = speaker::micGainStep();
-  values.mic_gain_max = speaker::kMaxMicGainStep;
-  return values;
-}
+MicGain mic_gain() { return MicGain{speaker::micGainStep(), speaker::kMaxMicGainStep}; }
 
 unsigned mic_gain_tenths_db(int step) {
   return speaker::micGainTenthsDb(static_cast<uint8_t>(step < 0 ? 0 : step));
 }
-
-void mic_selected(bool on) { speaker::setMicEnabled(on, "panel"); }
 
 void mic_gain_changed(int step, bool final) {
   if (final) speaker::setMicGainStep(static_cast<uint8_t>(step < 0 ? 0 : step));

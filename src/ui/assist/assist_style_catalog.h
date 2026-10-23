@@ -2,9 +2,9 @@
 
 // Which Assist screen styles a panel offers. Each style lists the panel
 // features it needs; a panel offers every style whose needs it has. The
-// offered styles are the Settings > Audio list, the Bridge's "Assist screen"
-// select options (the status's "screen_styles") and the only ids a command
-// may pick. A stored style the panel does not offer shows as the first
+// offered styles are the Settings > Display & Sound list, the Bridge's
+// "Assist screen" select options (the status's "screen_styles") and the only
+// ids a command may pick. A stored style the panel does not offer shows as the first
 // offered one (Atom always is) and stays stored.
 //
 // To change where a style shows, edit its line in kNeeds. To take styles off

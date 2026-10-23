@@ -76,14 +76,16 @@ assert.match(page, /section\(page, s\.settings_screensaver, false\)/);
 assert.match(page, /settings_model::theme_selected\(index\); \}\);\s*const settings_model::SoundValues sound = settings_model::sound_values\(\);\s*if \(sound\.speaker\) \{\s*settings_parts::section\(page, s\.settings_sound, false\);\s*lv_obj_t\* audio = settings_parts::group\(page, palette\);/,
   'the Sound group follows the Screen group, only with a speaker');
 assert.match(rawPage, /display_slider_row\(audio, "volume-high", s\.settings_volume, width, 0, 100, sound\.volume, on_volume,\s*&g_volume_value\);\s*set_percent_text\(g_volume_value, sound\.volume\);/);
-assert.match(rawPage, /if \(sound\.microphone\) \{\s*settings_parts::Row mic = settings_parts::row\(audio, "microphone", s\.settings_microphone\);\s*settings_parts::toggle\(mic\.row, sound\.mic_on, settings_style::kDisplayColor, palette\.group, true, on_microphone,\s*nullptr\);\s*\}\s*\}\s*settings_parts::section\(page, s\.settings_screensaver, false\);/,
+// This fork adds the microphone sensitivity under the switch and an Assist
+// group before the Screensaver (test-settings-sound-assist.mjs).
+assert.match(rawPage, /if \(sound\.microphone\) \{\s*settings_parts::Row mic = settings_parts::row\(audio, "microphone", s\.settings_microphone\);\s*settings_parts::toggle\(mic\.row, sound\.mic_on, settings_style::kDisplayColor, palette\.group, true, on_microphone,\s*nullptr\);\s*(?:\/\/[^\n]*\n\s*)*const settings_model::MicGain gain[^;]*;\s*display_slider_row\([^;]*;\s*set_gain_text\([^;]*;\s*\}\s*\}\s*(?:\/\/[^\n]*\n\s*)*if \(sound\.speaker && sound\.microphone\) \{[\s\S]*?\n  \}\s*settings_parts::section\(page, s\.settings_screensaver, false\);/,
   'the microphone switch only with a microphone, then the Screensaver group');
 const soundHandlers = between(rawScreen, 'void on_volume(lv_obj_t*, int32_t value, bool final) {', '}  // namespace');
 assert.match(soundHandlers, /set_percent_text\(g_volume_value, value\);\s*settings_model::volume_changed\(value, final\);/);
 // The switch rebuilds the page after its own event, at the same scroll position.
 assert.match(soundHandlers, /settings_model::microphone_selected\(!settings_model::sound_values\(\)\.mic_on\);\s*\/\/[^\n]*\n\s*lv_async_call\(rebuild_display_async, nullptr\);/);
 assert.match(soundHandlers, /const int32_t scroll = lv_obj_get_scroll_y\(g_page\);\s*build_page\(\);\s*lv_obj_update_layout\(g_page\);\s*lv_obj_scroll_to_y\(g_page, scroll, LV_ANIM_OFF\);/);
-assert.match(screen, /void clear_display_refs\(\) \{\s*g_volume_value = nullptr;/);
+assert.match(screen, /void clear_display_refs\(\) \{[^}]*?\bg_volume_value = nullptr;/);
 // The model uses the speaker's own values, as Home Assistant sets them: the
 // volume follows the finger at most every 250 ms and always on release.
 const rawModel = readRepoFile('src/ui/tabs/settings/tab_settings.cpp');
@@ -122,7 +124,7 @@ assert.match(style, /const uint32_t circle_card = hue \? from_icon_card\(card, c
 assert.match(style, /tone_color::g_from_icon_card\(color & 0xFFFFFF, pressed, 0\)/);
 // The slider rows share one length: the longest name x 1.3 (mockup applyProfile).
 const width = between(screen, 'int display_slider_width(int page_width) {', 'lv_obj_t* display_slider_row(');
-assert.match(width, /\{s\.settings_brightness, s\.settings_volume, s\.settings_sleep, s\.settings_starts_after\}/,
+assert.match(width, /\{s\.settings_brightness, s\.settings_volume, (?:s\.settings_mic_sensitivity, )?s\.settings_sleep,\s*s\.settings_starts_after\}/,
   'the volume slider starts at the same x');
 assert.match(width, /name = name \* 13 \/ 10;/);
 assert.match(width, /3 \* settings_style::kRowGap -\s*settings_style::kValueWidth - name/);
