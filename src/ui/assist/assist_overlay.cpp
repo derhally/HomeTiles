@@ -66,7 +66,7 @@ lv_timer_t* g_timer = nullptr;
 bool g_style_built = false;
 AssistScreenStyle g_style = AssistScreenStyle::Atom;
 
-AssistUiPhase g_shown = AssistUiPhase::Idle;
+AssistUiPhase g_shown_phase = AssistUiPhase::Idle;
 uint32_t g_started_tick = 0;
 uint32_t g_activity_ms = 0;
 // The display slept when the conversation started; it sleeps again after.
@@ -329,14 +329,14 @@ void onFrame(lv_timer_t*) {
   const float t = static_cast<float>(lv_tick_elaps(g_started_tick)) / 1000.0f * pace;
 
   float target_level = 0.0f;
-  if (g_shown == AssistUiPhase::Listening) {
+  if (g_shown_phase == AssistUiPhase::Listening) {
     target_level = g_preview ? simulatedLevel() : loudness(speaker::micPeakLevel());
-  } else if (g_shown == AssistUiPhase::Answering) {
+  } else if (g_shown_phase == AssistUiPhase::Answering) {
     target_level = g_preview ? simulatedLevel() : loudness(speaker::outputPeakLevel());
   }
   // Fast attack, slow release: syllables pop, pauses settle.
   g_level += (target_level - g_level) * (target_level > g_level ? 0.55f : 0.12f);
-  const float target_mode = g_shown == AssistUiPhase::Listening ? 0.0f : 1.0f;
+  const float target_mode = g_shown_phase == AssistUiPhase::Listening ? 0.0f : 1.0f;
   g_mode += (target_mode - g_mode) * 0.12f;
   g_appear += (1.0f - g_appear) * 0.18f;
 
@@ -350,7 +350,7 @@ void onFrame(lv_timer_t*) {
                                    dt,
                                    g_level,
                                    g_mode,
-                                   g_shown == AssistUiPhase::Answering,
+                                   g_shown_phase == AssistUiPhase::Answering,
                                    base_r * g_appear,
                                    w / 2.0f,
                                    cy,
@@ -524,8 +524,8 @@ void service() {
     if (phase == AssistUiPhase::Idle) g_preview = false;
   }
   if (phase == AssistUiPhase::Idle) {
-    if (g_shown == AssistUiPhase::Idle) return;
-    g_shown = AssistUiPhase::Idle;
+    if (g_shown_phase == AssistUiPhase::Idle) return;
+    g_shown_phase = AssistUiPhase::Idle;
     hide();
     if (g_woke_display) {
       g_woke_display = false;
@@ -533,11 +533,11 @@ void service() {
     }
     return;
   }
-  if (g_shown == AssistUiPhase::Idle) show(phase, speaker::assistScreenStyle());
+  if (g_shown_phase == AssistUiPhase::Idle) show(phase, speaker::assistScreenStyle());
   // A screen loaded meanwhile (navigation, a popup's close) hides too.
   coverScreen();
-  if (phase != g_shown) {
-    g_shown = phase;
+  if (phase != g_shown_phase) {
+    g_shown_phase = phase;
     lv_label_set_text(g_label, phaseText(phase));
     assist_timing::setPhase(phase == AssistUiPhase::Answering  ? assist_timing::kAnswering
                             : phase == AssistUiPhase::Thinking ? assist_timing::kThinking
@@ -563,8 +563,8 @@ bool serviceSleep() {
 void preview() {
   if (!speaker::supported() || speaker::assistUiPhase() != AssistUiPhase::Idle) return;
   // Restart with the stored style, also when a preview is already running.
-  if (g_shown != AssistUiPhase::Idle) {
-    g_shown = AssistUiPhase::Idle;
+  if (g_shown_phase != AssistUiPhase::Idle) {
+    g_shown_phase = AssistUiPhase::Idle;
     hide();
   }
   g_preview = true;
