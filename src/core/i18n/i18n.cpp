@@ -2151,7 +2151,8 @@ static const LocaleProfile kLocaleDe = {
      "UTC+10 / UTC+11 - Sydney",
      "UTC+12 / UTC+13 - Auckland"},
     {"Binärsensor", "Binärsensor-Entity", "Verlauf", "Aktivität",
-     "Verlauf nicht verfügbar", "Keine Aktivität", "24H", "7D"},
+     "Verlauf nicht verfügbar", "Keine Aktivität"},
+    {"30m", "1H", "12H", "24H", "7D"},
     {"An", "Aus", "Niedrig", "Normal", "Lädt", "Lädt nicht",
      "Erkannt", "Frei", "Kalt", "Verbunden", "Getrennt", "Offen",
      "Geschlossen", "Heiß", "Entriegelt", "Verriegelt", "Nass",
@@ -2274,7 +2275,8 @@ static const LocaleProfile kLocaleEn = {
      "UTC+10 / UTC+11 - Sydney",
      "UTC+12 / UTC+13 - Auckland"},
     {"Binary sensor", "Binary sensor entity", "History", "Activity",
-     "History unavailable", "No activity", "24H", "7D"},
+     "History unavailable", "No activity"},
+    {"30m", "1H", "12H", "24H", "7D"},
     {"On", "Off", "Low", "Normal", "Charging", "Not charging",
      "Detected", "Clear", "Cold", "Connected", "Disconnected", "Open",
      "Closed", "Hot", "Unlocked", "Locked", "Wet", "Dry", "Moving",
@@ -2398,7 +2400,8 @@ static const LocaleProfile kLocaleFr = {
      "UTC+10 / UTC+11 - Sydney",
      "UTC+12 / UTC+13 - Auckland"},
     {"Capteur binaire", "Entité du capteur binaire", "Historique",
-     "Activité", "Historique indisponible", "Aucune activité", "24H", "7D"},
+     "Activité", "Historique indisponible", "Aucune activité"},
+    {"30m", "1H", "12H", "24H", "7D"},
     {"Activé", "Désactivé", "Faible", "Normal", "En charge",
      "Pas en charge", "Détecté", "Aucune détection", "Froid", "Connecté",
      "Déconnecté", "Ouvert", "Fermé", "Chaud", "Déverrouillé",
@@ -5154,7 +5157,8 @@ static const LocaleProfile kLocalePl = {
     {"Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"},
     {"Global", "Europa", "Ameryki", "Afryka i Bliski Wschód", "Azja", "Oceania"},
     {"UTC+0 - UTC", "UTC+0 / UTC+1 - Londyn", "UTC+1 / UTC+2 - Berlin", "UTC+2 / UTC+3 - Ateny", "UTC+3 - Stambuł", "UTC+3 - Moskwa", "UTC-10 - Honolulu", "UTC-8 / UTC-7 - Los Angeles", "UTC-7 - Phoenix", "UTC-7 / UTC-6 - Denver", "UTC-6 / UTC-5 - Chicago", "UTC-5 / UTC-4 - Nowy Jork", "UTC-3 - Buenos Aires", "UTC-3 - São Paulo", "UTC+2 - Johannesburg", "UTC+3 - Nairobi", "UTC+4 - Dubaj", "UTC+5 - Karaczi", "UTC+5:30 - Kalkuta", "UTC+6 - Dhaka", "UTC+7 - Bangkok", "UTC+8 - Singapur", "UTC+8 - Perth", "UTC+9 - Tokio", "UTC+9:30 - Darwin", "UTC+10 / UTC+11 - Sydney", "UTC+12 / UTC+13 - Auckland"},
-    {"Czujnik binarny", "Encja czujnika binarnego", "Historia", "Aktywność", "Historia niedostępna", "Brak aktywności", "24H", "7D"},
+    {"Czujnik binarny", "Encja czujnika binarnego", "Historia", "Aktywność", "Historia niedostępna", "Brak aktywności"},
+    {"30m", "1H", "12H", "24H", "7D"},
     {"Włączony", "Wyłączony", "Niski", "Normalny", "Ładowanie", "Nie ładuje się", "Wykryto", "Brak wykrycia", "Zimno", "Podłączony", "Odłączony", "Otwarty", "Zamknięty", "Gorący", "Odblokowany", "Zablokowany", "Mokry", "Suchy", "W ruchu", "Zatrzymany", "Podłączony", "Odłączony", "Wykryto zasilanie", "Brak zasilania", "W domu", "Poza domem", "Problem", "OK", "Działa", "Nie działa", "Niebezpieczny", "Bezpieczny", "Dostępna aktualizacja", "Aktualny", "Niedostępny", "Nieznany"},
     {"Liczba", "Wybór", "Data/czas", "Encja liczby", "Encja wyboru", "Encja daty/czasu", "Zastosuj", "Nieprawidłowa wartość", "Zastosowywanie…", "Niepowodzenie zmiany", "RRRR-MM-DD", "GG:MM:SS", "RRRR-MM-DD GG:MM:SS", "Rok", "Miesiąc", "Dzień", "gg", "mm", "ss"},
     {"Zamek", "Panel alarmowy", "Wentylator", "Encja zamka", "Encja panelu alarmowego", "Encja wentylatora", "Otwórz drzwi", "Na pewno otworzyć?", "Drzwi otwarte", "Odblokuj", "Zablokuj", "Rozbrój", "W domu", "Poza domem", "Noc", "Urlop", "Własny", "Tryb", "Brak", "Oscylacja", "Kierunek", "Do przodu", "Do tyłu", "Prędkość %u", "Wpisz kod", "Nieprawidłowy kod", "Za dużo błędnych kodów · %u s", "Aby używać tutaj, sparuj ten panel z Home Assistant i ustaw hasło Web Admin.", "Aby używać tutaj, sparuj ten panel z Home Assistant.", "Aby używać tutaj, ustaw hasło Web Admin.", "Odblokowywanie z tego panelu jest wyłączone. Zezwól na nie w opcjach HomeTiles Bridge.", "Rozbrajanie z tego panelu jest wyłączone. Zezwól na nie w opcjach HomeTiles Bridge.", "To urządzenie wymaga kodu tekstowego. Użyj Home Assistant.", "To nie jest dozwolone z panelu.", "Inne polecenie jest jeszcze wykonywane. Spróbuj ponownie za chwilę.", "Urządzenie tego nie obsługuje.", "Urządzenie jest niedostępne.", "Polecenie wygasło. Spróbuj ponownie.", "Brak odpowiedzi z Home Assistant.", "Home Assistant nie mógł wykonać polecenia.", "Zegar panelu nie jest jeszcze ustawiony.", "Urządzenie nie odpowiedziało."},
@@ -5209,7 +5213,8 @@ static const LocaleProfile kLocaleCs = {
     {"Neděle", "Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota"},
     {"Globální", "Evropa", "Amerika", "Afrika a Blízký východ", "Asie", "Oceánie"},
     {"UTC+0 - UTC", "UTC+0 / UTC+1 - Londýn", "UTC+1 / UTC+2 - Berlín", "UTC+2 / UTC+3 - Atény", "UTC+3 - Istanbul", "UTC+3 - Moskva", "UTC-10 - Honolulu", "UTC-8 / UTC-7 - Los Angeles", "UTC-7 - Phoenix", "UTC-7 / UTC-6 - Denver", "UTC-6 / UTC-5 - Chicago", "UTC-5 / UTC-4 - New York", "UTC-3 - Buenos Aires", "UTC-3 - São Paulo", "UTC+2 - Johannesburg", "UTC+3 - Nairobi", "UTC+4 - Dubaj", "UTC+5 - Karáčí", "UTC+5:30 - Kalkata", "UTC+6 - Dháka", "UTC+7 - Bangkok", "UTC+8 - Singapur", "UTC+8 - Perth", "UTC+9 - Tokio", "UTC+9:30 - Darwin", "UTC+10 / UTC+11 - Sydney", "UTC+12 / UTC+13 - Auckland"},
-    {"Binární senzor", "Entita binárního senzoru", "Historie", "Aktivita", "Historie není dostupná", "Žádná aktivita", "24H", "7D"},
+    {"Binární senzor", "Entita binárního senzoru", "Historie", "Aktivita", "Historie není dostupná", "Žádná aktivita"},
+    {"30m", "1H", "12H", "24H", "7D"},
     {"Zapnuto", "Vypnuto", "Nízký", "Normální", "Nabíjí se", "Nenabíjí se", "Detekováno", "Nedetekováno", "Chladno", "Připojeno", "Odpojeno", "Otevřeno", "Zavřeno", "Horko", "Odemčeno", "Zamčeno", "Mokro", "Sucho", "V pohybu", "Zastaveno", "Zapojeno", "Odpojeno", "Napájení detekováno", "Bez napájení", "Doma", "Pryč", "Problém", "V pořádku", "Spuštěno", "Není spuštěno", "Nezajištěno", "Zajištěno", "Je dostupná aktualizace", "Aktuální", "Nedostupné", "Neznámé"},
     {"Číslo", "Výběr", "Datum/čas", "Entita čísla", "Entita výběru", "Entita data/času", "Použít", "Neplatná hodnota", "Nastavuje se…", "Změna se nezdařila", "RRRR-MM-DD", "HH:MM:SS", "RRRR-MM-DD HH:MM:SS", "Rok", "Měsíc", "Den", "hh", "mm", "ss"},
     {"Zámek", "Alarmový panel", "Ventilátor", "Entita zámku", "Entita alarmového panelu", "Entita ventilátoru", "Otevřít dveře", "Opravdu otevřít?", "Dveře otevřené", "Odemknout", "Zamknout", "Odbezpečit", "Doma", "Mimo domov", "Noc", "Dovolená", "Vlastní", "Předvolba", "Žádné", "Oscilace", "Směr", "Vpřed", "Vzad", "Rychlost %u", "Zadejte kód", "Nesprávný kód", "Příliš mnoho chybných kódů · %u s", "Chcete-li tuto funkci použít, spárujte panel s Home Assistant a nastavte heslo webové administrace.", "Chcete-li tuto funkci použít, spárujte panel s Home Assistant.", "Chcete-li tuto funkci použít, nastavte heslo webové administrace.", "Odemknutí z tohoto panelu je vypnuté. Povolte ho v možnostech HomeTiles Bridge.", "Odbezpečení z tohoto panelu je vypnuté. Povolte ho v možnostech HomeTiles Bridge.", "Toto zařízení vyžaduje textový kód. Použijte Home Assistant.", "Tato akce není z panelu povolena.", "Stále se provádí jiný příkaz. Zkuste to za chvíli.", "Zařízení tuto funkci nepodporuje.", "Zařízení není dostupné.", "Platnost příkazu vypršela. Zkuste to znovu.", "Home Assistant neodpovídá.", "Home Assistant nemohl příkaz provést.", "Hodiny panelu zatím nejsou nastavené.", "Zařízení neodpovědělo."},
@@ -5304,7 +5309,8 @@ static const LocaleProfile kLocaleEs = {
      "UTC+10 / UTC+11 - Sídney",
      "UTC+12 / UTC+13 - Auckland"},
     {"Sensor binario", "Entidad del sensor binario", "Historial", "Actividad",
-     "Historial no disponible", "Sin actividad", "24H", "7D"},
+     "Historial no disponible", "Sin actividad"},
+    {"30m", "1H", "12H", "24H", "7D"},
     {"Encendido", "Apagado", "Baja", "Normal", "Cargando", "Sin cargar",
      "Detectado", "No detectado", "Frío", "Conectado", "Desconectado", "Abierto",
      "Cerrado", "Caliente", "Desbloqueado", "Bloqueado", "Húmedo", "Seco",
@@ -5435,7 +5441,8 @@ static const LocaleProfile kLocaleSk = {
      "UTC+10 / UTC+11 - Sydney",
      "UTC+12 / UTC+13 - Auckland"},
     {"Binárny senzor", "Entita binárneho senzora", "História", "Aktivita",
-     "História nedostupná", "Žiadna aktivita", "24H", "7D"},
+     "História nedostupná", "Žiadna aktivita"},
+    {"30m", "1H", "12H", "24H", "7D"},
     {"Zapnuté", "Vypnuté", "Nízka", "Normálna", "Nabíja sa", "Nenabíja sa",
      "Zistené", "Nezistené", "Chladno", "Pripojené", "Odpojené", "Otvorené",
      "Zatvorené", "Horúco", "Odomknuté", "Zamknuté", "Mokro", "Sucho", "Pohybuje sa",
@@ -5850,7 +5857,7 @@ const char* alarm_state_label(const char* language_code, const char* state) {
 }
 
 const char* binary_sensor_label(const char* language_code, uint8_t index) {
-  if (index >= 8) return "";
+  if (index >= 6) return "";
   return locale(language_code).binary_sensor_labels[index];
 }
 

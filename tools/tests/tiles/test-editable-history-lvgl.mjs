@@ -77,6 +77,7 @@ namespace i18n {
  const char* binary_sensor_label(const char*,int n){static const char* labels[]={"","","History","Activity","History unavailable","No activity","24H","7D"};return labels[n];}
  const char* binary_sensor_state_label(const char*,const String& state,const String&){return state=="on"?"On":state=="off"?"Off":state=="unknown"?"Unknown":"Unavailable";}
  struct Strings{const char* loading="Loading";};const Strings& strings(const char*){static Strings s;return s;}
+ struct LocaleProfile{const char* history_range_labels[5];};const LocaleProfile& locale(const char*){static const LocaleProfile profile{{"30m","1H","12H","24H","7D"}};return profile;}
  String format_number(const char*,float value,int decimals){char text[64];snprintf(text,sizeof(text),"%.*f",decimals,value);return text;}
  String localize_numeric_text(const char*,const String& value){return value;}
 }
@@ -96,8 +97,8 @@ namespace Device { constexpr int kGridGap = SCREEN_WIDTH == 480 ? 10 : 16; }  //
 ${geometry}
 #undef lv_obj_update_layout
 ${popup.slice(popup.indexOf('constexpr int kBinaryTimelineHeight') - '#if defined(DEVICE_LAYOUT_480X480)\n'.length, popup.indexOf('struct HistoryRangeConfig'))}
-constexpr int kCardWidth=popup_layout::kCardWidth,kCardPad=popup_layout::kCardPad,kChartHeight=popup_layout::contentScale(325),kTimeAxisMarkerCount=8,kChartLineWidth=popup_layout::scale(4),kHistoryPoints24h=288;
-constexpr int kRangeButtonWidth=popup_layout::scale(92),kRangeButtonHeight=popup_layout::kNavHeight,kRangeButtonGap=popup_layout::scale(10);
+constexpr int kCardWidth=popup_layout::kCardWidth,kCardPad=popup_layout::kCardPad,kChartHeight=popup_layout::contentScale(325),kTimeAxisMarkerCount=8;
+${popup.slice(popup.indexOf('#if defined(CONFIG_IDF_TARGET_ESP32P4)\n// P4 panels draw the area graph'), popup.indexOf('constexpr size_t kBinaryMaxSegments'))}
 #if defined(DEVICE_LAYOUT_480X480)
 constexpr int kTimeAxisHeight=20;
 #elif defined(DEVICE_LAYOUT_1024X600)
@@ -131,9 +132,11 @@ bool isMdiIconDisabled(const String&){return false;}String getMdiChar(const Stri
 void update_binary_state(SensorPopupContext*,const String&,bool,const String&,uint64_t,const String&){assert(false);}
 void hide_pin_popup(){}void hide_camera_popup(){}void hide_climate_popup(){}void hide_cover_popup(){}void hide_light_popup(){}void hide_weather_popup(){}void hide_energy_popup(){}void hide_media_popup(){}void hide_device_popup(){}
 void viewNavigationPopupShown(lv_obj_t*,const char*){}
-HistoryRangeConfig get_history_range_config(SensorHistoryRange r){return r==SensorHistoryRange::Day7?HistoryRangeConfig{168,35,288}:HistoryRangeConfig{24,5,288};}
+${fn(popup,'get_history_range_config').replace('get_history_range_config','real_history_range_config')}
+HistoryRangeConfig get_history_range_config(SensorHistoryRange r){return r==SensorHistoryRange::Day7?HistoryRangeConfig{168,35,288}:r==SensorHistoryRange::Day24?HistoryRangeConfig{24,5,288}:real_history_range_config(r);}
+${fn(popup,'history_shown_seconds')}
 ${fn(control, 'editable_control_height')}
-${['set_label_style','set_range_buttons_visible','style_range_button','update_range_buttons','accept_editable_history_range','clear_chart'].map(n => fn(popup,n)).join('\n')}
+${['set_label_style','set_short_range_buttons_visible','set_range_buttons_visible','graph_accent_color','style_range_button','update_graph_accent','update_range_buttons','accept_editable_history_range','place_extreme_markers','clear_chart','on_chart_fill_draw'].map(n => fn(popup,n)).join('\n')}
 void build_chart(SensorPopupContext* ctx){auto* body_box=ctx->body_box;${chartBuild}}
 ${fn(popup,'measure_label_text_width')}
 int calc_time_axis(const SensorPopupContext* ctx,String* labels,float* fracs,int){int count=ctx->history_range==SensorHistoryRange::Day7?7:4;for(int i=0;i<count;++i){labels[i]=std::to_string(i);fracs[i]=float(i)/(count-1);}return count;}
@@ -141,7 +144,7 @@ int calc_day7_boundary_axis(float*,int){return 0;}
 static void refresh_binary_activity_rows(SensorPopupContext*,bool force=false);
 bool is_popup_visible(SensorPopupContext*);
 static void attach_timeline_readout(SensorPopupContext*);
-static void keep_chart_history(SensorPopupContext*,const std::vector<float>&,int32_t,uint64_t,uint64_t,uint16_t);
+static void keep_chart_history(SensorPopupContext*,const std::vector<float>&,int32_t,uint64_t,uint64_t,uint32_t);
 int history_layout_calls=0;
 ${['update_binary_time_axis','update_y_axis_layout','resize_editable_chart','editable_control_top','layout_editable_history','extract_epoch','extract_numeric','binary_state_code','binary_state_color','binary_state_priority','binary_state_identifier','state_history_color','local_date_key','on_binary_timeline_draw','refresh_binary_labels','refresh_binary_activity_rows','on_binary_activity_scroll','clear_binary_history','ensure_binary_view','binary_timeline_hex_nibble','decode_state_timeline'].map(n => n==='layout_editable_history' ? fn(popup,n).replace('{','{ ++history_layout_calls;') : fn(popup,n)).join('\n')}
 ${readoutFunctions.map(n => fn(popup,n)).join('\n')}
@@ -386,6 +389,29 @@ int main(int argc,char**argv){
   touch_at(content.x1+width/3,content.y1+4);lv_refr_now(display);
   hide_sensor_popup();assert(!ctx.readout.active()&&!shown(ctx.readout_value_label)&&ctx.readout_kind==kReadoutNone&&ctx.readout_latest&&"Hiding the popup ends the readout");
   touch_release();open();
+  // 30 minutes shows the newer half of the 1-hour reply: 30 of 60 points,
+  // and the readout's time span shrinks with them. The area graph rings the
+  // newest highest and lowest point; the minimal graph has no rings.
+  lv_obj_send_event(ctx.range_30m_btn,LV_EVENT_CLICKED,nullptr);assert(ctx.history_range==SensorHistoryRange::Min30&&shown(ctx.range_30m_btn));
+  {std::string values;for(int i=0;i<60;++i)values+=(i?",":"")+std::to_string(20+i%7+(i==40?9:0)-(i==50?6:0)+(i==5?30:0));
+   const std::string json=R"({"entity_id":"sensor.other","hours":1,"period_minutes":1,"unit":"C","range_start":1790000000,"range_end":1790003600,"values":[)"+values+"]}";
+   apply_history_payload(&ctx,json.c_str());}
+  assert(lv_chart_get_point_count(ctx.chart)==30&&ctx.history_values_count==30&&ctx.history_values[0]==20+30%7&&"30 minutes keeps the newest 30 of 60 points");
+  assert(ctx.chart_range_end==1790003600&&ctx.chart_range_end-ctx.chart_range_start==3600*29/59&&"The readout spans the shown points");
+  lv_obj_update_layout(card);lv_refr_now(display);
+  if(kAreaGraph){
+   assert(shown(ctx.high_marker)&&shown(ctx.low_marker)&&shown(ctx.y_max_line)&&"Area graph: rings and guides");
+   lv_point_t high;lv_chart_get_point_pos_by_id(ctx.chart,ctx.series,10,&high);lv_area_t chart_area,wrap_area;lv_obj_get_coords(ctx.chart,&chart_area);lv_obj_get_coords(ctx.chart_wrap,&wrap_area);
+   assert(lv_obj_get_x(ctx.high_marker)+kChartMarkerSize/2==chart_area.x1-wrap_area.x1+high.x&&lv_obj_get_y(ctx.high_marker)+kChartMarkerSize/2==chart_area.y1-wrap_area.y1+high.y&&"The high ring sits on the dropped-older-half maximum");
+  }else assert(!ctx.high_marker&&!ctx.y_max_line&&"Minimal graph: no rings or guides");
+  if(argc>1)snapshot((String(argv[1])+"-sensor-30m.bmp").c_str(),pixels);
+  lv_obj_send_event(ctx.range_1h_btn,LV_EVENT_CLICKED,nullptr);assert(ctx.history_range==SensorHistoryRange::Hour1&&lv_chart_get_point_count(ctx.chart)==60);
+  lv_obj_send_event(ctx.range_day_btn,LV_EVENT_CLICKED,nullptr);
+  {std::string values;for(int i=0;i<288;++i){const double h=i/12.0;values+=(i?",":"")+std::to_string(69.2-0.9*std::cos((h-1)/24*6.283)+(h>18&&h<23?2.6*std::sin((h-18)/5*3.1416):0)+0.15*std::sin(i*1.7));}
+   const std::string json=R"({"entity_id":"sensor.other","hours":24,"period_minutes":5,"unit":"°F","values":[)"+values+"]}";
+   apply_history_payload(&ctx,json.c_str());}
+  assert(lv_chart_get_point_count(ctx.chart)==288);lv_obj_update_layout(card);lv_refr_now(display);
+  if(argc>1)snapshot((String(argv[1])+"-sensor-24h.bmp").c_str(),pixels);
  }
  hide_sensor_popup();g_sensor_popup_ctx=nullptr;
  // Existing textual and numeric Sensor modes must still restore their own UI.
@@ -428,9 +454,12 @@ for(const device of deviceCatalog.profiles){
  assert(covered,`${device.buildProfile}: actual dimensions and layout must have native coverage`);
  console.log(`${device.buildProfile}: ${covered[0]} (${dimensions[1]}x${dimensions[2]})`);
 }
-for(const [profile,width,height,define] of layouts){
+// The P4 panels draw the area graph, the S3 panels the minimal one; every
+// layout runs both.
+for(const [layout,width,height,define] of layouts)for(const p4 of [false,true]){
+ const profile=layout+(p4?'-area':'-minimal');
  const binary=path.join(out,profile+(process.platform==='win32'?'.exe':''));
- let result=spawnSync(host.cxx,[...host.flags,'-std=c++17','-Wno-deprecated-declarations','-I',root,'-I',jsonInclude,'-DSCREEN_WIDTH='+width,'-DSCREEN_HEIGHT='+height,...(define?['-D'+define]:[]),source,path.join(root,'src/ui/popups/popup_open.cpp'),'-I',out,host.archive,'-o',binary],{encoding:'utf8'});
+ let result=spawnSync(host.cxx,[...host.flags,'-std=c++17','-Wno-deprecated-declarations','-I',root,'-I',jsonInclude,'-DSCREEN_WIDTH='+width,'-DSCREEN_HEIGHT='+height,...(define?['-D'+define]:[]),...(p4?['-DCONFIG_IDF_TARGET_ESP32P4']:[]),source,path.join(root,'src/ui/popups/popup_open.cpp'),'-I',out,host.archive,'-o',binary],{encoding:'utf8'});
  assert.equal(result.status,0,result.stdout+result.stderr);
  result=spawnSync(binary,[path.join(out,profile)],{encoding:'utf8',timeout:45000});assert.equal(result.status,0,profile+': '+result.stdout+result.stderr);
  fs.writeFileSync(path.join(out,profile+'.log'),result.stdout+result.stderr);

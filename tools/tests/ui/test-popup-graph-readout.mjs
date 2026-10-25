@@ -128,7 +128,7 @@ assert.match(sensorRefresh, /ctx->readout_latest \? area\.x2 : area\.x1 \+ ctx->
 const historyApply = code(fn(sensor, 'apply_history_payload'));
 assert.match(historyApply, /apply_binary_history_payload\(ctx, doc\);\s*refresh_sensor_readout\(ctx\);/);
 assert.match(historyApply, /apply_state_history_payload\(ctx, doc\);\s*refresh_sensor_readout\(ctx\);\s*return;/);
-assert.match(historyApply, /lv_chart_refresh\(ctx->chart\);\s*refresh_sensor_readout\(ctx\);/);
+assert.match(historyApply, /lv_chart_refresh\(ctx->chart\);\s*ctx->extremes_shown = has_extremes;[\s\S]*?place_extreme_markers\(ctx\);\s*refresh_sensor_readout\(ctx\);/);
 assert.match(code(fn(sensor, 'prepend_state_history_activity')), /ctx->readout\.request_apply\(\);\s*refresh_sensor_readout\(ctx\);/);
 assert.match(code(fn(sensor, 'finish_sensor_popup_open')), /readout_refresh_pending = reuse_history;/);
 assert.match(code(fn(sensor, 'process_sensor_popup_queue')),
