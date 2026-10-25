@@ -139,9 +139,12 @@ constexpr int kContentLiftY = 6;
 constexpr int kContentLiftY = 0;
 #endif
 // Graph readout cursor: a thin white line and, on the numeric chart, a white
-// dot with a ring in the card color. The short state timeline also accepts
+// dot with a ring in the card color (the chart's line is fainter and hidden
+// while the dot rests on the newest point). The short state timeline also accepts
 // touches slightly above and below its bar.
 constexpr int kReadoutLineWidth = std::max(1, popup_layout::scale(2));
+constexpr int kReadoutChartLineWidth = 1;
+constexpr lv_opa_t kReadoutChartLineOpa = LV_OPA_40;
 constexpr int kReadoutDotSize = popup_layout::scale(16);
 constexpr int kReadoutDotRing = std::max(2, popup_layout::scale(3));
 constexpr int kTimelineTouchSlop = popup_layout::scale(24);
@@ -2093,17 +2096,24 @@ static void on_readout_cursor_draw(lv_event_t* event) {
   lv_obj_get_coords(target, &coords);
   const int32_t x = coords.x1 + ctx->readout_x;
 
-  lv_draw_rect_dsc_t line;
-  lv_draw_rect_dsc_init(&line);
-  line.base.layer = layer;
-  line.bg_color = lv_color_hex(ui_theme::text());
-  line.bg_opa = LV_OPA_COVER;
-  line.radius = 0;
-  const int32_t line_x = x - kReadoutLineWidth / 2;
-  lv_area_t line_area = {line_x, coords.y1 + ctx->readout_top,
-                         line_x + kReadoutLineWidth - 1, coords.y1 + ctx->readout_bottom};
-  lv_draw_rect(layer, &line, &line_area);
-  if (ctx->readout_kind != kReadoutChart) return;
+  // On the numeric chart the newest point at rest shows only its dot (a full
+  // line at the right edge read like a spike); a finger on the graph or a
+  // kept older point shows a thin, quiet line like the guides.
+  const bool chart = ctx->readout_kind == kReadoutChart;
+  if (!chart || ctx->readout.active() || !ctx->readout_latest) {
+    lv_draw_rect_dsc_t line;
+    lv_draw_rect_dsc_init(&line);
+    line.base.layer = layer;
+    line.bg_color = lv_color_hex(ui_theme::text());
+    line.bg_opa = chart ? kReadoutChartLineOpa : LV_OPA_COVER;
+    line.radius = 0;
+    const int32_t width = chart ? kReadoutChartLineWidth : kReadoutLineWidth;
+    const int32_t line_x = x - width / 2;
+    lv_area_t line_area = {line_x, coords.y1 + ctx->readout_top,
+                           line_x + width - 1, coords.y1 + ctx->readout_bottom};
+    lv_draw_rect(layer, &line, &line_area);
+  }
+  if (!chart) return;
 
   lv_draw_rect_dsc_t dot;
   lv_draw_rect_dsc_init(&dot);
@@ -2416,6 +2426,8 @@ static void on_sensor_readout_end(void* owner, bool keep) {
   if (keep && graph && readout_target(ctx) == graph) {
     ctx->readout_pin_x = ctx->readout_x;
     ctx->readout_latest = sensor_readout_is_latest(ctx);
+    // The chart cursor drops its line when the finger leaves the newest point.
+    invalidate_readout_cursor(ctx);
     return;
   }
   clear_sensor_readout(ctx);
