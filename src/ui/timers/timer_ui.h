@@ -14,6 +14,9 @@
 // Loop task only.
 
 #include <lvgl.h>
+#include <stddef.h>
+
+#include "src/audio/voice_timer_contract.h"
 
 namespace timer_ui {
 
@@ -30,6 +33,8 @@ int add_head_pill(lv_obj_t* bar, int right, int center_y, int height, uint32_t b
 // The head's time opens the popup (speaker boards only).
 bool head_time_opens_popup();
 void open_popup();
+// A timer's name to show: its own, else its length ("15 min timer").
+void timer_label(const voice_timer::Timer& timer, char* out, size_t size);
 void hide_popup();
 bool popup_visible();
 

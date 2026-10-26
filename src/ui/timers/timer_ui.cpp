@@ -78,7 +78,11 @@ int text_width(const lv_font_t* font, const char* text) {
 
 const lv_font_t* countdown_font() { return home_bar::time_font(); }
 
-const char* timer_name(const Timer& timer) { return timer.name[0] ? timer.name : tr().timer_default_name; }
+// A name to show: the timer's own, else its length ("15 min timer").
+struct TimerName {
+  char text[voice_timer::kMaxNameBytes + 32];
+  explicit TimerName(const Timer& timer) { timer_label(timer, text, sizeof(text)); }
+};
 
 // ---------------------------------------------------------------------------
 // Head pill
@@ -382,9 +386,9 @@ void refresh_popup(bool force) {
       memcpy(row.id, timer.id, sizeof(row.id));
       row.active = timer.active;
       if (timer.active) {
-        lv_label_set_text(row.name, timer_name(timer));
+        lv_label_set_text(row.name, TimerName(timer).text);
       } else {
-        lv_label_set_text_fmt(row.name, "%s, %s", timer_name(timer), tr().timer_paused);
+        lv_label_set_text_fmt(row.name, "%s, %s", TimerName(timer).text, tr().timer_paused);
       }
       lv_label_set_text(row.pause_icon, getMdiChar(timer.active ? "pause" : "play").c_str());
     }
@@ -655,7 +659,7 @@ void show_ringing() {
     char names[96] = "";
     for (uint8_t i = 1; i < g_ring.count; ++i) {
       if (i > 1) strncat(names, ", ", sizeof(names) - strlen(names) - 1);
-      strncat(names, timer_name(g_ring.timers[i]), sizeof(names) - strlen(names) - 1);
+      strncat(names, TimerName(g_ring.timers[i]).text, sizeof(names) - strlen(names) - 1);
     }
     lv_label_set_text_fmt(g_alert.also_label, tr().timer_done_too, names);
     lv_obj_remove_flag(g_alert.also, LV_OBJ_FLAG_HIDDEN);
@@ -748,6 +752,21 @@ void ring_step() {
 uint32_t g_tick_ms = 0;
 
 }  // namespace
+
+void timer_label(const Timer& timer, char* out, size_t size) {
+  if (!out || !size) return;
+  if (timer.name[0]) {
+    snprintf(out, size, "%s", timer.name);
+    return;
+  }
+  char length[24];
+  if (timer.total_s % 60u == 0 && timer.total_s < 3600u) {
+    snprintf(length, sizeof(length), tr().timer_minutes, static_cast<int>(timer.total_s / 60u));
+  } else {
+    voice_timer::formatClock(timer.total_s, length, sizeof(length));
+  }
+  snprintf(out, size, tr().timer_unnamed, length);
+}
 
 int add_head_pill(lv_obj_t* bar, int right, int center_y, int height, uint32_t base) {
   const PillShape shape = current_shape();

@@ -29,6 +29,8 @@ struct Strings {
   // Web Admin note under the type.
   const char* timer_tap_start;
   const char* timer_of;
+  // A timer without a name: "15 min timer" (%s = its length).
+  const char* timer_unnamed;
   const char* timer_icon_words;
   const char* timer_tile_note;
   // Web Admin > Settings > Diagnostics: the Assist screen's frame times

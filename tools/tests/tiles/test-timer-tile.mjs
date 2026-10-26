@@ -39,6 +39,16 @@ assert.match(renderer, /lv_obj_add_event_cb\(card, forget_view, LV_EVENT_DELETE,
 assert.match(renderer, /delete view;/);
 assert.match(renderer, /lv_obj_add_event_cb\(card, on_card, LV_EVENT_CLICKED, nullptr\);/);
 assert.match(renderer, /void on_card\(lv_event_t\*\) \{ timer_ui::open_popup\(\); \}/);
+// From 2x2: the next timer large with a progress bar, the others as rows
+// with their own +1 min, sorted by the time left, "+N" when they overflow.
+assert.match(renderer, /view->big = view->wide && tile\.span_h >= 2;/);
+assert.match(renderer, /void on_row_add\(lv_event_t\* event\) \{[^}]*requestAdd\(row->id, 60\)/);
+assert.match(renderer, /lv_obj_set_width\(view\.bar_fill, w\)/);
+assert.match(renderer, /sooner\(other, left, others\[at - 1\], lefts\[at - 1\]\)/);
+// Unnamed timers show their length, never the tile's title.
+assert.match(renderer, /timer_ui::timer_label\(timer, text, sizeof\(text\)\)/);
+assert.doesNotMatch(renderer, /return view\.idle_title\.c_str\(\);/);
+assert.match(read('src/ui/timers/timer_ui.cpp'), /snprintf\(out, size, tr\(\)\.timer_unnamed, length\);/);
 assert.match(renderer, /tile_surface::scope\(view->card\)/, 'later updates draw on the card\'s surface');
 // Visible text only from the central translations: literals hold no words.
 for (const call of renderer.matchAll(/(?:set_text|lv_label_set_text|button_text)\([^,]+,\s*"([^"]*)"/g)) {
@@ -63,16 +73,17 @@ for (const size of [15, 18, 22, 26, 34]) {
 const header = read('src/core/i18n/i18n.h');
 const fields = [...header.slice(header.indexOf('struct Strings {'), header.indexOf('const char* assist_timing_title;'))
   .matchAll(/const char\* (\w+);/g)].map((m) => m[1]);
-assert.deepEqual(fields.slice(11), ['timer_tap_start', 'timer_of', 'timer_icon_words', 'timer_tile_note']);
+assert.deepEqual(fields.slice(11), ['timer_tap_start', 'timer_of', 'timer_unnamed', 'timer_icon_words', 'timer_tile_note']);
 const i18n = read('src/core/i18n/i18n.cpp');
-const tables = new Map([...i18n.matchAll(/static const Strings kStrings(\w+) = \{\n((?:\s+".*",\n){15})/g)]
+const tables = new Map([...i18n.matchAll(/static const Strings kStrings(\w+) = \{\n((?:\s+".*",\n){16})/g)]
   .map(([, lang, block]) => [lang, [...block.matchAll(/^\s+"(.*)",$/gm)].map((m) => JSON.parse(`"${m[1]}"`))]));
 assert.deepEqual([...tables.keys()].sort(), ['Cs', 'De', 'En', 'Es', 'Fr', 'Pl', 'Sk']);
 const ICONS = new Set(read('src/tiles/icons/mdi_icons.cpp').match(/\{"[a-z0-9-]+", 0x/g).map((m) => m.slice(2, -5)));
 for (const [lang, values] of tables) {
-  const [tap, of, words, note] = values.slice(11);
+  const [tap, of, unnamed, words, note] = values.slice(11);
   assert.ok(tap.length && note.length, `${lang} has the hint and the note`);
   assert.equal((of.match(/%s/g) || []).length, 2, `${lang} timer_of keeps two %s`);
+  assert.equal((unnamed.match(/%s/g) || []).length, 1, `${lang} timer_unnamed keeps one %s`);
   for (const group of words.split('; ')) {
     const [icon, list] = group.split('=');
     assert.ok(ICONS.has(icon), `${lang}: ${icon} is an MDI icon`);
@@ -92,7 +103,7 @@ function findCompiler() {
 }
 const compiler = findCompiler();
 if (compiler) {
-  const words = (lang) => JSON.stringify(tables.get(lang)[13]);
+  const words = (lang) => JSON.stringify(tables.get(lang)[14]);
   // [language, name, icon or "" for no match]; English is the second chance.
   const cases = [
     ['En', 'Pasta', 'pot-steam'], ['En', 'eggs', 'egg'], ['En', 'Steak', 'grill'],

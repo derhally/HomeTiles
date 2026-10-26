@@ -35,7 +35,7 @@ assert.match(homeBar, /timer_ui::add_head_pill\(bar, pill_right, g\.center_y, g\
 
 // Every visible text of the timer UI comes from the central Strings.
 const ui = read('src/ui/timers/timer_ui.cpp');
-const fields = ['timers_title', 'timer_default_name', 'timer_done_title', 'timer_set_for', 'timer_done_too',
+const fields = ['timers_title', 'timer_unnamed', 'timer_done_title', 'timer_set_for', 'timer_done_too',
                 'timer_stop', 'timer_add_minute', 'timer_paused', 'timer_start', 'timer_none', 'timer_minutes'];
 const header = read('src/core/i18n/i18n.h');
 for (const field of fields) {
