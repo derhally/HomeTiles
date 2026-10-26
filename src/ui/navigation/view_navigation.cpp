@@ -13,6 +13,7 @@
 #include "src/ui/popups/cover/cover_popup.h"
 #include "src/ui/popups/device/device_popup.h"
 #include "src/ui/popups/pin/pin_popup.h"
+#include "src/ui/timers/timer_ui.h"
 #include "src/tiles/runtime/tile_icon_source.h"
 #include "src/ui/screensaver/image_screensaver.h"
 #include "src/core/power/power_manager.h"
@@ -465,6 +466,7 @@ bool viewNavigationHandleMessage(const char* incoming_topic, const char* payload
   cancelPending();
   viewNavigationClosePopups();
   hide_pin_popup();
+  timer_ui::hide_popup();
   hide_image_screensaver();
   powerManager.wakeFromDisplaySleep("view command");
   displayManager.resetActivityTimer();

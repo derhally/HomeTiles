@@ -6,6 +6,22 @@
 namespace i18n {
 
 struct Strings {
+  // Voice timers (timer_ui.h): the Timers popup's title, the name of a timer
+  // without one, the alert card's title for it, its "Set for 10:00" line
+  // (%s = the timer's length), "Eggs is done too" (%s = the other timer's
+  // name), the card's Stop and +1 min buttons, a paused timer's state, the
+  // presets' heading, the empty list, and a preset ("5 min", %d = minutes).
+  const char* timers_title;
+  const char* timer_default_name;
+  const char* timer_done_title;
+  const char* timer_set_for;
+  const char* timer_done_too;
+  const char* timer_stop;
+  const char* timer_add_minute;
+  const char* timer_paused;
+  const char* timer_start;
+  const char* timer_none;
+  const char* timer_minutes;
   // Web Admin > Settings > Diagnostics: the Assist screen's frame times
   // measured on the panel (assist_timing.h): the card's title, its note, the
   // Refresh and Reset buttons, the table's column headers and the empty note.

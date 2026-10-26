@@ -8,6 +8,17 @@
 namespace i18n {
 
 static const Strings kStringsDe = {
+    "Timer",
+    "Timer",
+    "Timer abgelaufen",
+    "Gestellt auf %s",
+    "%s ist auch fertig",
+    "Stopp",
+    "+1 Min.",
+    "Pausiert",
+    "Timer starten",
+    "Keine Timer aktiv",
+    "%d Min.",
     "Assist-Bildschirm zeichnen",
     "Bildzeiten, am Panel gemessen, solange der Assist-Bildschirm zu sehen ist; die Vorschau unter Einstellungen > Anzeige & Ton spielt jede Phase. Zeichnen ist ein ganzes Bild, Kopieren sein Anteil fürs Kopieren in den Bildspeicher, Abstand die Zeit zwischen zwei Bildern. Bildschirme mit * sind eingebaut, nicht aus einer Datei.",
     "Aktualisieren",
@@ -740,6 +751,17 @@ static const Strings kStringsDe = {
 };
 
 static const Strings kStringsEn = {
+    "Timers",
+    "Timer",
+    "Timer done",
+    "Set for %s",
+    "%s is done too",
+    "Stop",
+    "+1 min",
+    "Paused",
+    "Start a timer",
+    "No timers running",
+    "%d min",
     "Assist screen drawing",
     "Frame times measured on the panel while the Assist screen shows; Preview in Settings > Display & Sound plays every phase. Draw is one whole frame, copy its share spent copying into the display memory, interval the time between two frames. Screens marked * are built in, not from a file.",
     "Refresh",
@@ -1472,6 +1494,17 @@ static const Strings kStringsEn = {
 };
 
 static const Strings kStringsFr = {
+    "Minuteurs",
+    "Minuteur",
+    "Minuteur terminé",
+    "Réglé sur %s",
+    "%s est aussi terminé",
+    "Arrêter",
+    "+1 min",
+    "En pause",
+    "Démarrer un minuteur",
+    "Aucun minuteur en cours",
+    "%d min",
     "Dessin de l’écran Assist",
     "Temps par image mesurés sur le panneau pendant que l’écran Assist est affiché ; l’aperçu dans Réglages > Écran et son joue chaque phase. Dessin : une image entière, copie : sa part passée à copier vers la mémoire d’écran, intervalle : le temps entre deux images. Les écrans marqués * sont intégrés, pas issus d’un fichier.",
     "Actualiser",
@@ -2609,6 +2642,17 @@ static const TimezoneOptionInfo kTimezoneOptions[kTimezoneOptionCount] = {
 };
 
 static const Strings kStringsPl = {
+    "Minutniki",
+    "Minutnik",
+    "Minutnik zakończony",
+    "Ustawiono na %s",
+    "%s też się skończył",
+    "Zatrzymaj",
+    "+1 min",
+    "Wstrzymany",
+    "Uruchom minutnik",
+    "Brak aktywnych minutników",
+    "%d min",
     "Rysowanie ekranu Asystenta",
     "Czasy klatek mierzone na panelu, gdy widoczny jest ekran Asystenta; podgląd w Ustawienia > Ekran i dźwięk odtwarza każdą fazę. Rysowanie to cała klatka, kopiowanie to jej część spędzona na kopiowaniu do pamięci ekranu, odstęp to czas między dwiema klatkami. Ekrany oznaczone * są wbudowane, nie z pliku.",
     "Odśwież",
@@ -3311,6 +3355,17 @@ static const Strings kStringsPl = {
 };
 
 static const Strings kStringsCs = {
+    "Časovače",
+    "Časovač",
+    "Časovač skončil",
+    "Nastaveno na %s",
+    "%s také skončil",
+    "Zastavit",
+    "+1 min",
+    "Pozastaveno",
+    "Spustit časovač",
+    "Žádné spuštěné časovače",
+    "%d min",
     "Kreslení obrazovky Assist",
     "Časy snímků měřené na panelu, dokud je zobrazena obrazovka Assist; náhled v Nastavení > Displej a zvuk přehraje každou fázi. Kreslení je celý snímek, kopírování jeho část strávená kopírováním do paměti displeje, interval čas mezi dvěma snímky. Obrazovky označené * jsou vestavěné, ne ze souboru.",
     "Obnovit",
@@ -4013,6 +4068,17 @@ static const Strings kStringsCs = {
 };
 
 static const Strings kStringsEs = {
+    "Temporizadores",
+    "Temporizador",
+    "Temporizador terminado",
+    "Programado para %s",
+    "%s también terminó",
+    "Detener",
+    "+1 min",
+    "En pausa",
+    "Iniciar temporizador",
+    "No hay temporizadores",
+    "%d min",
     "Dibujo de la pantalla de Assist",
     "Tiempos por fotograma medidos en el panel mientras se muestra la pantalla de Assist; la vista previa en Ajustes > Pantalla y sonido reproduce cada fase. Dibujo es un fotograma entero, copia su parte dedicada a copiar a la memoria de pantalla, intervalo el tiempo entre dos fotogramas. Las pantallas marcadas con * son integradas, no de un archivo.",
     "Actualizar",
@@ -4715,6 +4781,17 @@ static const Strings kStringsEs = {
 };
 
 static const Strings kStringsSk = {
+    "Časovače",
+    "Časovač",
+    "Časovač skončil",
+    "Nastavené na %s",
+    "%s tiež skončil",
+    "Zastaviť",
+    "+1 min",
+    "Pozastavené",
+    "Spustiť časovač",
+    "Žiadne spustené časovače",
+    "%d min",
     "Kreslenie obrazovky Assist",
     "Časy snímok merané na paneli, kým je zobrazená obrazovka Assist; náhľad v Nastavenia > Displej a zvuk prehrá každú fázu. Kreslenie je celá snímka, kopírovanie jej časť strávená kopírovaním do pamäte displeja, interval čas medzi dvoma snímkami. Obrazovky označené * sú vstavané, nie zo súboru.",
     "Obnoviť",

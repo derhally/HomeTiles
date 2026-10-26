@@ -6,10 +6,13 @@
 
 #include "src/audio/assist_contract.h"
 #include "src/audio/speaker_contract.h"
+#include "src/audio/timer_chime.h"
+#include "src/audio/voice_timer_contract.h"
 #include "src/network/mqtt/mqtt_topics.h"
 #include "src/network/network_manager.h"
 #include "src/ui/assist/assist_screen_store.h"
 #include "src/ui/assist/assist_style_catalog.h"
+#include "src/ui/timers/voice_timers.h"
 
 #if defined(HOMETILES_SPEAKER)
 #include <HTTPClient.h>
@@ -192,6 +195,7 @@ constexpr uint32_t kNotifyVolume = 1u << 1;
 constexpr uint32_t kNotifyShutdown = 1u << 2;
 constexpr uint32_t kNotifyAssist = 1u << 3;
 constexpr uint32_t kNotifyWake = 1u << 4;
+constexpr uint32_t kNotifyChime = 1u << 5;
 constexpr uint32_t kShutdownWaitMs = 1500;
 
 constexpr uint32_t kHttpTimeoutMs = 5000;
@@ -279,6 +283,10 @@ PlayRequest* g_request = nullptr;
 // Loop-task parse buffer for the play URL.
 char* g_parse_url = nullptr;
 std::atomic<bool> g_play_pending{false};
+// A timer chime to play: chime | repeats << 8; kNoChime when none.
+constexpr uint16_t kNoChime = 0xFFFF;
+std::atomic<uint16_t> g_chime_request{kNoChime};
+std::atomic<bool> g_chime_active{false};
 // Bumped by stop, a newer play and shutdown; a clip ends when it changed.
 std::atomic<uint32_t> g_stop_generation{0};
 std::atomic<bool> g_shutdown{false};
@@ -1320,6 +1328,24 @@ void playRequest(const PlayRequest& request, uint8_t* stream_memory) {
   }
 }
 
+// Worker: a voice timer chime (timer_chime.h), rendered in blocks straight
+// into the output; a newer play or stop (the stop generation) ends it.
+void renderChime(uint16_t request) {
+  const uint32_t generation = g_stop_generation.load();
+  timer_chime::ChimeSynth synth;
+  if (!synth.begin(static_cast<uint8_t>(request & 0xFF), static_cast<uint8_t>(request >> 8))) return;
+  if (!g_codec_ready.load() || openOutput(timer_chime::kSampleRate) != ErrorCode::None) return;
+  g_chime_active.store(true);
+  int16_t block[256];
+  while (!stopRequested(generation)) {
+    const size_t frames = synth.render(block, sizeof(block) / sizeof(block[0]));
+    if (frames == 0 || !writeFrames(block, frames)) break;
+  }
+  closeOutput();
+  g_out_level.store(0);
+  g_chime_active.store(false);
+}
+
 // ---------------------------------------------------------------------------
 // Worker: Assist microphone capture
 // ---------------------------------------------------------------------------
@@ -1846,6 +1872,13 @@ void workerMain(void*) {
         g_wake_resume_ms = millis();
       }
     }
+    if (bits & kNotifyChime) {
+      const uint16_t chime = g_chime_request.exchange(kNoChime);
+      if (chime != kNoChime) {
+        renderChime(chime);
+        g_wake_resume_ms = millis();
+      }
+    }
     if (bits & kNotifyAssist) {
       AssistRequest assist_request = {};
       uint32_t generation = 0;
@@ -1952,6 +1985,52 @@ uint8_t capabilityBits() {
 }  // namespace
 
 bool supported() { return kSupported; }
+
+bool playChime(uint8_t chime, uint8_t repeats) {
+#if defined(HOMETILES_SPEAKER)
+  if (!g_worker || g_shutdown.load() || !g_codec_ready.load() || chime >= timer_chime::kChimeCount || repeats == 0) {
+    return false;
+  }
+  // A listening Assist session keeps the I2S lines.
+  if (static_cast<assist::PublicState>(g_assist_state.load()) == assist::PublicState::Listening ||
+      g_assist_pending.load()) {
+    return false;
+  }
+  g_chime_request.store(static_cast<uint16_t>(chime | (repeats << 8)));
+  // Ends the clip or chime playing now; the worker then takes the chime.
+  g_stop_generation.fetch_add(1);
+  notifyWorker(kNotifyChime);
+  return true;
+#else
+  (void)chime;
+  (void)repeats;
+  return false;
+#endif
+}
+
+void stopChime() {
+#if defined(HOMETILES_SPEAKER)
+  g_chime_request.store(kNoChime);
+  if (g_chime_active.load()) g_stop_generation.fetch_add(1);
+#endif
+}
+
+bool chimePlaying() {
+#if defined(HOMETILES_SPEAKER)
+  return g_chime_active.load() || g_chime_request.load() != kNoChime;
+#else
+  return false;
+#endif
+}
+
+bool outputBusy() {
+#if defined(HOMETILES_SPEAKER)
+  return chimePlaying() || g_play_pending.load() ||
+         static_cast<PublicState>(g_public_state.load()) == PublicState::Playing;
+#else
+  return false;
+#endif
+}
 
 AssistUiPhase assistUiPhase() { return static_cast<AssistUiPhase>(g_ui_phase.load()); }
 
@@ -2173,6 +2252,9 @@ void handleCommandPayload(const uint8_t* payload, size_t length) {
 void handleAssistCommandPayload(const uint8_t* payload, size_t length, bool sealed) {
 #if defined(HOMETILES_SPEAKER)
   if (!g_worker || g_shutdown.load() || !g_request_mutex) return;
+  // Voice timers share the Assist topic (voice_timer_contract.h); their
+  // lists are longer than the microphone commands.
+  if (voice_timers::handleCommandPayload(payload, length)) return;
   assist::Command command;
   assist::parseCommand(reinterpret_cast<const char*>(payload), length, &command);
   if (command.status != assist::CommandStatus::Ok) {

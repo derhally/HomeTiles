@@ -14,6 +14,7 @@
 #include "src/ui/popups/cover/cover_popup.h"
 #include "src/ui/popups/device/device_popup.h"
 #include "src/ui/popups/pin/pin_popup.h"
+#include "src/ui/timers/timer_ui.h"
 #include "src/ui/popups/camera/camera_popup.h"
 #include "src/core/display/display_manager.h"
 #include "src/core/config/config_manager.h"
@@ -609,6 +610,7 @@ void UIManager::lockProtectedAccess() {
     tiles_cancel_folder_switch(pending_access_folder_id);
   }
   hide_pin_popup();
+  timer_ui::hide_popup();
   pending_access_kind = PendingAccessKind::None;
   pending_access_folder_id = 0;
   access_gesture_eligible = false;
@@ -682,6 +684,7 @@ void UIManager::finishFolderSwitch(uint16_t folder_id, bool success) {
   pending_access_kind = PendingAccessKind::None;
   pending_access_folder_id = 0;
   hide_pin_popup();
+  timer_ui::hide_popup();
 }
 
 void UIManager::createSettingsGestureZone() {
