@@ -36,6 +36,9 @@
 #include <string.h>
 #include <time.h>
 #include <vector>
+// lvgl.h no longer exports lv_image_cache_drop() (tile_renderer.cpp).
+#include <misc/cache/instance/lv_image_cache.h>
+#include <misc/cache/instance/lv_image_header_cache.h>
 #include "src/ui/shared/ui_theme.h"
 
 namespace {
@@ -310,6 +313,12 @@ struct SensorPopupContext {
   // The chart's Y range (LVGL's default until a history sets it).
   int32_t chart_y_min = 0;
   int32_t chart_y_max = 100;
+  // Area graph fill as an opaque, dithered RGB565 picture of the chart area
+  // (PSRAM, rebuilt when the points, size or colors change).
+  uint16_t* fill_pixels = nullptr;
+  size_t fill_capacity = 0;
+  uint32_t fill_key = 0;
+  lv_image_dsc_t fill_image = {};
   uint64_t chart_range_start = 0;
   uint64_t chart_range_end = 0;
   // Fraction digits of the current numeric state; readouts of history points
@@ -651,6 +660,93 @@ static void set_range_buttons_visible(SensorPopupContext* ctx, bool visible) {
 // so the fill never covers the line, and maps the points exactly like
 // lv_chart's line drawing. Only segments inside the redrawn area get draw
 // tasks, so a moving readout repaints just its strip.
+// Paints the area graph fill into ctx->fill_image: the card color above the
+// line, below it the icon color fading from kChartFillOpa at the top of the
+// chart to nothing at the bottom. RGB565 panels have only 64 green and 32
+// red/blue steps, so a plain LVGL gradient this faint shows ~15 px bands; a
+// 4x4 ordered dither spreads each step across neighbouring pixels instead.
+// Rebuilt only when the points, size or colors change.
+static bool build_chart_fill(SensorPopupContext* ctx, const int32_t* values, uint32_t count,
+                             int32_t width, int32_t height, lv_color_t color, lv_color_t card) {
+  uint32_t key = 2166136261u;
+  auto mix = [&](uint32_t v) { key = (key ^ v) * 16777619u; };
+  mix(static_cast<uint32_t>(width)); mix(static_cast<uint32_t>(height));
+  mix(lv_color_to_u32(color)); mix(lv_color_to_u32(card));
+  mix(static_cast<uint32_t>(ctx->chart_y_min)); mix(static_cast<uint32_t>(ctx->chart_y_max));
+  for (uint32_t i = 0; i < count; ++i) mix(static_cast<uint32_t>(values[i]));
+  const size_t pixels = static_cast<size_t>(width) * height;
+  if (ctx->fill_pixels && ctx->fill_key == key && ctx->fill_image.header.w == width &&
+      ctx->fill_image.header.h == height) {
+    return true;
+  }
+  if (ctx->fill_pixels) {
+    lv_image_cache_drop(&ctx->fill_image);
+    lv_image_header_cache_drop(&ctx->fill_image);
+  }
+  if (pixels > ctx->fill_capacity) {
+    heap_caps_free(ctx->fill_pixels);
+    ctx->fill_pixels = static_cast<uint16_t*>(heap_caps_malloc(
+        pixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    ctx->fill_capacity = ctx->fill_pixels ? pixels : 0;
+    if (!ctx->fill_pixels) return false;
+  }
+
+  // The card stays exactly as LVGL converts it (it drops the low bits), and
+  // the fill dithers only the step above that, so the fade meets the card
+  // without a seam.
+  const uint16_t base = lv_color_to_u16(card);
+  const int32_t base_r = card.red >> 3, base_g = card.green >> 2, base_b = card.blue >> 3;
+  const float span_r = (color.red - card.red) * 31.0f / 255.0f;
+  const float span_g = (color.green - card.green) * 63.0f / 255.0f;
+  const float span_b = (color.blue - card.blue) * 31.0f / 255.0f;
+  static constexpr uint8_t kBayer[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
+  auto channel = [](int32_t base_level, float level, int32_t max) {
+    return LV_CLAMP(0, base_level + static_cast<int32_t>(floorf(level)), max);
+  };
+
+  auto y_at = [&](uint32_t i) {
+    return static_cast<float>(lv_map(values[i], ctx->chart_y_min, ctx->chart_y_max, height, 0));
+  };
+  uint32_t segment = 0;
+  for (int32_t x = 0; x < width; ++x) {
+    uint16_t* column = ctx->fill_pixels + x;
+    // The chart puts point i at width * i / (count - 1).
+    while (segment + 2 < count &&
+           static_cast<int64_t>(width) * (segment + 1) / (count - 1) <= x) {
+      ++segment;
+    }
+    float line = static_cast<float>(height);
+    if (values[segment] != LV_CHART_POINT_NONE && values[segment + 1] != LV_CHART_POINT_NONE) {
+      const int32_t x1 = static_cast<int32_t>(static_cast<int64_t>(width) * segment / (count - 1));
+      const int32_t x2 = static_cast<int32_t>(static_cast<int64_t>(width) * (segment + 1) / (count - 1));
+      const float t = x2 > x1 ? static_cast<float>(x - x1) / (x2 - x1) : 0.0f;
+      line = y_at(segment) + (y_at(segment + 1) - y_at(segment)) * t;
+    }
+    for (int32_t y = 0; y < height; ++y, column += width) {
+      // Partial coverage on the row the line crosses; the line covers it anyway.
+      const float cover = LV_CLAMP(0.0f, y + 1 - line, 1.0f);
+      if (cover <= 0.0f) { *column = base; continue; }
+      const float alpha = cover * kChartFillOpa / 255.0f * (height - 1 - y) / height;
+      const float threshold = (kBayer[y & 3][x & 3] + 0.5f) / 16.0f;
+      const int32_t r = channel(base_r, span_r * alpha + threshold, 31);
+      const int32_t g = channel(base_g, span_g * alpha + threshold, 63);
+      const int32_t b = channel(base_b, span_b * alpha + threshold, 31);
+      *column = static_cast<uint16_t>((r << 11) | (g << 5) | b);
+    }
+  }
+
+  ctx->fill_image = {};
+  ctx->fill_image.header.magic = LV_IMAGE_HEADER_MAGIC;
+  ctx->fill_image.header.cf = LV_COLOR_FORMAT_RGB565;
+  ctx->fill_image.header.w = width;
+  ctx->fill_image.header.h = height;
+  ctx->fill_image.header.stride = width * sizeof(uint16_t);
+  ctx->fill_image.data = reinterpret_cast<const uint8_t*>(ctx->fill_pixels);
+  ctx->fill_image.data_size = pixels * sizeof(uint16_t);
+  ctx->fill_key = key;
+  return true;
+}
+
 static void on_chart_fill_draw(lv_event_t* e) {
   auto* ctx = static_cast<SensorPopupContext*>(lv_event_get_user_data(e));
   lv_obj_t* chart = lv_event_get_target_obj(e);
@@ -666,6 +762,17 @@ static void on_chart_fill_draw(lv_event_t* e) {
   if (width <= 0 || height <= 0) return;
   const lv_area_t& clip = layer->_clip_area;
   if (content.y2 < clip.y1 || content.y1 > clip.y2) return;
+
+  const lv_color_t color = lv_chart_get_series_color(chart, ctx->series);
+  const lv_color_t card = lv_obj_get_style_bg_color(ctx->card, LV_PART_MAIN);
+  // The fill is opaque, so it needs the plain card color behind it.
+  if (lv_obj_get_style_bg_opa(ctx->card, LV_PART_MAIN) >= LV_OPA_MAX &&
+      build_chart_fill(ctx, values, count, width, height, color, card)) {
+    lv_draw_image_dsc_t image;
+    lv_draw_image_dsc_init(&image);
+    image.src = &ctx->fill_image;
+    lv_draw_image(layer, &image, &content);
+  }
 
   if (ctx->day_mark_count) {
     // 7D: the midnights between the centred weekday labels, styled like the
@@ -684,58 +791,6 @@ static void on_chart_fill_draw(lv_event_t* e) {
       mark.p2 = {static_cast<lv_value_precise_t>(x), static_cast<lv_value_precise_t>(content.y2)};
       lv_draw_line(layer, &mark);
     }
-  }
-
-  const lv_color_t color = lv_chart_get_series_color(chart, ctx->series);
-  auto opa_at = [&](int32_t y) -> lv_opa_t {
-    const int32_t below = LV_CLAMP(0, content.y2 - y, height);
-    return static_cast<lv_opa_t>(kChartFillOpa * below / height);
-  };
-  auto x_at = [&](uint32_t i) {
-    return content.x1 + static_cast<int32_t>((static_cast<int64_t>(width) * i) / (count - 1));
-  };
-  auto y_at = [&](uint32_t i) {
-    return lv_map(values[i], ctx->chart_y_min, ctx->chart_y_max, content.y1 + height, content.y1);
-  };
-
-  for (uint32_t i = 0; i + 1 < count; ++i) {
-    if (values[i] == LV_CHART_POINT_NONE || values[i + 1] == LV_CHART_POINT_NONE) continue;
-    const int32_t x1 = x_at(i), x2 = x_at(i + 1);
-    if (x2 < clip.x1) continue;
-    if (x1 > clip.x2) break;
-    if (x2 <= x1) continue;
-    const int32_t y1 = y_at(i), y2 = y_at(i + 1);
-    const int32_t top = LV_MIN(y1, y2), bottom = LV_MAX(y1, y2);
-    if (top > clip.y2) continue;
-
-    if (bottom > top && bottom >= clip.y1) {
-      lv_draw_triangle_dsc_t tri;
-      lv_draw_triangle_dsc_init(&tri);
-      tri.p[0] = {static_cast<lv_value_precise_t>(x1), static_cast<lv_value_precise_t>(y1)};
-      tri.p[1] = {static_cast<lv_value_precise_t>(x2), static_cast<lv_value_precise_t>(y2)};
-      tri.p[2] = {static_cast<lv_value_precise_t>(y1 < y2 ? x1 : x2),
-                  static_cast<lv_value_precise_t>(bottom)};
-      tri.grad.dir = LV_GRAD_DIR_VER;
-      tri.grad.stops[0].color = color;
-      tri.grad.stops[0].opa = opa_at(top);
-      tri.grad.stops[0].frac = 0;
-      tri.grad.stops[1].color = color;
-      tri.grad.stops[1].opa = opa_at(bottom);
-      tri.grad.stops[1].frac = 255;
-      lv_draw_triangle(layer, &tri);
-    }
-
-    lv_draw_rect_dsc_t rect;
-    lv_draw_rect_dsc_init(&rect);
-    rect.bg_grad.dir = LV_GRAD_DIR_VER;
-    rect.bg_grad.stops[0].color = color;
-    rect.bg_grad.stops[0].opa = opa_at(bottom);
-    rect.bg_grad.stops[0].frac = 0;
-    rect.bg_grad.stops[1].color = color;
-    rect.bg_grad.stops[1].opa = LV_OPA_TRANSP;
-    rect.bg_grad.stops[1].frac = 255;
-    const lv_area_t area = {x1, bottom, x2 - 1, content.y2};
-    lv_draw_rect(layer, &rect, &area);
   }
 }
 
@@ -3612,6 +3667,9 @@ static void on_overlay_delete(lv_event_t* e) {
   ctx->readout.cancel();
   heap_caps_free(ctx->history_values);
   ctx->history_values = nullptr;
+  if (ctx->fill_pixels) lv_image_cache_drop(&ctx->fill_image);
+  heap_caps_free(ctx->fill_pixels);
+  ctx->fill_pixels = nullptr;
   editable_control_delete(ctx->control); ctx->control = nullptr;
   if (g_sensor_popup_ctx == ctx) {
     g_sensor_first_frame.cancel();
@@ -3884,6 +3942,9 @@ static void build_popup_body(SensorPopupContext* ctx) {
   // The line takes the icon color (update_graph_accent).
   ctx->series = lv_chart_add_series(chart, graph_accent_color(ctx), LV_CHART_AXIS_PRIMARY_Y);
   if (kAreaGraph) {
+    // The guides go above the chart: its fill is opaque (build_chart_fill).
+    lv_obj_move_foreground(ctx->y_max_line);
+    lv_obj_move_foreground(ctx->y_min_line);
     // Rings on the highest and lowest point, above the line.
     auto make_marker = [&]() -> lv_obj_t* {
       lv_obj_t* marker = lv_obj_create(chart_wrap);

@@ -38,6 +38,8 @@ const iconChar = name => String.fromCodePoint(parseInt(mdi.match(new RegExp('\\{
 const chartBuild = popup.slice(popup.indexOf('  // Chart wrapper: Y-axis labels'), popup.indexOf('  lv_obj_move_foreground(ctx->icon_label);'));
 const cpp = `
 #include <lvgl.h>
+#include <misc/cache/instance/lv_image_cache.h>
+#include <misc/cache/instance/lv_image_header_cache.h>
 #include "src/types/value/value_colors.h"
 #include "src/ui/shared/title_label.h"
 #include "src/ui/popups/popup_nav_style.h"
@@ -120,7 +122,7 @@ ${popup.match(/enum class SensorHistoryRange : uint8_t \{[\s\S]*?\n\};/)[0]}
 constexpr int kBinaryVisibleActivityRows = SCREEN_HEIGHT <= 600 ? 4 : 5;
 struct SensorPopupContext {
  bool editable=true,state_history_mode=true,binary_icon_override=false;String editable_kind,entity_id,editable_history_id;SensorHistoryRange editable_requested_range=SensorHistoryRange::Day24;
- lv_obj_t *overlay=nullptr,*card=nullptr,*title_label=nullptr,*icon_label=nullptr,*control_row=nullptr,*range_day_btn=nullptr,*range_week_btn=nullptr,*range_12h_btn=nullptr,*range_1h_btn=nullptr,*range_30m_btn=nullptr,*high_marker=nullptr,*low_marker=nullptr;lv_point_precise_t guide_points[2]={};int32_t chart_y_min=0,chart_y_max=100;bool extremes_shown=false;size_t high_index=0,low_index=0;float day_marks[8]={};uint8_t day_mark_count=0;int chart_height=kChartHeight;SensorHistoryRange history_range=SensorHistoryRange::Day24;
+ lv_obj_t *overlay=nullptr,*card=nullptr,*title_label=nullptr,*icon_label=nullptr,*control_row=nullptr,*range_day_btn=nullptr,*range_week_btn=nullptr,*range_12h_btn=nullptr,*range_1h_btn=nullptr,*range_30m_btn=nullptr,*high_marker=nullptr,*low_marker=nullptr;lv_point_precise_t guide_points[2]={};int32_t chart_y_min=0,chart_y_max=100;uint16_t* fill_pixels=nullptr;size_t fill_capacity=0;uint32_t fill_key=0;lv_image_dsc_t fill_image={};bool extremes_shown=false;size_t high_index=0,low_index=0;float day_marks[8]={};uint8_t day_mark_count=0;int chart_height=kChartHeight;SensorHistoryRange history_range=SensorHistoryRange::Day24;
  lv_obj_t *body_box,*chart_wrap,*chart,*binary_body,*binary_activity_title,*binary_activity_date,*binary_activity_viewport,*binary_activity_status,*binary_history_title,*binary_timeline,*binary_history_status,*y_min_label,*y_max_label,*y_min_line,*y_max_line;
  lv_obj_t *binary_time_labels[8],*time_labels[8];lv_chart_series_t* series;
  // The graph readout is covered by test-editable-history-lvgl.mjs.
@@ -130,6 +132,7 @@ void clear_chart(SensorPopupContext* ctx,int points){lv_chart_set_point_count(ct
 struct Range{int hours,points;};Range get_history_range_config(SensorHistoryRange range){return range==SensorHistoryRange::Day7?Range{168,288}:Range{24,288};}
 ${fn(popup,'set_label_style')}
 ${fn(popup,'graph_accent_color')}
+${fn(popup,'build_chart_fill')}
 ${fn(popup,'on_chart_fill_draw')}
 void build_chart(SensorPopupContext* ctx){auto* body_box=ctx->body_box;${chartBuild}}
 ${fn(popup,'place_extreme_markers')}
@@ -590,7 +593,7 @@ int main(int argc,char**argv){
 const source = path.join(out, 'test.cpp'); fs.writeFileSync(source, cpp);
 for (const [profile,width,height,define] of [['square',480,480,'DEVICE_LAYOUT_480X480'],['wide',1024,600,'DEVICE_LAYOUT_1024X600'],['ws8',1280,800,''],['portrait',720,1280,''],['base',720,720,''],['landscape',1280,720,''],['compact-wide',800,480,'DEVICE_LAYOUT_480X480']]) {
   const binary=path.join(out,profile+(process.platform==='win32'?'.exe':''));
-  let result=spawnSync(host.cxx,[...host.flags,'-std=c++17','-Wno-deprecated-declarations','-I',root,'-I',jsonInclude,'-I',out,'-DSCREEN_WIDTH='+width,'-DSCREEN_HEIGHT='+height,...(define?['-D'+define]:[]),...(profile==='square'?['-DDEVICE_GUITION_ESP32_4848S040']:[]),source,host.archive,'-o',binary],{encoding:'utf8'});
+  let result=spawnSync(host.cxx,[...host.flags,'-std=c++17','-Wno-deprecated-declarations','-I',root,'-I',path.join(host.library,'src'),'-I',jsonInclude,'-I',out,'-DSCREEN_WIDTH='+width,'-DSCREEN_HEIGHT='+height,...(define?['-D'+define]:[]),...(profile==='square'?['-DDEVICE_GUITION_ESP32_4848S040']:[]),source,host.archive,'-o',binary],{encoding:'utf8'});
   assert.equal(result.status,0,result.stdout+result.stderr);
   result=spawnSync(binary,[path.join(out,profile)],{encoding:'utf8',timeout:45000});assert.equal(result.status,0,profile+': '+result.stdout+result.stderr);
   fs.writeFileSync(path.join(out,profile+'.log'),result.stdout+result.stderr);

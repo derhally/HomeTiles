@@ -39,6 +39,8 @@ const readoutFunctions = ['get_value_font', 'set_label_text_if_changed', 'numeri
   'build_readout_band', 'keep_chart_history', 'attach_chart_readout', 'attach_timeline_readout'];
 const cpp = `
 #include <lvgl.h>
+#include <misc/cache/instance/lv_image_cache.h>
+#include <misc/cache/instance/lv_image_header_cache.h>
 #include "src/ui/popups/popup_first_frame.h"
 #include "src/ui/popups/popup_open.h"
 #include "src/ui/popups/popup_graph_readout.h"
@@ -136,7 +138,7 @@ ${fn(popup,'get_history_range_config').replace('get_history_range_config','real_
 HistoryRangeConfig get_history_range_config(SensorHistoryRange r){return r==SensorHistoryRange::Day7?HistoryRangeConfig{168,35,288}:r==SensorHistoryRange::Day24?HistoryRangeConfig{24,5,288}:real_history_range_config(r);}
 ${fn(popup,'history_shown_seconds')}
 ${fn(control, 'editable_control_height')}
-${['set_label_style','set_short_range_buttons_visible','set_range_buttons_visible','graph_accent_color','style_range_button','update_graph_accent','update_range_buttons','accept_editable_history_range','place_extreme_markers','clear_chart','on_chart_fill_draw'].map(n => fn(popup,n)).join('\n')}
+${['set_label_style','set_short_range_buttons_visible','set_range_buttons_visible','graph_accent_color','style_range_button','update_graph_accent','update_range_buttons','accept_editable_history_range','place_extreme_markers','clear_chart','build_chart_fill','on_chart_fill_draw'].map(n => fn(popup,n)).join('\n')}
 void build_chart(SensorPopupContext* ctx){auto* body_box=ctx->body_box;${chartBuild}}
 ${fn(popup,'measure_label_text_width')}
 int calc_time_axis(const SensorPopupContext* ctx,String* labels,float* fracs,int){int count=ctx->history_range==SensorHistoryRange::Day7?7:4;for(int i=0;i<count;++i){labels[i]=std::to_string(i);fracs[i]=float(i)/(count-1);}return count;}
@@ -416,6 +418,25 @@ int main(int argc,char**argv){
    apply_history_payload(&ctx,json.c_str());}
   assert(lv_chart_get_point_count(ctx.chart)==288);lv_obj_update_layout(card);lv_refr_now(display);
   if(argc>1)snapshot((String(argv[1])+"-sensor-24h.bmp").c_str(),pixels);
+  if(kAreaGraph){
+   // The fill is a dithered RGB565 picture: the card color above the line,
+   // and no flat bands below it (a plain gradient this faint on RGB565
+   // repeats each color for ~15 rows).
+   lv_area_t content;lv_obj_get_content_coords(ctx.chart,&content);
+   const int32_t w=lv_area_get_width(&content),h=lv_area_get_height(&content);
+   assert(ctx.fill_pixels&&ctx.fill_image.header.w==w&&ctx.fill_image.header.h==h&&ctx.fill_image.header.cf==LV_COLOR_FORMAT_RGB565);
+   const uint16_t base=lv_color_to_u16(lv_obj_get_style_bg_color(ctx.card,LV_PART_MAIN));
+   const int32_t x=w*20/24;int32_t top=0;while(top<h&&ctx.fill_pixels[top*w+x]==base)++top;
+   assert(top>0&&top<h/2&&"The fill starts at the line, the card color stays above it");
+   assert(ctx.fill_pixels[(h-1)*w+x]==base&&"The fill fades into the card at the bottom");
+   // The eye averages neighbouring pixels: the green of four columns side
+   // by side must change at least every few rows.
+   auto green=[&](int32_t y){int sum=0;for(int32_t c=0;c<4;++c)sum+=(ctx.fill_pixels[y*w+x+c]>>5)&63;return sum;};
+   int run=1,longest=1;for(int32_t y=top+3;y<h-8;++y){run=green(y)==green(y-1)?run+1:1;longest=std::max(longest,run);}
+   assert(longest<=6&&"Dithering leaves no flat bands in the fill");
+   const uint32_t key=ctx.fill_key;lv_obj_invalidate(ctx.chart);lv_refr_now(display);
+   assert(ctx.fill_key==key&&"A redraw without new points reuses the fill");
+  }
  }
  hide_sensor_popup();g_sensor_popup_ctx=nullptr;
  // Existing textual and numeric Sensor modes must still restore their own UI.
@@ -463,7 +484,7 @@ for(const device of deviceCatalog.profiles){
 for(const [layout,width,height,define] of layouts)for(const p4 of [false,true]){
  const profile=layout+(p4?'-area':'-minimal');
  const binary=path.join(out,profile+(process.platform==='win32'?'.exe':''));
- let result=spawnSync(host.cxx,[...host.flags,'-std=c++17','-Wno-deprecated-declarations','-I',root,'-I',jsonInclude,'-DSCREEN_WIDTH='+width,'-DSCREEN_HEIGHT='+height,...(define?['-D'+define]:[]),...(p4?['-DCONFIG_IDF_TARGET_ESP32P4']:[]),source,path.join(root,'src/ui/popups/popup_open.cpp'),'-I',out,host.archive,'-o',binary],{encoding:'utf8'});
+ let result=spawnSync(host.cxx,[...host.flags,'-std=c++17','-Wno-deprecated-declarations','-I',root,'-I',path.join(host.library,'src'),'-I',jsonInclude,'-DSCREEN_WIDTH='+width,'-DSCREEN_HEIGHT='+height,...(define?['-D'+define]:[]),...(p4?['-DCONFIG_IDF_TARGET_ESP32P4']:[]),source,path.join(root,'src/ui/popups/popup_open.cpp'),'-I',out,host.archive,'-o',binary],{encoding:'utf8'});
  assert.equal(result.status,0,result.stdout+result.stderr);
  result=spawnSync(binary,[path.join(out,profile)],{encoding:'utf8',timeout:45000});assert.equal(result.status,0,profile+': '+result.stdout+result.stderr);
  fs.writeFileSync(path.join(out,profile+'.log'),result.stdout+result.stderr);
