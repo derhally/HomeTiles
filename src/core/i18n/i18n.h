@@ -22,6 +22,15 @@ struct Strings {
   const char* timer_start;
   const char* timer_none;
   const char* timer_minutes;
+  // Timer tile (types/timer): the idle tile's hint, a wide tile's
+  // "Tea, of 5:00" (%s = the name, %s = the timer's length), and the words
+  // that pick the tile's icon from a timer's name (timer_icons.h:
+  // "icon=word, word; icon=word", lower case, '!' = the whole word), and the
+  // Web Admin note under the type.
+  const char* timer_tap_start;
+  const char* timer_of;
+  const char* timer_icon_words;
+  const char* timer_tile_note;
   // Web Admin > Settings > Diagnostics: the Assist screen's frame times
   // measured on the panel (assist_timing.h): the card's title, its note, the
   // Refresh and Reset buttons, the table's column headers and the empty note.

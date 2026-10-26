@@ -509,6 +509,12 @@ Shows a `camera` or `image` entity. The camera can also be the [built-in camera]
 
 ESP32-P4 displays play the video at up to 30 frames per second, in the popup and full screen; ESP32-S3 displays at about 4. Allow local TCP access to the Home Assistant host on ports `8124`–`8131`. See [Camera connection](bridge.md#experimental-camera-transport) for requirements and performance notes. A doorbell automation can open a camera full screen with the display's [View entity](bridge.md#control-the-displayed-view).
 
+### Timer
+
+Shows this display's voice timers, the ones you set by voice through its Assist satellite ("set a timer for 10 minutes named pasta"). The countdown and the timer's name sit at the bottom, the icon follows the name (a pot for pasta, a cup for tea, a washing machine for laundry), otherwise the tile's own icon or a timer. With more timers a **+N** shows how many more. Tap the tile to open the Timers list.
+
+From two columns wide the tile has controls: without a timer presets of 1, 5, 10 and 15 minutes; with one timer pause or resume, **+1 min** and cancel; with more **+1 min** for the next one and the two after it. Offered on displays with a speaker and microphone only.
+
 ## Local Tiles
 
 These types work without Home Assistant.

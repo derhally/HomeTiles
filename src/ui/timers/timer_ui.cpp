@@ -13,6 +13,7 @@
 #include "src/tiles/config/grid_layout.h"
 #include "src/tiles/icons/mdi_icons.h"
 #include "src/tiles/runtime/tile_renderer_shared.h"
+#include "src/types/timer/renderer.h"
 #include "src/ui/popups/popup_layout.h"
 #include "src/ui/popups/popup_nav_style.h"
 #include "src/ui/popups/popup_open.h"
@@ -854,6 +855,7 @@ void service() {
     refresh_pills();
   }
   refresh_popup(false);
+  timer_tile::refresh();
 }
 
 bool serviceSleep() {
