@@ -713,15 +713,17 @@ void ring_step() {
     return;
   }
   const uint8_t sound = voice_timers::sound();
+  // Sound off or the timer volume at 0: the card and the spoken sentence only.
+  const bool silent = sound == voice_timer::kSoundOff || voice_timers::volumePercent() == 0;
   // Home Assistant says which timer finished once the first round ended.
-  if (!g_ring.spoke && (g_ring.rounds > 0 || sound == voice_timer::kSoundOff) &&
+  if (!g_ring.spoke && (g_ring.rounds > 0 || silent) &&
       static_cast<int32_t>(now - g_ring.first_round_end_ms) >= 0 && !speaker::outputBusy()) {
     g_ring.spoke = true;
     voice_timers::requestAction("speak", g_ring.timers[0].id);
     g_ring.next_ms = now + kSpeakStartMs;
     return;
   }
-  if (sound == voice_timer::kSoundOff || static_cast<int32_t>(now - g_ring.next_ms) < 0) return;
+  if (silent || static_cast<int32_t>(now - g_ring.next_ms) < 0) return;
   // The spoken sentence (or anything else playing) finishes first.
   if (speaker::outputBusy()) {
     g_ring.next_ms = now + 500;
@@ -729,7 +731,7 @@ void ring_step() {
   }
   uint32_t round_ms = kBridgeRoundMs;
   if (sound < timer_chime::kChimeCount) {
-    if (!speaker::playChime(sound, 2)) {
+    if (!speaker::playChime(sound, 2, voice_timers::volumePercent() / 100.0f)) {
       g_ring.next_ms = now + 1000;
       return;
     }

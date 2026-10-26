@@ -20,8 +20,10 @@
 //           "name" is optional (UTF-8, cut to kMaxNameBytes).
 //       {"v":1,"op":"timer_done","id":"<id>","total":600,"name":"Pasta"}
 //           A timer of this panel finished: the panel rings.
-//       {"v":1,"op":"timer_sound","sound":"rising_three"}
-//           The sound for finished timers (kSoundIds). "bridge" = the Bridge
+//       {"v":1,"op":"timer_sound","sound":"rising_three","volume":60}
+//           The sound for finished timers (kSoundIds) and the timer volume
+//           in percent (optional; the chimes play at it, unmuted, whatever
+//           the media volume is; 0 = silent). "bridge" = the Bridge
 //           plays the user's own file when the panel asks ("play_sound"); "off" =
 //           silent. Kept in RAM; the Bridge sends it on every connect.
 //   {base}/stat/assist_timer   panel -> Bridge, not retained:
@@ -60,6 +62,7 @@ constexpr size_t kSoundCount = sizeof(kSoundIds) / sizeof(kSoundIds[0]);
 constexpr uint8_t kSoundOff = 5;
 constexpr uint8_t kSoundBridge = 6;
 constexpr uint8_t kDefaultSound = 0;
+constexpr uint8_t kDefaultVolumePercent = 60;
 
 struct Timer {
   char id[kMaxIdChars + 1];
@@ -261,6 +264,14 @@ inline int parseSound(const char* json, size_t length) {
   int b = 0, e = 0;
   if (!hometiles_json::stringSpan(json, static_cast<int>(length), "sound", &b, &e)) return -1;
   return soundIndex(json + b, static_cast<size_t>(e - b));
+}
+
+// {"op":"timer_sound"}: the timer volume in percent (0..100), -1 without one.
+inline int parseSoundVolume(const char* json, size_t length) {
+  float value = 0;
+  if (!hometiles_json::number(json, static_cast<int>(length), "volume", &value)) return -1;
+  if (!(value >= 0.0f)) return -1;  // also NaN
+  return value > 100.0f ? 100 : static_cast<int>(value + 0.5f);
 }
 
 // Seconds left now for a timer received `elapsed_ms` ago.

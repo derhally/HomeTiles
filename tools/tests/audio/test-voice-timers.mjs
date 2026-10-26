@@ -95,7 +95,7 @@ const chimeOut = compileAndRun('chimes', String.raw`
 #include <vector>
 using namespace timer_chime;
 int main() {
-  assert(lengthMs(0) == 1260 && lengthMs(1) == 740 && lengthMs(2) == 1800);
+  assert(lengthMs(0) == 1260 && lengthMs(1) == 760 && lengthMs(2) == 1800);
   assert(lengthMs(3) == 960 && lengthMs(4) == 2550 && lengthMs(5) == 0);
   ChimeSynth bad;
   assert(!bad.begin(kChimeCount, 1) && bad.done());
@@ -126,15 +126,15 @@ const TONES = {
   bell: {partials: [[1, 1], [2, 0.35], [3, 0.12]], decayMs: 420},
   softbell: {partials: [[1, 1], [2.76, 0.25], [5.4, 0.08]], decayMs: 700},
   pure: {partials: [[1, 1], [2, 0.12]], decayMs: 380},
-  beep: {partials: [[1, 1], [3, 0.18]], decayMs: 0},
-  marimba: {partials: [[1, 1], [4, 0.3]], decayMs: 180},
+  beep: {partials: [[1, 1], [2, 0.08]], decayMs: 250},
+  marimba: {partials: [[1, 1], [4, 0.1]], decayMs: 220},
 };
 const CHIMES = [
-  {tone: 'pure', notes: [{f: 1046.5, t: 0, d: 500, g: 0.8}, {f: 1318.5, t: 180, d: 500, g: 0.8}, {f: 1568, t: 360, d: 900, g: 0.85}]},
-  {tone: 'beep', notes: [0, 210, 420, 630].map((t) => ({f: 2000, t, d: 110, g: 0.55}))},
-  {tone: 'softbell', notes: [{f: 880, t: 0, d: 1800, g: 0.9}]},
-  {tone: 'marimba', notes: [{f: 784, t: 0, d: 350, g: 0.9}, {f: 987.8, t: 120, d: 350, g: 0.9}, {f: 1174.7, t: 240, d: 350, g: 0.9}, {f: 1568, t: 360, d: 600, g: 0.9}]},
-  {tone: 'bell', notes: [{f: 659.3, t: 0, d: 600, g: 0.85}, {f: 523.3, t: 450, d: 600, g: 0.85}, {f: 587.3, t: 900, d: 600, g: 0.85}, {f: 392, t: 1350, d: 1200, g: 0.9}]},
+  {tone: 'pure', notes: [{f: 1046.5, t: 0, d: 500, g: 0.8}, {f: 1318.5, t: 180, d: 500, g: 0.8}, {f: 1568, t: 360, d: 900, g: 0.85}], level: 0.333},
+  {tone: 'beep', notes: [0, 210, 420, 630].map((t) => ({f: 1046.5, t, d: 130, g: 0.55})), level: 0.97},
+  {tone: 'softbell', notes: [{f: 880, t: 0, d: 1800, g: 0.9}], level: 0.565},
+  {tone: 'marimba', notes: [{f: 523.3, t: 0, d: 350, g: 0.9}, {f: 659.3, t: 120, d: 350, g: 0.9}, {f: 784, t: 240, d: 350, g: 0.9}, {f: 1046.5, t: 360, d: 600, g: 0.9}], level: 0.335},
+  {tone: 'bell', notes: [{f: 659.3, t: 0, d: 600, g: 0.85}, {f: 523.3, t: 450, d: 600, g: 0.85}, {f: 587.3, t: 900, d: 600, g: 0.85}, {f: 392, t: 1350, d: 1200, g: 0.9}], level: 0.552},
 ];
 const SINE = new Float64Array(257);
 for (let i = 0; i <= 256; i++) SINE[i] = Math.sin(2 * Math.PI * i / 256);
@@ -168,7 +168,7 @@ function render(chime, rate) {
       mix[start + k] += s / norm * env * n.g;
     }
   }
-  return Array.from(mix, (v) => Math.round(Math.max(-1, Math.min(1, v * 0.8)) * 32767));
+  return Array.from(mix, (v) => Math.round(Math.max(-1, Math.min(1, v * chime.level)) * 32767));
 }
 const lines = chimeOut.trim().split('\n');
 assert.equal(lines.length, CHIMES.length);
@@ -184,7 +184,20 @@ lines.forEach((line, index) => {
   // Float math on the panel: a few LSB from the page's double precision.
   assert.ok(worst <= 48, `chime ${index} differs from the sample page by ${worst}`);
   assert.ok(peak > 8000, `chime ${index} is audible (peak ${peak})`);
+  // Every chime keeps about 6 dB of headroom: none clips, none is much louder.
+  assert.ok(peak < 0.56 * 32767 && peak > 0.42 * 32767, `chime ${index} peak ${peak} is not near -6 dBFS`);
+  // No piercing notes: every fundamental stays at or below 1.6 kHz.
+  assert.ok(CHIMES[index].notes.every((n) => n.f <= 1600), `chime ${index} has a note above 1.6 kHz`);
 });
+
+// The timer volume reaches the chime, and the media volume returns after it.
+{
+  const ui = read('src/ui/timers/timer_ui.cpp');
+  assert.match(ui, /playChime\(sound, 2, voice_timers::volumePercent\(\) \/ 100\.0f\)/);
+  const spk = read('src/audio/speaker.cpp');
+  assert.match(spk, /g_volume_override = g_chime_volume\.load\(\);/);
+  assert.match(spk, /closeOutput\(\);\n  g_volume_override = -1\.0f;\n  applyVolumeIfChanged\(\);/);
+}
 
 // Contract.
 compileAndRun('contract', String.raw`
@@ -242,6 +255,14 @@ int main() {
   assert(parseSound("{\"op\":\"timer_sound\",\"sound\":\"bridge\"}", 38) == kSoundBridge);
   assert(parseSound("{\"op\":\"timer_sound\",\"sound\":\"off\"}", 35) == kSoundOff);
   assert(parseSound("{\"op\":\"timer_sound\",\"sound\":\"loud\"}", 36) == -1);
+  {
+    auto volume = [](const char* text) { return parseSoundVolume(text, strlen(text)); };
+    assert(volume("{\"op\":\"timer_sound\",\"sound\":\"marimba\",\"volume\":45}") == 45);
+    assert(volume("{\"op\":\"timer_sound\",\"sound\":\"marimba\",\"volume\":0}") == 0);
+    assert(volume("{\"op\":\"timer_sound\",\"sound\":\"marimba\",\"volume\":250}") == 100);
+    assert(volume("{\"op\":\"timer_sound\",\"sound\":\"marimba\",\"volume\":-5}") == -1);
+    assert(volume("{\"op\":\"timer_sound\",\"sound\":\"marimba\"}") == -1);
+  }
 
   Timer running = timers.timers[0];
   running.left_s = 272;

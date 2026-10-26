@@ -38,6 +38,8 @@ bool hasFinished();
 
 // The sound for finished timers (voice_timer::kSoundIds index).
 uint8_t sound();
+// The timer volume in percent (0 = silent).
+uint8_t volumePercent();
 
 // Requests to the Bridge ({base}/stat/assist_timer); false when nothing
 // could be queued (no Bridge connection, invalid argument).

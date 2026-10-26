@@ -24,6 +24,7 @@ struct State {
 State* g_state = nullptr;
 uint32_t g_generation = 0;
 uint8_t g_sound = voice_timer::kDefaultSound;
+uint8_t g_volume_percent = voice_timer::kDefaultVolumePercent;
 uint32_t g_log_ms = 0;
 
 State* state() {
@@ -122,6 +123,8 @@ bool handleCommandPayload(const uint8_t* payload, size_t length) {
       } else if (logDue()) {
         Serial.printf("%s Unknown timer sound ignored\n", kLogPrefix);
       }
+      const int volume = voice_timer::parseSoundVolume(text, length);
+      if (volume >= 0) g_volume_percent = static_cast<uint8_t>(volume);
       break;
     }
   }
@@ -172,6 +175,8 @@ bool takeFinished(voice_timer::Timer* out) {
 bool hasFinished() { return g_state && g_state->finished_count > 0; }
 
 uint8_t sound() { return g_sound; }
+
+uint8_t volumePercent() { return g_volume_percent; }
 
 bool requestStart(uint32_t seconds, const char* name) {
   char payload[160];

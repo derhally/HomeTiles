@@ -286,6 +286,11 @@ std::atomic<bool> g_play_pending{false};
 // A timer chime to play: chime | repeats << 8; kNoChime when none.
 constexpr uint16_t kNoChime = 0xFFFF;
 std::atomic<uint16_t> g_chime_request{kNoChime};
+// The timer volume of the requested chime (0..1).
+std::atomic<float> g_chime_volume{0.6f};
+// Worker only: while a chime plays the output uses the timer volume, unmuted;
+// below zero it follows the media volume and mute.
+float g_volume_override = -1.0f;
 std::atomic<bool> g_chime_active{false};
 // Bumped by stop, a newer play and shutdown; a clip ends when it changed.
 std::atomic<uint32_t> g_stop_generation{0};
@@ -386,11 +391,13 @@ void setAmp(bool on) {
 
 void applyVolumeIfChanged() {
   if (!g_codec_ready.load()) return;
-  const uint8_t reg = limitedVolumeRegister(g_volume.load(), speaker_board::kVolumeLimit);
+  const bool override = g_volume_override >= 0.0f;
+  const uint8_t reg = limitedVolumeRegister(override ? g_volume_override : g_volume.load(),
+                                            speaker_board::kVolumeLimit);
   if (reg != g_applied_volume_reg && audio_board::setOutputVolumeRegister(reg) == ESP_OK) {
     g_applied_volume_reg = reg;
   }
-  const int mute = g_muted.load() ? 1 : 0;
+  const int mute = !override && g_muted.load() ? 1 : 0;
   if (mute != g_applied_mute && audio_board::setOutputMute(mute != 0) == ESP_OK) {
     g_applied_mute = mute;
   }
@@ -1334,7 +1341,14 @@ void renderChime(uint16_t request) {
   const uint32_t generation = g_stop_generation.load();
   timer_chime::ChimeSynth synth;
   if (!synth.begin(static_cast<uint8_t>(request & 0xFF), static_cast<uint8_t>(request >> 8))) return;
-  if (!g_codec_ready.load() || openOutput(timer_chime::kSampleRate) != ErrorCode::None) return;
+  if (!g_codec_ready.load()) return;
+  // The timer volume, not the media volume or mute, for the chime only.
+  g_volume_override = g_chime_volume.load();
+  if (openOutput(timer_chime::kSampleRate) != ErrorCode::None) {
+    g_volume_override = -1.0f;
+    applyVolumeIfChanged();
+    return;
+  }
   g_chime_active.store(true);
   int16_t block[256];
   while (!stopRequested(generation)) {
@@ -1342,6 +1356,8 @@ void renderChime(uint16_t request) {
     if (frames == 0 || !writeFrames(block, frames)) break;
   }
   closeOutput();
+  g_volume_override = -1.0f;
+  applyVolumeIfChanged();
   g_out_level.store(0);
   g_chime_active.store(false);
 }
@@ -1986,11 +2002,12 @@ uint8_t capabilityBits() {
 
 bool supported() { return kSupported; }
 
-bool playChime(uint8_t chime, uint8_t repeats) {
+bool playChime(uint8_t chime, uint8_t repeats, float volume) {
 #if defined(HOMETILES_SPEAKER)
   if (!g_worker || g_shutdown.load() || !g_codec_ready.load() || chime >= timer_chime::kChimeCount || repeats == 0) {
     return false;
   }
+  g_chime_volume.store(clampVolume(volume));
   // A listening Assist session keeps the I2S lines.
   if (static_cast<assist::PublicState>(g_assist_state.load()) == assist::PublicState::Listening ||
       g_assist_pending.load()) {
@@ -2004,6 +2021,7 @@ bool playChime(uint8_t chime, uint8_t repeats) {
 #else
   (void)chime;
   (void)repeats;
+  (void)volume;
   return false;
 #endif
 }

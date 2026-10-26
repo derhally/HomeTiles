@@ -3,9 +3,11 @@
 // Built-in timer chimes, generated while they play: no sound files. Each
 // chime is a short note table; every note sums a few sine partials (one
 // overtone recipe per chime) with a 6 ms attack, an exponential decay and a
-// 25 ms release. Overtones above half the sample rate are left out, the sum
-// is scaled by 0.8 and clipped to 16 bits. The sample page used to pick them
-// renders the same tables with the same math.
+// 25 ms release. Overtones above half the sample rate are left out and each
+// chime is scaled by its own level so that every chime peaks near -6 dBFS
+// (none clips; the timer volume sets the loudness). The notes stay at or
+// below about 1.6 kHz with weak overtones: higher beeps sounded piercing on
+// the panel speakers.
 //
 // Pure and host-testable: no Arduino, FreeRTOS or hardware. The speaker
 // worker renders blocks with ChimeSynth::render() into its output.
@@ -27,7 +29,6 @@ constexpr size_t kMaxNotes = 4;
 constexpr size_t kMaxPartials = 3;
 constexpr float kAttackMs = 6.0f;
 constexpr float kReleaseMs = 25.0f;
-constexpr float kOutputGain = 0.8f;
 // The ring pattern: a chime, this gap, the chime again.
 constexpr uint32_t kRepeatGapMs = 250;
 
@@ -54,29 +55,33 @@ struct ChimeSpec {
   const Tone* tone;
   Note notes[kMaxNotes];
   uint8_t note_count;
+  float level;  // output scale: the chime's peak at about half of full scale
 };
 
 constexpr Tone kPure = {{{1.0f, 1.0f}, {2.0f, 0.12f}, {0, 0}}, 2, 380};
-constexpr Tone kBeep = {{{1.0f, 1.0f}, {3.0f, 0.18f}, {0, 0}}, 2, 0};
+constexpr Tone kBeep = {{{1.0f, 1.0f}, {2.0f, 0.08f}, {0, 0}}, 2, 250};
 constexpr Tone kSoftBell = {{{1.0f, 1.0f}, {2.76f, 0.25f}, {5.4f, 0.08f}}, 3, 700};
-constexpr Tone kMarimba = {{{1.0f, 1.0f}, {4.0f, 0.3f}, {0, 0}}, 2, 180};
+constexpr Tone kMarimba = {{{1.0f, 1.0f}, {4.0f, 0.1f}, {0, 0}}, 2, 220};
 constexpr Tone kBell = {{{1.0f, 1.0f}, {2.0f, 0.35f}, {3.0f, 0.12f}}, 3, 420};
 
 constexpr ChimeSpec kChimes[kChimeCount] = {
-    {"rising_three", &kPure, {{1046.5f, 0, 500, 0.8f}, {1318.5f, 180, 500, 0.8f}, {1568.0f, 360, 900, 0.85f}}, 3},
+    {"rising_three", &kPure, {{1046.5f, 0, 500, 0.8f}, {1318.5f, 180, 500, 0.8f}, {1568.0f, 360, 900, 0.85f}}, 3, 0.333f},
     {"kitchen_beep",
      &kBeep,
-     {{2000.0f, 0, 110, 0.55f}, {2000.0f, 210, 110, 0.55f}, {2000.0f, 420, 110, 0.55f}, {2000.0f, 630, 110, 0.55f}},
-     4},
-    {"soft_bell", &kSoftBell, {{880.0f, 0, 1800, 0.9f}}, 1},
+     {{1046.5f, 0, 130, 0.55f}, {1046.5f, 210, 130, 0.55f}, {1046.5f, 420, 130, 0.55f}, {1046.5f, 630, 130, 0.55f}},
+     4,
+     0.97f},
+    {"soft_bell", &kSoftBell, {{880.0f, 0, 1800, 0.9f}}, 1, 0.565f},
     {"marimba",
      &kMarimba,
-     {{784.0f, 0, 350, 0.9f}, {987.8f, 120, 350, 0.9f}, {1174.7f, 240, 350, 0.9f}, {1568.0f, 360, 600, 0.9f}},
-     4},
+     {{523.3f, 0, 350, 0.9f}, {659.3f, 120, 350, 0.9f}, {784.0f, 240, 350, 0.9f}, {1046.5f, 360, 600, 0.9f}},
+     4,
+     0.335f},
     {"westminster",
      &kBell,
      {{659.3f, 0, 600, 0.85f}, {523.3f, 450, 600, 0.85f}, {587.3f, 900, 600, 0.85f}, {392.0f, 1350, 1200, 0.9f}},
-     4},
+     4,
+     0.552f},
 };
 
 inline const ChimeSpec* spec(uint8_t chime) { return chime < kChimeCount ? &kChimes[chime] : nullptr; }
@@ -207,7 +212,7 @@ class ChimeSynth {
       }
       mix += s * norm_ * env * v.gain;
     }
-    float value = mix * kOutputGain;
+    float value = mix * spec_->level;
     if (value > 1.0f) value = 1.0f;
     if (value < -1.0f) value = -1.0f;
     return static_cast<int16_t>(lrintf(value * 32767.0f));
