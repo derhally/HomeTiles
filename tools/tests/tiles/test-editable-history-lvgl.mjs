@@ -46,7 +46,9 @@ const cpp = `
 #include "src/ui/popups/popup_graph_readout.h"
 void hide_popup_shell(lv_obj_t*){}
 lv_obj_t* header_value_source=nullptr;
-void show_popup_shell(lv_obj_t*,lv_obj_t*,lv_obj_t*,lv_obj_t*,lv_obj_t*,void(*)()=nullptr,lv_obj_t* value=nullptr){header_value_source=value;}
+// Like the real shell, the card loses its opacity while the shell's frame
+// draws it.
+void show_popup_shell(lv_obj_t*,lv_obj_t* body,lv_obj_t*,lv_obj_t*,lv_obj_t*,void(*)()=nullptr,lv_obj_t* value=nullptr){header_value_source=value;lv_obj_set_style_bg_opa(body,LV_OPA_TRANSP,0);}
 #include "src/ui/shared/title_label.h"
 #include "src/ui/popups/popup_nav_style.h"
 void popup_shell_control_fill(uint32_t,uint32_t,lv_color_t&c,lv_opa_t&o,bool*t){c=lv_color_white();o=40;if(t)*t=false;}

@@ -765,9 +765,10 @@ static void on_chart_fill_draw(lv_event_t* e) {
 
   const lv_color_t color = lv_chart_get_series_color(chart, ctx->series);
   const lv_color_t card = lv_obj_get_style_bg_color(ctx->card, LV_PART_MAIN);
-  // The fill is opaque, so it needs the plain card color behind it.
-  if (lv_obj_get_style_bg_opa(ctx->card, LV_PART_MAIN) >= LV_OPA_MAX &&
-      build_chart_fill(ctx, values, count, width, height, color, card)) {
+  // The fill is opaque and paints the card color above the line. The card
+  // keeps that color even while the popup shell draws it (the shell clears
+  // the card's opacity and fills its frame with the card color instead).
+  if (build_chart_fill(ctx, values, count, width, height, color, card)) {
     lv_draw_image_dsc_t image;
     lv_draw_image_dsc_init(&image);
     image.src = &ctx->fill_image;
