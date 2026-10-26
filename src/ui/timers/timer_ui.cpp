@@ -46,6 +46,9 @@ constexpr uint32_t kBridgeRoundMs = 4000;
 // Home Assistant speaks after the first round; its clip starts within this.
 constexpr uint32_t kSpeakStartMs = 2500;
 constexpr uint32_t kActivityRefreshMs = 5000;
+// The Timers popup and the alert card dim the screen behind them, so the
+// tiles do not compete with the countdowns.
+constexpr lv_opa_t kBackdropOpa = LV_OPA_60;
 constexpr uint32_t kPresetMinutes[] = {1, 5, 10, 15, 30};
 constexpr size_t kPresetCount = sizeof(kPresetMinutes) / sizeof(kPresetMinutes[0]);
 
@@ -294,6 +297,9 @@ void build_popup() {
   g_popup->close = parts.close;
   disable_pressed_button_animation(parts.close);
   lv_obj_add_event_cb(g_popup->overlay, on_popup_delete, LV_EVENT_DELETE, nullptr);
+  // The shell copies its owner's background: a dark backdrop for this popup only.
+  lv_obj_set_style_bg_color(g_popup->overlay, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(g_popup->overlay, kBackdropOpa, 0);
   hometiles_title::set(g_popup->title, tr().timers_title);
   lv_label_set_text(g_popup->icon, getMdiChar("timer-outline").c_str());
   lv_obj_set_style_text_color(g_popup->icon, lv_color_hex(kAmber), 0);
@@ -507,7 +513,7 @@ void build_alert() {
   lv_obj_remove_style_all(g_alert.backdrop);
   lv_obj_set_size(g_alert.backdrop, LV_PCT(100), LV_PCT(100));
   lv_obj_set_style_bg_color(g_alert.backdrop, lv_color_hex(0x000000), 0);
-  lv_obj_set_style_bg_opa(g_alert.backdrop, LV_OPA_60, 0);
+  lv_obj_set_style_bg_opa(g_alert.backdrop, kBackdropOpa, 0);
   lv_obj_add_flag(g_alert.backdrop, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(g_alert.backdrop, LV_OBJ_FLAG_SCROLLABLE);
 
