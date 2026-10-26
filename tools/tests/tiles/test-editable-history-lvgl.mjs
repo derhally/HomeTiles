@@ -283,7 +283,8 @@ int main(int argc,char**argv){
   lv_point_t point;lv_chart_get_point_pos_by_id(ctx.chart,ctx.series,2,&point);lv_area_t chart_area;lv_obj_get_coords(ctx.chart,&chart_area);
   const int cursor_x=wrap.x1+ctx.readout_x,dot_y=wrap.y1+ctx.readout_y;
   assert(cursor_x==chart_area.x1+point.x&&dot_y==chart_area.y1+point.y&&"The dot sits on the real history point");
-  assert(white_at(pixels,cursor_x,content.y2-2)&&"A thin white line marks the touched time");
+  {const uint32_t at=pixels[(content.y2-2)*SCREEN_WIDTH+cursor_x],beside=pixels[(content.y2-2)*SCREEN_WIDTH+cursor_x+6];
+   assert(at!=beside&&!white_at(pixels,cursor_x,content.y2-2)&&"A thin, faint line marks the touched time");}
   assert(white_at(pixels,cursor_x,dot_y)&&"The dot is white");
   assert(near_color(pixels[(dot_y+kReadoutDotSize/2-kReadoutDotRing+1)*SCREEN_WIDTH+cursor_x],0x2A2A2A)&&"The dot's ring uses the card color");
   assert(!white_at(pixels,cursor_x+kReadoutLineWidth+2,content.y2-2)&&"The cursor line stays thin");
@@ -365,7 +366,8 @@ int main(int argc,char**argv){
   assert(ctx.readout_kind==kReadoutChart&&ctx.readout_point==3&&ctx.readout_latest&&shown(ctx.readout_value_label)&&strcmp(ctx.readout_value_text,"1234.56 C")==0&&"New history shows the newest point without a touch");
   lv_obj_update_layout(card);lv_refr_now(display);
   lv_area_t content,wrap;lv_obj_get_content_coords(ctx.chart,&content);lv_obj_get_coords(ctx.chart_wrap,&wrap);const int width=lv_area_get_width(&content);
-  assert(white_at(pixels,wrap.x1+ctx.readout_x,content.y2-2)&&"The newest point shows the cursor");
+  assert(white_at(pixels,wrap.x1+ctx.readout_x,wrap.y1+ctx.readout_y)&&"The newest point shows the cursor dot");
+  assert(!white_at(pixels,wrap.x1+ctx.readout_x,content.y2-2)&&"At rest on the newest point the cursor has no line (it read like a spike)");
   touch_at(content.x2-1,content.y1+4);lv_refr_now(display);
   assert(ctx.readout_point==3&&strcmp(ctx.readout_value_text,"1234.56 C")==0&&"Readouts use exact history values");
   assert(shown(ctx.value_box)&&lv_obj_get_style_bg_opa(ctx.value_box,LV_PART_MAIN)==LV_OPA_TRANSP&&lv_obj_get_style_y(ctx.value_box,LV_PART_MAIN)==popup_layout::kValueY-kContentLiftY);
@@ -374,6 +376,8 @@ int main(int argc,char**argv){
   // Release keeps the readout where the finger left it, also with new data.
   touch_release();
   assert(!ctx.readout.active()&&ctx.readout_kind==kReadoutChart&&ctx.readout_point==1&&!ctx.readout_latest&&shown(ctx.readout_value_label)&&"Release keeps the Sensor readout");
+  {lv_refr_now(display);const int mid=(content.y1+content.y2)/2;const uint32_t at=pixels[mid*SCREEN_WIDTH+wrap.x1+ctx.readout_x],beside=pixels[mid*SCREEN_WIDTH+wrap.x1+ctx.readout_x+6];
+   assert(at!=beside&&!white_at(pixels,wrap.x1+ctx.readout_x,mid)&&"A kept older point shows a thin, faint cursor line");}
   lv_refr_now(display);assert(white_at(pixels,wrap.x1+ctx.readout_x,content.y2-2)&&"The cursor stays after release");
   apply_history_payload(&ctx,R"({"entity_id":"sensor.other","hours":24,"period_minutes":5,"unit":"C","values":[21.5,null,22.25,1300]})");
   assert(ctx.readout_point==1&&strcmp(ctx.readout_value_text,"21.50 C")==0&&!ctx.readout_latest&&"New history keeps the position the finger left");
