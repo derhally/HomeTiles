@@ -18,7 +18,10 @@ assert.match(speaker, /if \(voice_timers::handleCommandPayload\(payload, length\
              'timer messages are taken before the 256-byte microphone command parser');
 assert.match(speaker, /constexpr uint32_t kNotifyChime = 1u << 5;/);
 assert.match(speaker, /if \(bits & kNotifyChime\)/);
-assert.match(speaker, /void renderChime\(uint16_t request\)/);
+assert.match(speaker, /void renderChime\(uint16_t request, uint32_t generation\)/);
+// A stop that arrives while the chime's output opens still ends it.
+assert.match(speaker, /g_chime_active\.store\(true\);\n\s*const uint16_t chime = g_chime_request\.exchange\(kNoChime\);/);
+assert.match(speaker, /g_stop_generation\.fetch_add\(1\);\n\s*g_chime_request\.store\(static_cast<uint16_t>\(chime \| \(repeats << 8\)\)\);/);
 assert.match(read('src/network/mqtt/mqtt_topics.cpp'),
              /\{TopicKey::ASSIST_TIMER_STAT, TopicDomain::State, "assist_timer"\}/);
 const ino = read('HomeTiles.ino');
@@ -28,7 +31,35 @@ for (const file of ['src/ui/ui_manager.cpp', 'src/ui/navigation/view_navigation.
   const text = read(file);
   const pins = text.match(/hide_pin_popup\(\);/g) || [];
   const timers = text.match(/timer_ui::hide_popup\(\);/g) || [];
-  assert.equal(timers.length, pins.length, `${file}: every popup hide path hides the Timers popup`);
+  assert.ok(timers.length >= pins.length, `${file}: every popup hide path hides the Timers popup`);
+}
+assert.match(read('src/ui/navigation/view_navigation.cpp'),
+             /void viewNavigationClosePopups\(\) \{\n  timer_ui::hide_popup\(\);/,
+             'tab switches and folder changes close the Timers popup');
+// Review fixes of the alert: every new timer rings in full, the display may
+// sleep after the ring limit, music does not hold the chime, a theme change
+// rebuilds the card, a camera in full screen closes.
+{
+  const ui = read('src/ui/timers/timer_ui.cpp');
+  assert.match(ui, /\/\/ the card of an earlier one stopped ringing\.\n  g_ring\.active = true;\n  g_ring\.started_ms = now;/);
+  assert.match(ui, /if \(ringing && now - g_ring\.activity_ms >= kActivityRefreshMs\)/);
+  assert.match(ui, /if \(speaker::chimePlaying\(\) \|\|\n\s+\(speaker::outputBusy\(\) && static_cast<int32_t>\(now - g_ring\.speech_until_ms\) < 0\)\)/);
+  assert.match(ui, /g_ring\.first_round_end_ms = now;/, 'no millis() wrap on a silent alert');
+  assert.match(ui, /if \(camera_popup_is_full_screen\(\)\) hide_camera_popup\(\);/);
+  assert.match(read('src/ui/ui_manager.cpp'), /preloadPopups\(\);\n  timer_ui::theme_changed\(\);/);
+  const timers = read('src/ui/timers/voice_timers.cpp');
+  assert.match(timers, /if \(rangBefore\(s, timer\.id\)\) return;/);
+  assert.match(timers, /elapsed_ms < timer\.left_s \* 1000u \+ kLocalFinishGraceMs/);
+  assert.match(ui, /void service\(\) \{\n  if \(!voice_timers::supported\(\)\) return;\n  voice_timers::checkExpired\(\);/);
+}
+// A timer's own sound from the Bridge plays at the timer volume, unmuted.
+{
+  const request = read('src/audio/speaker_request.h');
+  assert.match(request, /out->timer = !out->live && strncmp\(url_text, "tcp:\/\/", 6\) == 0 && timer\.is<bool>\(\) && timer\.as<bool>\(\);/);
+  const spk = read('src/audio/speaker.cpp');
+  assert.match(spk, /g_request->volume_override = command\.timer \? voice_timers::volumePercent\(\) \/ 100\.0f : -1\.0f;/);
+  assert.match(spk, /g_volume_override = request\.volume_override >= 0\.0f \? clampVolume\(request\.volume_override\) : -1\.0f;/);
+  assert.match(spk, /closeOutput\(\);\n  if \(g_volume_override >= 0\.0f\) \{\n    g_volume_override = -1\.0f;\n    applyVolumeIfChanged\(\);/);
 }
 const homeBar = read('src/ui/tabs/tiles/home_bar.cpp');
 assert.match(homeBar, /timer_ui::add_head_pill\(bar, pill_right, g\.center_y, g\.disc, head_base\(\)\)/);
@@ -36,7 +67,7 @@ assert.match(homeBar, /timer_ui::add_head_pill\(bar, pill_right, g\.center_y, g\
 // Every visible text of the timer UI comes from the central Strings.
 const ui = read('src/ui/timers/timer_ui.cpp');
 const fields = ['timers_title', 'timer_unnamed', 'timer_done_title', 'timer_set_for', 'timer_done_too',
-                'timer_stop', 'timer_add_minute', 'timer_paused', 'timer_start', 'timer_none', 'timer_minutes'];
+                'timer_stop', 'timer_add_minute', 'timer_paused_name', 'timer_start', 'timer_none', 'timer_minutes'];
 const header = read('src/core/i18n/i18n.h');
 for (const field of fields) {
   assert.match(header, new RegExp(`const char\\* ${field};`), `Strings has ${field}`);
@@ -236,6 +267,15 @@ int main() {
   assert(std::string(timers.timers[2].name) == "Caf\xC3\xA9 \"x\" \xF0\x9F\x8D\x9D");
   // Cut at a whole character: 24 two-byte letters fit in 48 bytes.
   assert(strlen(timers.timers[3].name) == 48);
+  // Invalid raw UTF-8 becomes '?': a stray continuation byte, a 0xF8 byte and
+  // a lead byte without its continuation.
+  {
+    const char* bad = "{\"op\":\"timers\",\"timers\":[{\"id\":\"A1\",\"total\":60,\"left\":60,\"active\":true,"
+                      "\"name\":\"a\x80" "b\xF8" "c\xC3" "x\xC3\xA4\"}]}";
+    TimerList broken;
+    assert(parseTimers(bad, strlen(bad), &broken) && broken.count == 1);
+    assert(std::string(broken.timers[0].name) == "a?b?c?x\xC3\xA4");
+  }
   TimerList none;
   assert(!parseTimers("{\"op\":\"timers\"}", 15, &none));
 

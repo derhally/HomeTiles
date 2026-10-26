@@ -37,5 +37,8 @@ void open_popup();
 void timer_label(const voice_timer::Timer& timer, char* out, size_t size);
 void hide_popup();
 bool popup_visible();
+// Theme change: the alert card was built in the old colors; it is built
+// again (and shown again while a timer rings).
+void theme_changed();
 
 }  // namespace timer_ui

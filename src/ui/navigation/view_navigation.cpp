@@ -346,6 +346,7 @@ void publishState(uint32_t now) {
 }  // namespace
 
 void viewNavigationClosePopups() {
+  timer_ui::hide_popup();
   hide_settings_popup();
   hide_camera_popup();
   hide_light_popup();

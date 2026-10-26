@@ -242,6 +242,8 @@ struct PlayRequest {
   uint16_t lead_ms;
   // The Bridge plays the clip again to resume: a pause closes the stream.
   bool restart;
+  // A voice timer's own sound: this level (0..1), unmuted; < 0 = media volume.
+  float volume_override;
 };
 
 // Assist capture: 16 kHz 16-bit stereo (one mic per slot). 6 x 320 frames x
@@ -1292,6 +1294,8 @@ void playRequest(const PlayRequest& request, uint8_t* stream_memory) {
   g_live_lead_ms.store(request.live ? request.lead_ms : 0);
   // The first clip after the end of speech is the answer.
   advanceUiPhase(AssistUiPhase::Thinking, AssistUiPhase::Answering);
+  // A timer's own sound plays at the timer volume, like the chimes.
+  g_volume_override = request.volume_override >= 0.0f ? clampVolume(request.volume_override) : -1.0f;
   Serial.printf("%s Playing %s\n", kLogPrefix, request.id);
   ErrorCode result = playUrl(request.id, request.url, request.live, generation, stream_memory);
   // A long pause can outlast the server's patience: the connection is gone
@@ -1308,6 +1312,10 @@ void playRequest(const PlayRequest& request, uint8_t* stream_memory) {
     result = playUrl(request.id, request.url, request.live, generation, stream_memory);
   }
   closeOutput();
+  if (g_volume_override >= 0.0f) {
+    g_volume_override = -1.0f;
+    applyVolumeIfChanged();
+  }
   g_pause_requested.store(false);
   if (g_clip_released && result == ErrorCode::None && !stopRequested(generation)) {
     Serial.printf("%s Clip %s paused at %.1f s, stream closed: internal RAM %u KB before, lowest %u KB\n",
@@ -1337,19 +1345,23 @@ void playRequest(const PlayRequest& request, uint8_t* stream_memory) {
 
 // Worker: a voice timer chime (timer_chime.h), rendered in blocks straight
 // into the output; a newer play or stop (the stop generation) ends it.
-void renderChime(uint16_t request) {
-  const uint32_t generation = g_stop_generation.load();
+// g_chime_active is already set (the worker's loop), so a stop arriving
+// while the output opens still ends it.
+void renderChime(uint16_t request, uint32_t generation) {
   timer_chime::ChimeSynth synth;
-  if (!synth.begin(static_cast<uint8_t>(request & 0xFF), static_cast<uint8_t>(request >> 8))) return;
-  if (!g_codec_ready.load()) return;
+  if (!synth.begin(static_cast<uint8_t>(request & 0xFF), static_cast<uint8_t>(request >> 8)) ||
+      !g_codec_ready.load()) {
+    g_chime_active.store(false);
+    return;
+  }
   // The timer volume, not the media volume or mute, for the chime only.
   g_volume_override = g_chime_volume.load();
   if (openOutput(timer_chime::kSampleRate) != ErrorCode::None) {
     g_volume_override = -1.0f;
     applyVolumeIfChanged();
+    g_chime_active.store(false);
     return;
   }
-  g_chime_active.store(true);
   int16_t block[256];
   while (!stopRequested(generation)) {
     const size_t frames = synth.render(block, sizeof(block) / sizeof(block[0]));
@@ -1889,10 +1901,15 @@ void workerMain(void*) {
       }
     }
     if (bits & kNotifyChime) {
+      // Active before the request is taken: stopChime() then always ends it.
+      const uint32_t generation = g_stop_generation.load();
+      g_chime_active.store(true);
       const uint16_t chime = g_chime_request.exchange(kNoChime);
       if (chime != kNoChime) {
-        renderChime(chime);
+        renderChime(chime, generation);
         g_wake_resume_ms = millis();
+      } else {
+        g_chime_active.store(false);
       }
     }
     if (bits & kNotifyAssist) {
@@ -2013,9 +2030,10 @@ bool playChime(uint8_t chime, uint8_t repeats, float volume) {
       g_assist_pending.load()) {
     return false;
   }
-  g_chime_request.store(static_cast<uint16_t>(chime | (repeats << 8)));
-  // Ends the clip or chime playing now; the worker then takes the chime.
+  // Ends the clip or chime playing now, before the request is visible, so
+  // the worker never takes the new chime under the old generation.
   g_stop_generation.fetch_add(1);
+  g_chime_request.store(static_cast<uint16_t>(chime | (repeats << 8)));
   notifyWorker(kNotifyChime);
   return true;
 #else
@@ -2209,6 +2227,7 @@ void handleCommandPayload(const uint8_t* payload, size_t length) {
       g_request->live = command.live;
       g_request->lead_ms = command.lead_ms;
       g_request->restart = command.restart;
+      g_request->volume_override = command.timer ? voice_timers::volumePercent() / 100.0f : -1.0f;
       g_play_pending.store(true);
       g_pause_requested.store(false);
       // Playback ends a capture session or a start that has not begun.

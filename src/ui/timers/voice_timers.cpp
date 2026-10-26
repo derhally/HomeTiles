@@ -13,6 +13,12 @@ namespace {
 
 constexpr const char* kLogPrefix = "[Timers]";
 constexpr size_t kMaxFinished = 4;
+// Timers that already rang; a late or repeated timer_done for them is quiet.
+constexpr size_t kMaxRecent = 8;
+// A running timer at 0:00 with no timer_done this long after (a lost Bridge
+// link) rings on the panel's own count.
+constexpr uint32_t kLocalFinishGraceMs = 5000;
+constexpr uint32_t kExpiryCheckMs = 1000;
 
 // PSRAM: the list is small but never needs internal RAM.
 struct State {
@@ -20,12 +26,15 @@ struct State {
   uint32_t received_ms;
   voice_timer::Timer finished[kMaxFinished];
   uint8_t finished_count;
+  char recent[kMaxRecent][voice_timer::kMaxIdChars + 1];
+  uint8_t recent_next;
 };
 State* g_state = nullptr;
 uint32_t g_generation = 0;
 uint8_t g_sound = voice_timer::kDefaultSound;
 uint8_t g_volume_percent = voice_timer::kDefaultVolumePercent;
 uint32_t g_log_ms = 0;
+uint32_t g_expiry_check_ms = 0;
 
 State* state() {
   if (!g_state) {
@@ -52,16 +61,33 @@ bool publish(const char* payload, size_t length) {
   return networkManager.mqttEnqueuePublish(topic, payload, false);
 }
 
-void addFinished(State* s, const voice_timer::Timer& timer) {
-  // A repeated message for the same timer rings once.
-  for (uint8_t i = 0; i < s->finished_count; ++i) {
-    if (strcmp(s->finished[i].id, timer.id) == 0) return;
+bool rangBefore(const State* s, const char* id) {
+  for (size_t i = 0; i < kMaxRecent; ++i) {
+    if (s->recent[i][0] && strcmp(s->recent[i], id) == 0) return true;
   }
+  return false;
+}
+
+void addFinished(State* s, const voice_timer::Timer& timer) {
+  // A repeated message for the same timer rings once, also after its alert.
+  if (rangBefore(s, timer.id)) return;
+  memcpy(s->recent[s->recent_next], timer.id, sizeof(s->recent[0]));
+  s->recent_next = static_cast<uint8_t>((s->recent_next + 1) % kMaxRecent);
   if (s->finished_count == kMaxFinished) {
     memmove(&s->finished[0], &s->finished[1], sizeof(s->finished[0]) * (kMaxFinished - 1));
     --s->finished_count;
   }
   s->finished[s->finished_count++] = timer;
+}
+
+void removeTimer(State* s, const char* id) {
+  for (uint8_t i = 0; i < s->list.count; ++i) {
+    if (strcmp(s->list.timers[i].id, id) != 0) continue;
+    memmove(&s->list.timers[i], &s->list.timers[i + 1], sizeof(s->list.timers[0]) * (s->list.count - i - 1));
+    --s->list.count;
+    ++g_generation;
+    return;
+  }
 }
 
 }  // namespace
@@ -102,14 +128,7 @@ bool handleCommandPayload(const uint8_t* payload, size_t length) {
       if (voice_timer::parseDone(text, length, &timer)) {
         addFinished(s, timer);
         // It is no longer running.
-        for (uint8_t i = 0; i < s->list.count; ++i) {
-          if (strcmp(s->list.timers[i].id, timer.id) != 0) continue;
-          memmove(&s->list.timers[i], &s->list.timers[i + 1],
-                  sizeof(s->list.timers[0]) * (s->list.count - i - 1));
-          --s->list.count;
-          ++g_generation;
-          break;
-        }
+        removeTimer(s, timer.id);
         Serial.printf("%s Timer %s finished\n", kLogPrefix, timer.id);
       } else if (logDue()) {
         Serial.printf("%s Finished timer ignored: invalid id\n", kLogPrefix);
@@ -146,6 +165,20 @@ bool timerAt(uint8_t index, voice_timer::Timer* out, uint32_t* left_s) {
 }
 
 bool nextTimer(voice_timer::Timer* out, uint32_t* left_s) { return timerAt(0, out, left_s); }
+
+void checkExpired() {
+  const uint32_t now = millis();
+  if (!g_state || g_state->list.count == 0 || now - g_expiry_check_ms < kExpiryCheckMs) return;
+  g_expiry_check_ms = now;
+  const uint32_t elapsed_ms = now - g_state->received_ms;
+  for (uint8_t i = g_state->list.count; i-- > 0;) {
+    const voice_timer::Timer timer = g_state->list.timers[i];
+    if (!timer.active || elapsed_ms < timer.left_s * 1000u + kLocalFinishGraceMs) continue;
+    Serial.printf("%s Timer %s finished on the panel's count: no message from the Bridge\n", kLogPrefix, timer.id);
+    addFinished(g_state, timer);
+    removeTimer(g_state, timer.id);
+  }
+}
 
 bool takeFinished(voice_timer::Timer* out) {
   if (!g_state || g_state->finished_count == 0) return false;

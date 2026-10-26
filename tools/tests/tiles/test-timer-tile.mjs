@@ -47,6 +47,9 @@ assert.match(renderer, /lv_obj_set_width\(view\.bar_fill, w\)/);
 assert.match(renderer, /others\[other_count\+\+\] = other;/, 'rows follow the list order (soonest first)');
 assert.match(read('src/ui/timers/voice_timers.cpp'), /voice_timer::sortSoonest\(&list\);\n\s*s->list = list;/);
 assert.match(read('src/ui/timers/voice_timers.cpp'), /bool nextTimer\([^)]*\) \{ return timerAt\(0, out, left_s\); \}/);
+// Boards without voice timers (a tile from a backup) offer no presets.
+assert.match(renderer, /set_hidden\(preset, has \|\| !voice_timers::supported\(\)\)/);
+assert.match(renderer, /voice_timers::supported\(\) \? tr\(\)\.timer_tap_start : tr\(\)\.timer_none/);
 // Unnamed timers show their length, never the tile's title.
 assert.match(renderer, /timer_ui::timer_label\(timer, text, sizeof\(text\)\)/);
 assert.doesNotMatch(renderer, /return view\.idle_title\.c_str\(\);/);
@@ -59,7 +62,7 @@ assert.match(renderer, /tile_surface::scope\(view->card\)/, 'later updates draw 
 for (const call of renderer.matchAll(/(?:set_text|lv_label_set_text|button_text)\([^,]+,\s*"([^"]*)"/g)) {
   assert.doesNotMatch(call[1], /[A-Za-z]/, `literal display text in timer/renderer.cpp: "${call[1]}"`);
 }
-for (const field of ['timer_default_name', 'timer_paused', 'timer_of', 'timer_add_minute', 'timer_minutes',
+for (const field of ['timer_default_name', 'timer_paused_name', 'timer_of', 'timer_add_minute', 'timer_minutes',
                      'timer_none', 'timer_tap_start', 'timer_icon_words']) {
   assert.match(renderer, new RegExp(`tr\\(\\)\\.${field}`), `the tile shows ${field}`);
 }

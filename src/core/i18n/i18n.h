@@ -18,7 +18,7 @@ struct Strings {
   const char* timer_done_too;
   const char* timer_stop;
   const char* timer_add_minute;
-  const char* timer_paused;
+  const char* timer_paused_name;  // "%s, paused": a paused timer's name
   const char* timer_start;
   const char* timer_none;
   const char* timer_minutes;

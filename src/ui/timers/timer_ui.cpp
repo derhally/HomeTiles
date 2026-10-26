@@ -14,6 +14,7 @@
 #include "src/tiles/icons/mdi_icons.h"
 #include "src/tiles/runtime/tile_renderer_shared.h"
 #include "src/types/timer/renderer.h"
+#include "src/ui/popups/camera/camera_popup.h"
 #include "src/ui/popups/popup_layout.h"
 #include "src/ui/popups/popup_nav_style.h"
 #include "src/ui/popups/popup_open.h"
@@ -46,6 +47,8 @@ constexpr uint32_t kRingLimitMs = 120000;
 constexpr uint32_t kBridgeRoundMs = 4000;
 // Home Assistant speaks after the first round; its clip starts within this.
 constexpr uint32_t kSpeakStartMs = 2500;
+// The longest a spoken sentence may hold the next round.
+constexpr uint32_t kSpeechWaitMs = 15000;
 constexpr uint32_t kActivityRefreshMs = 5000;
 // The Timers popup and the alert card dim the screen behind them, so the
 // tiles do not compete with the countdowns.
@@ -388,7 +391,7 @@ void refresh_popup(bool force) {
       if (timer.active) {
         lv_label_set_text(row.name, TimerName(timer).text);
       } else {
-        lv_label_set_text_fmt(row.name, "%s, %s", TimerName(timer).text, tr().timer_paused);
+        lv_label_set_text_fmt(row.name, tr().timer_paused_name, TimerName(timer).text);
       }
       lv_label_set_text(row.pause_icon, getMdiChar(timer.active ? "pause" : "play").c_str());
     }
@@ -430,6 +433,10 @@ struct Ringing {
   uint32_t first_round_end_ms = 0;
   uint8_t rounds = 0;
   bool spoke = false;
+  // The timer the spoken sentence names: the newest one that finished.
+  uint8_t speak_at = 0;
+  // Until then a clip playing is taken for the spoken sentence and awaited.
+  uint32_t speech_until_ms = 0;
   uint32_t activity_ms = 0;
 };
 Ringing g_ring;
@@ -656,7 +663,8 @@ void show_ringing() {
   voice_timer::formatClock(first.total_s, length, sizeof(length));
   lv_label_set_text_fmt(g_alert.line, tr().timer_set_for, length);
   if (g_ring.count > 1) {
-    char names[96] = "";
+    // Room for every other name in full (kMaxRinging - 1 of them).
+    char names[(kMaxRinging - 1) * (voice_timer::kMaxNameBytes + 2)] = "";
     for (uint8_t i = 1; i < g_ring.count; ++i) {
       if (i > 1) strncat(names, ", ", sizeof(names) - strlen(names) - 1);
       strncat(names, TimerName(g_ring.timers[i]).text, sizeof(names) - strlen(names) - 1);
@@ -675,21 +683,28 @@ void take_finished() {
   Timer timer;
   bool added = false;
   while (voice_timers::takeFinished(&timer)) {
-    if (g_ring.count < kMaxRinging) g_ring.timers[g_ring.count++] = timer;
+    if (g_ring.count < kMaxRinging) {
+      g_ring.speak_at = g_ring.count;
+      g_ring.timers[g_ring.count++] = timer;
+    }
     added = true;
   }
   if (!added) return;
   const uint32_t now = millis();
-  if (!g_ring.active) {
-    g_ring.active = true;
-    g_ring.started_ms = now;
-    g_ring.next_ms = now;
-    g_ring.rounds = 0;
-    g_ring.spoke = false;
-  }
-  // The display wakes and the screensaver goes for the card.
+  // Every newly finished timer rings in full, also one that finished after
+  // the card of an earlier one stopped ringing.
+  g_ring.active = true;
+  g_ring.started_ms = now;
+  g_ring.next_ms = now;
+  g_ring.first_round_end_ms = now;
+  g_ring.speech_until_ms = now;
+  g_ring.rounds = 0;
+  g_ring.spoke = false;
+  // The display wakes and the screensaver goes for the card. A camera in
+  // full screen draws straight into the framebuffer, over the card: it closes.
   powerManager.wakeFromDisplaySleep("timer alert");
   hide_image_screensaver();
+  if (camera_popup_is_full_screen()) hide_camera_popup();
   displayManager.resetActivityTimer();
   g_ring.activity_ms = now;
   show_ringing();
@@ -700,7 +715,10 @@ void take_finished() {
 void ring_step() {
   if (!g_ring.active) return;
   const uint32_t now = millis();
-  if (now - g_ring.activity_ms >= kActivityRefreshMs) {
+  const bool ringing = now - g_ring.started_ms < kRingLimitMs;
+  // The display stays on while it rings; afterwards it may sleep as usual
+  // with the card kept for whoever comes back.
+  if (ringing && now - g_ring.activity_ms >= kActivityRefreshMs) {
     g_ring.activity_ms = now;
     displayManager.resetActivityTimer();
   }
@@ -710,7 +728,7 @@ void ring_step() {
   if (children && lv_obj_get_child(layer, static_cast<int32_t>(children - 1)) != g_alert.backdrop) {
     lv_obj_move_foreground(g_alert.backdrop);
   }
-  if (now - g_ring.started_ms >= kRingLimitMs) {
+  if (!ringing) {
     if (g_alert.animating) {
       Serial.printf("%s Ringing ended after %lu s\n", kLogPrefix, static_cast<unsigned long>(kRingLimitMs / 1000));
       stop_ringing();
@@ -722,15 +740,18 @@ void ring_step() {
   const bool silent = sound == voice_timer::kSoundOff || voice_timers::volumePercent() == 0;
   // Home Assistant says which timer finished once the first round ended.
   if (!g_ring.spoke && (g_ring.rounds > 0 || silent) &&
-      static_cast<int32_t>(now - g_ring.first_round_end_ms) >= 0 && !speaker::outputBusy()) {
+      static_cast<int32_t>(now - g_ring.first_round_end_ms) >= 0 && !speaker::chimePlaying()) {
     g_ring.spoke = true;
-    voice_timers::requestAction("speak", g_ring.timers[0].id);
+    voice_timers::requestAction("speak", g_ring.timers[g_ring.speak_at].id);
     g_ring.next_ms = now + kSpeakStartMs;
+    g_ring.speech_until_ms = now + kSpeakStartMs + kSpeechWaitMs;
     return;
   }
   if (silent || static_cast<int32_t>(now - g_ring.next_ms) < 0) return;
-  // The spoken sentence (or anything else playing) finishes first.
-  if (speaker::outputBusy()) {
+  // A chime still playing, or the spoken sentence, finishes first. Music or
+  // a camera's sound does not hold the alert: the chime ends that clip.
+  if (speaker::chimePlaying() ||
+      (speaker::outputBusy() && static_cast<int32_t>(now - g_ring.speech_until_ms) < 0)) {
     g_ring.next_ms = now + 500;
     return;
   }
@@ -854,6 +875,18 @@ void hide_popup() {
   lv_obj_remove_flag(g_popup->overlay, LV_OBJ_FLAG_CLICKABLE);
 }
 
+void theme_changed() {
+  if (!g_alert.backdrop) return;
+  const bool shown = !lv_obj_has_flag(g_alert.backdrop, LV_OBJ_FLAG_HIDDEN);
+  const bool animating = g_alert.animating;
+  start_animation(false);
+  lv_obj_delete(g_alert.backdrop);
+  g_alert = Alert{};
+  if (!shown || !g_ring.count) return;
+  show_ringing();
+  start_animation(animating);
+}
+
 bool popup_visible() {
   return g_popup && g_popup->card && !lv_obj_has_flag(g_popup->card, LV_OBJ_FLAG_HIDDEN) &&
          popup_shell_body() == g_popup->card;
@@ -861,6 +894,7 @@ bool popup_visible() {
 
 void service() {
   if (!voice_timers::supported()) return;
+  voice_timers::checkExpired();
   take_finished();
   ring_step();
   const uint32_t now = millis();
@@ -881,7 +915,9 @@ void service() {
 
 bool serviceSleep() {
   // The awake loop takes the finished timer and shows its card.
-  if (!voice_timers::supported() || !voice_timers::hasFinished()) return false;
+  if (!voice_timers::supported()) return false;
+  voice_timers::checkExpired();
+  if (!voice_timers::hasFinished()) return false;
   powerManager.wakeFromDisplaySleep("timer alert");
   return true;
 }

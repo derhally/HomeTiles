@@ -188,6 +188,17 @@ inline void unescape(const char* json, int begin, int end, char* out, size_t siz
     else if ((cp & 0xF0) == 0xE0) n = 3;
     else if ((cp & 0xF8) == 0xF0) n = 4;
     if (i + static_cast<int>(n) > end || used + n >= size) break;
+    // A stray continuation byte, a 0xF8+ byte or a broken sequence never
+    // reaches the labels: it becomes '?'.
+    bool broken = n == 1 && cp >= 0x80;
+    for (size_t k = 1; k < n && !broken; ++k) {
+      broken = (static_cast<unsigned char>(json[i + static_cast<int>(k)]) & 0xC0) != 0x80;
+    }
+    if (broken) {
+      out[used++] = '?';
+      ++i;
+      continue;
+    }
     if (n == 1 && cp < 0x20) {
       out[used++] = ' ';
     } else {

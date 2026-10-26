@@ -33,7 +33,13 @@ bool timerAt(uint8_t index, voice_timer::Timer* out, uint32_t* left_s);
 // first paused one; false without timers.
 bool nextTimer(voice_timer::Timer* out, uint32_t* left_s);
 
-// Finished timers, oldest first, until the alert takes them.
+// A running timer the Bridge never reported finished (lost link) finishes
+// on the panel's own count a few seconds after 0:00. Rate-limited; call from
+// the awake and the sleep loop.
+void checkExpired();
+
+// Finished timers, oldest first, until the alert takes them. Each timer
+// rings once, however often its timer_done arrives.
 bool takeFinished(voice_timer::Timer* out);
 bool hasFinished();
 

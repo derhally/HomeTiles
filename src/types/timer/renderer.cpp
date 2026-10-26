@@ -236,7 +236,7 @@ void apply_big(View& view, bool has, const Timer& timer) {
   // More timers than rows: the last row says how many more there are.
   const bool overflow = other_count > view.big_row_count;
   const size_t shown = overflow ? view.big_row_count : other_count;
-  char text[64];
+  char text[96];
   for (size_t i = 0; i < view.big_row_count; ++i) {
     Row& row = view.big_rows[i];
     row.id[0] = '\0';
@@ -256,7 +256,7 @@ void apply_big(View& view, bool has, const Timer& timer) {
     if (other.active) {
       set_text(row.name, name.text);
     } else {
-      snprintf(text, sizeof(text), "%s, %s", name.text, tr().timer_paused);
+      snprintf(text, sizeof(text), tr().timer_paused_name, name.text);
       set_text(row.name, text);
     }
     lv_obj_set_style_text_color(row.left, lv_color_hex(other.active ? ui_theme::text() : ui_theme::text_soft()), 0);
@@ -292,7 +292,7 @@ void apply_list(View& view) {
     const Name own(timer);
     const char* name = own.text;
     if (!timer.active) {
-      snprintf(text, sizeof(text), "%s, %s", name, tr().timer_paused);
+      snprintf(text, sizeof(text), tr().timer_paused_name, name);
     } else if (view.wide && (!many || view.big)) {
       char length[16];
       voice_timer::formatClock(timer.total_s, length, sizeof(length));
@@ -316,7 +316,9 @@ void apply_list(View& view) {
   }
   if (!view.wide) return;
 
-  for (lv_obj_t* preset : view.presets) set_hidden(preset, has);
+  // A board without voice timers (a tile from another panel's backup)
+  // offers nothing to start.
+  for (lv_obj_t* preset : view.presets) set_hidden(preset, has || !voice_timers::supported());
   // Without a timer the name and "No timers running" stand beside the
   // circle; the countdown gives way to the presets.
   set_hidden(view.value, !has);
@@ -538,7 +540,7 @@ lv_obj_t* render_timer_tile(lv_obj_t* parent, int col, int row, const Tile& tile
       view->hint = label(card, small, ui_theme::text_soft());
       lv_label_set_long_mode(view->hint, LV_LABEL_LONG_DOT);
       lv_obj_set_width(view->hint, view->content_w);
-      lv_label_set_text(view->hint, tr().timer_tap_start);
+      lv_label_set_text(view->hint, voice_timers::supported() ? tr().timer_tap_start : tr().timer_none);
       lv_obj_align(view->hint, LV_ALIGN_BOTTOM_LEFT, 0, 0);
       lv_obj_align(view->title, LV_ALIGN_BOTTOM_LEFT, 0, -line);
       lv_obj_align(view->value, LV_ALIGN_BOTTOM_LEFT, 0, -2 * line);

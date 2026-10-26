@@ -239,6 +239,7 @@ void UIManager::processThemeChange() {
   settings_screen::close_overlays();
   popup_shell_delete_popups();
   preloadPopups();
+  timer_ui::theme_changed();
   // The screen behind everything.
   const lv_color_t screen = lv_color_hex(ui_theme::screen());
   lv_obj_set_style_bg_color(lv_screen_active(), screen, 0);

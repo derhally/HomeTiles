@@ -124,6 +124,7 @@ void hide_media_popup(){card.hidden=true;}
 void hide_climate_popup(){card.hidden=true;}
 void hide_cover_popup(){card.hidden=true;}
 void hide_device_popup(){card.hidden=true;}
+namespace timer_ui { void hide_popup(){} }
 void viewNavigationSource(lv_obj_t*);
 void viewNavigationPopupShown(lv_obj_t*,const char*);
 // The camera popup's full-screen request (#65): set just before the opening.
