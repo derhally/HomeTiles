@@ -985,8 +985,12 @@ struct LocaleProfile {
   const char* timezone_labels[27];
 
   // Binary sensor UI labels. Order: type, entity, history, activity,
-  // history unavailable, no activity, 24-hour range, 7-day range.
-  const char* binary_sensor_labels[8];
+  // history unavailable, no activity.
+  const char* binary_sensor_labels[6];
+
+  // Sensor popup history ranges: 30 minutes, 1 hour, 12 hours, 24 hours,
+  // 7 days. State timelines show only the last two.
+  const char* history_range_labels[5];
 
   // Canonical binary sensor states shared by the device and Web Admin.
   // Order: on, off, low, normal, charging, not charging, detected, clear,

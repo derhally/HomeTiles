@@ -89,8 +89,10 @@ struct SensorPopupContext {
  Obj *title_label=nullptr,*icon_label=nullptr,*control_row=nullptr;
  Obj *body_box,*chart_wrap,*binary_body,*binary_activity_title,*binary_activity_date,*binary_activity_viewport,*binary_activity_status,*binary_history_title,*binary_timeline,*binary_history_status;
  Obj* binary_time_labels[8];
- Obj* chart=nullptr; Obj* y_min_label=nullptr; Obj* y_min_line=nullptr; Obj* time_lines[8]={}; Obj* time_labels[8]={}; int chart_height=kChartHeight;
+ Obj* chart=nullptr; Obj* y_min_label=nullptr; Obj* y_min_line=nullptr; Obj* time_labels[8]={}; int chart_height=kChartHeight; bool extremes_shown=false;
 };
+// The rings follow a resize (test-editable-history-lvgl.mjs draws them).
+void place_extreme_markers(SensorPopupContext*){}
 ${fn(control,'editable_control_height')}
 ${fn(popup,'resize_editable_chart')}
 void update_binary_time_axis(SensorPopupContext*){}

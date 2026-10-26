@@ -4775,6 +4775,10 @@ static void apply_tile_graph_history(const char* target_entity, const char* payl
   String json = payload;
   String entity_id;
   if (!extract_json_string_field(json, "entity_id", entity_id)) return;
+  // Graph tiles show 24 hours. The Sensor popup's other ranges (30 minutes
+  // to 7 days) arrive here too and must not replace the tile's graph.
+  float hours = 24.0f;
+  if (extract_json_number_field(json, "hours", hours) && lroundf(hours) != 24) return;
 
   // Find matching tile with graph in active grid
   const TileGridConfig& grid = tileConfig.getActiveGrid();

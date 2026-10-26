@@ -263,10 +263,15 @@ static String build_external_temp_history_payload(const char* entity_id,
   }
   if (points == 0) points = 1;
 
-  const uint16_t samples_per_bucket = static_cast<uint16_t>(
+  // Buckets shorter than a stored sample (the 1-hour graph uses 1-minute
+  // buckets) repeat the sample that covers them, so the time axis stays true.
+  const bool fine_buckets = period_minutes < kExternalTempHistorySampleMinutes;
+  const uint16_t samples_per_bucket = fine_buckets ? 1 : static_cast<uint16_t>(
       (period_minutes + kExternalTempHistorySampleMinutes - 1U) / kExternalTempHistorySampleMinutes);
-  const uint32_t requested_base_points =
-      static_cast<uint32_t>(points) * static_cast<uint32_t>(samples_per_bucket);
+  const uint32_t requested_base_points = fine_buckets
+      ? (static_cast<uint32_t>(points) * period_minutes + kExternalTempHistorySampleMinutes - 1U) /
+            kExternalTempHistorySampleMinutes
+      : static_cast<uint32_t>(points) * static_cast<uint32_t>(samples_per_bucket);
   const uint16_t clamped_base_points = static_cast<uint16_t>(
       requested_base_points > kExternalTempHistoryPoints ? kExternalTempHistoryPoints : requested_base_points);
   const uint16_t available_base_points =
@@ -303,8 +308,9 @@ static String build_external_temp_history_payload(const char* entity_id,
     float sum = 0.0f;
     uint16_t valid_count = 0;
     for (uint16_t sample = 0; sample < samples_per_bucket; ++sample) {
-      const uint32_t virtual_index =
-          static_cast<uint32_t>(bucket) * static_cast<uint32_t>(samples_per_bucket) + sample;
+      const uint32_t virtual_index = fine_buckets
+          ? static_cast<uint32_t>(bucket) * period_minutes / kExternalTempHistorySampleMinutes
+          : static_cast<uint32_t>(bucket) * static_cast<uint32_t>(samples_per_bucket) + sample;
       if (virtual_index < missing_base_points) continue;
 
       const uint32_t local_offset = virtual_index - missing_base_points;

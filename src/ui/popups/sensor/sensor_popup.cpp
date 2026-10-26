@@ -36,6 +36,9 @@
 #include <string.h>
 #include <time.h>
 #include <vector>
+// lvgl.h no longer exports lv_image_cache_drop() (tile_renderer.cpp).
+#include <misc/cache/instance/lv_image_cache.h>
+#include <misc/cache/instance/lv_image_header_cache.h>
 #include "src/ui/shared/ui_theme.h"
 
 namespace {
@@ -52,16 +55,53 @@ constexpr int kTimeAxisHeight = 20;  // full native UI14 line plus breathing roo
 constexpr int kTimeAxisHeight = popup_layout::scale(20);  // space for time labels below chart
 #endif
 constexpr int kTimeAxisMarkerCount = 8;
-constexpr int kChartLineWidth = popup_layout::scale(4);
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+// P4 panels draw the area graph: a gradient under a line in the icon color,
+// faint dashed guides and rings on the highest and lowest point. The S3
+// panels draw the minimal graph (thin line, no fill, guides or rings), which
+// keeps their software redraws as cheap as before.
+constexpr bool kAreaGraph = true;
+#else
+constexpr bool kAreaGraph = false;
+#endif
+constexpr int kChartLineWidth =
+    kAreaGraph ? popup_layout::scale(3) : std::max(2, popup_layout::scale(2));
+// Fill opacity at the top edge of the chart; it fades to nothing at the bottom.
+constexpr lv_opa_t kChartFillOpa = LV_OPA_40;
+constexpr lv_opa_t kChartGuideOpa = LV_OPA_20;
+// Axis text is quieter than the graph.
+constexpr lv_opa_t kChartAxisTextOpa = LV_OPA_60;
+constexpr int kChartMarkerSize = popup_layout::scale(12);
+constexpr int kChartMarkerRing = std::max(2, popup_layout::scale(2));
+constexpr int kChartGuideDash = std::max(2, popup_layout::scale(4));
+constexpr uint16_t kHistoryHours1h = 1;
+constexpr uint16_t kHistoryPeriodMinutes1h = 1;
+constexpr uint16_t kHistoryPoints1h = 60;
+// 30 minutes shows the newer half of the 1-hour reply: the Bridge counts
+// whole hours, and both ranges share one request and its replay.
+constexpr uint16_t kHistoryShownMinutes30m = 30;
+constexpr uint16_t kHistoryHours12h = 12;
+constexpr uint16_t kHistoryPeriodMinutes12h = 5;
+constexpr uint16_t kHistoryPoints12h = 144;
 constexpr uint16_t kHistoryHours24h = 24;
 constexpr uint16_t kHistoryPeriodMinutes24h = 5;
 constexpr uint16_t kHistoryPoints24h = 288;
 constexpr uint16_t kHistoryHours7d = 168;
 constexpr uint16_t kHistoryPeriodMinutes7d = 60;
 constexpr uint16_t kHistoryPoints7d = 168;
-constexpr int kRangeButtonWidth = popup_layout::scale(92);
-constexpr int kRangeButtonHeight = popup_layout::kNavHeight;
-constexpr int kRangeButtonGap = popup_layout::scale(10);
+constexpr int kRangeCount = 5;
+// The area graph joins the ranges in one segmented bar; the minimal graph
+// lists them as plain text with a short underline under the chosen one.
+constexpr int kRangeRowPad = kAreaGraph ? popup_layout::scale(4) : 0;
+constexpr int kRangeButtonGap = kAreaGraph ? 0 : popup_layout::scale(4);
+constexpr int kRangeButtonWidth = std::min(
+    popup_layout::scale(92),
+    (popup_layout::kContentWidth - 2 * kRangeRowPad - (kRangeCount - 1) * kRangeButtonGap) /
+        kRangeCount);
+constexpr int kRangeButtonHeight = popup_layout::kNavHeight - 2 * kRangeRowPad;
+constexpr int kRangeUnderlineWidth = popup_layout::scale(36);
+constexpr int kRangeUnderlineHeight = std::max(3, popup_layout::scale(4));
+constexpr lv_opa_t kRangeIdleTextOpa = LV_OPA_60;
 constexpr size_t kBinaryMaxSegments = 96;
 constexpr size_t kBinaryMaxTimelineBins = 768;
 constexpr size_t kBinaryMaxActivityEntries = 96;
@@ -117,12 +157,17 @@ constexpr uint64_t kReadoutMinEpoch = 1704067200ULL;
 enum class SensorHistoryRange : uint8_t {
   Day24,
   Day7,
+  Hours12,
+  Hour1,
+  Min30,
 };
 
 struct HistoryRangeConfig {
   uint16_t hours;
   uint16_t period_minutes;
   uint16_t points;
+  // Newest part of the reply that the graph shows, 0 for all of it.
+  uint16_t shown_minutes;
 };
 
 struct SensorPopupContext {
@@ -156,6 +201,10 @@ struct SensorPopupContext {
   lv_obj_t* range_row = nullptr;
   lv_obj_t* range_day_btn = nullptr;
   lv_obj_t* range_week_btn = nullptr;
+  // Numeric graphs only; the state timelines keep 24H and 7D.
+  lv_obj_t* range_12h_btn = nullptr;
+  lv_obj_t* range_1h_btn = nullptr;
+  lv_obj_t* range_30m_btn = nullptr;
   lv_obj_t* chart = nullptr;
   int chart_height = kChartHeight;
   lv_chart_series_t* series = nullptr;
@@ -163,8 +212,17 @@ struct SensorPopupContext {
   lv_obj_t* y_min_label = nullptr;
   lv_obj_t* y_max_line = nullptr;
   lv_obj_t* y_min_line = nullptr;
+  // Both dashed guides share one point pair (area graph only).
+  lv_point_precise_t guide_points[2] = {};
+  lv_obj_t* high_marker = nullptr;
+  lv_obj_t* low_marker = nullptr;
+  bool extremes_shown = false;
+  size_t high_index = 0;
+  size_t low_index = 0;
+  // Area graph, 7D: dashed day separators at these fractions of the width.
+  float day_marks[kTimeAxisMarkerCount] = {};
+  uint8_t day_mark_count = 0;
   lv_obj_t* time_labels[kTimeAxisMarkerCount] = {};
-  lv_obj_t* time_lines[kTimeAxisMarkerCount] = {};
   lv_obj_t* chart_wrap = nullptr;
   uint16_t point_count = kHistoryPoints24h;
   bool binary_mode = false;
@@ -249,6 +307,15 @@ struct SensorPopupContext {
   size_t history_values_capacity = 0;
   size_t history_values_count = 0;
   int32_t chart_scale = 1;
+  // The chart's Y range (LVGL's default until a history sets it).
+  int32_t chart_y_min = 0;
+  int32_t chart_y_max = 100;
+  // Area graph fill as an opaque, dithered RGB565 picture of the chart area
+  // (PSRAM, rebuilt when the points, size or colors change).
+  uint16_t* fill_pixels = nullptr;
+  size_t fill_capacity = 0;
+  uint32_t fill_key = 0;
+  lv_image_dsc_t fill_image = {};
   uint64_t chart_range_start = 0;
   uint64_t chart_range_end = 0;
   // Fraction digits of the current numeric state; readouts of history points
@@ -311,11 +378,24 @@ static String normalize_state_history_value(const String& value);
 static HistoryRangeConfig get_history_range_config(SensorHistoryRange range) {
   switch (range) {
     case SensorHistoryRange::Day7:
-      return {kHistoryHours7d, kHistoryPeriodMinutes7d, kHistoryPoints7d};
+      return {kHistoryHours7d, kHistoryPeriodMinutes7d, kHistoryPoints7d, 0};
+    case SensorHistoryRange::Hours12:
+      return {kHistoryHours12h, kHistoryPeriodMinutes12h, kHistoryPoints12h, 0};
+    case SensorHistoryRange::Hour1:
+      return {kHistoryHours1h, kHistoryPeriodMinutes1h, kHistoryPoints1h, 0};
+    case SensorHistoryRange::Min30:
+      return {kHistoryHours1h, kHistoryPeriodMinutes1h, kHistoryPoints1h,
+              kHistoryShownMinutes30m};
     case SensorHistoryRange::Day24:
     default:
-      return {kHistoryHours24h, kHistoryPeriodMinutes24h, kHistoryPoints24h};
+      return {kHistoryHours24h, kHistoryPeriodMinutes24h, kHistoryPoints24h, 0};
   }
+}
+
+// Seconds the graph spans for a range.
+static uint32_t history_shown_seconds(const HistoryRangeConfig& cfg) {
+  return cfg.shown_minutes ? static_cast<uint32_t>(cfg.shown_minutes) * 60U
+                           : static_cast<uint32_t>(cfg.hours) * 3600U;
 }
 
 static const char* get_weekday_abbrev(uint8_t wday) {
@@ -477,18 +557,52 @@ static String sensor_value_display(const String& value, const String& unit,
   return display;
 }
 
+static lv_color_t graph_accent_color(const SensorPopupContext* ctx) {
+  return ctx->icon_label ? lv_obj_get_style_text_color(ctx->icon_label, LV_PART_MAIN)
+                         : lv_color_hex(ui_theme::text());
+}
+
 static void style_range_button(SensorPopupContext* ctx, lv_obj_t* btn, bool active) {
   if (!ctx || !btn) return;
   const lv_color_t popup =
       ctx->card ? lv_obj_get_style_bg_color(ctx->card, LV_PART_MAIN) : lv_color_hex(ui_theme::popup_card());
-  const lv_color_t icon =
-      ctx->icon_label ? lv_obj_get_style_text_color(ctx->icon_label, LV_PART_MAIN) : lv_color_hex(ui_theme::text());
+  const lv_color_t icon = graph_accent_color(ctx);
   lv_obj_t* label = lv_obj_get_child(btn, 0);
   if (label) {
     lv_obj_set_style_text_font(label, popup_layout::font24(), 0);
     lv_obj_set_style_text_font(label, popup_layout::font24(), LV_STATE_PRESSED);
   }
   popup_nav_style::style_toggle(btn, label, popup, icon, active);
+  if (kAreaGraph) return;
+  // Minimal graph: no chip at rest (a press still shows it), a quieter text
+  // for the other ranges and the underline (the button's second child) in
+  // the icon color.
+  lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+  if (label) lv_obj_set_style_text_opa(label, active ? LV_OPA_COVER : kRangeIdleTextOpa, 0);
+  if (lv_obj_t* underline = lv_obj_get_child(btn, 1)) {
+    lv_obj_set_style_bg_color(underline, icon, 0);
+    if (active) lv_obj_remove_flag(underline, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(underline, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+// The line, its fill and the high/low rings take the icon color, like the
+// range buttons.
+static void update_graph_accent(SensorPopupContext* ctx) {
+  if (!ctx->chart || !ctx->series) return;
+  const lv_color_t accent = graph_accent_color(ctx);
+  if (!lv_color_eq(lv_chart_get_series_color(ctx->chart, ctx->series), accent)) {
+    lv_chart_set_series_color(ctx->chart, ctx->series, accent);
+  }
+  const lv_color_t card =
+      ctx->card ? lv_obj_get_style_bg_color(ctx->card, LV_PART_MAIN) : lv_color_hex(ui_theme::popup_card());
+  for (lv_obj_t* marker : {ctx->high_marker, ctx->low_marker}) {
+    if (!marker) continue;
+    if (!lv_color_eq(lv_obj_get_style_border_color(marker, LV_PART_MAIN), accent))
+      lv_obj_set_style_border_color(marker, accent, 0);
+    if (!lv_color_eq(lv_obj_get_style_bg_color(marker, LV_PART_MAIN), card))
+      lv_obj_set_style_bg_color(marker, card, 0);
+  }
 }
 
 static void update_range_buttons(SensorPopupContext* ctx) {
@@ -496,6 +610,10 @@ static void update_range_buttons(SensorPopupContext* ctx) {
   const auto selected = ctx->editable ? ctx->editable_requested_range : ctx->history_range;
   style_range_button(ctx, ctx->range_day_btn, selected == SensorHistoryRange::Day24);
   style_range_button(ctx, ctx->range_week_btn, selected == SensorHistoryRange::Day7);
+  style_range_button(ctx, ctx->range_12h_btn, selected == SensorHistoryRange::Hours12);
+  style_range_button(ctx, ctx->range_1h_btn, selected == SensorHistoryRange::Hour1);
+  style_range_button(ctx, ctx->range_30m_btn, selected == SensorHistoryRange::Min30);
+  update_graph_accent(ctx);
 }
 
 }  // namespace
@@ -514,12 +632,163 @@ void sensor_popup_follow_tile_color(uint32_t color) {
 
 namespace {
 
+// The Bridge answers the state timelines (Binary Sensor, text states, Number,
+// Select, Date/Time) only for 24 hours and 7 days.
+static void set_short_range_buttons_visible(SensorPopupContext* ctx, bool visible) {
+  for (lv_obj_t* btn : {ctx->range_12h_btn, ctx->range_1h_btn, ctx->range_30m_btn}) {
+    if (!btn) continue;
+    if (visible) lv_obj_remove_flag(btn, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(btn, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 static void set_range_buttons_visible(SensorPopupContext* ctx, bool visible) {
   if (!ctx || !ctx->range_row) return;
   if (visible) {
     lv_obj_clear_flag(ctx->range_row, LV_OBJ_FLAG_HIDDEN);
   } else {
     lv_obj_add_flag(ctx->range_row, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+// Area graph: a vertical gradient under each line segment, a triangle from
+// the line down to its lower end and a rectangle from there to the bottom
+// (LVGL's faded-area chart pattern). It runs before the chart draws its line,
+// so the fill never covers the line, and maps the points exactly like
+// lv_chart's line drawing. Only segments inside the redrawn area get draw
+// tasks, so a moving readout repaints just its strip.
+// Paints the area graph fill into ctx->fill_image: the card color above the
+// line, below it the icon color fading from kChartFillOpa at the top of the
+// chart to nothing at the bottom. RGB565 panels have only 64 green and 32
+// red/blue steps, so a plain LVGL gradient this faint shows ~15 px bands; a
+// 4x4 ordered dither spreads each step across neighbouring pixels instead.
+// Rebuilt only when the points, size or colors change.
+static bool build_chart_fill(SensorPopupContext* ctx, const int32_t* values, uint32_t count,
+                             int32_t width, int32_t height, lv_color_t color, lv_color_t card) {
+  uint32_t key = 2166136261u;
+  auto mix = [&](uint32_t v) { key = (key ^ v) * 16777619u; };
+  mix(static_cast<uint32_t>(width)); mix(static_cast<uint32_t>(height));
+  mix(lv_color_to_u32(color)); mix(lv_color_to_u32(card));
+  mix(static_cast<uint32_t>(ctx->chart_y_min)); mix(static_cast<uint32_t>(ctx->chart_y_max));
+  for (uint32_t i = 0; i < count; ++i) mix(static_cast<uint32_t>(values[i]));
+  const size_t pixels = static_cast<size_t>(width) * height;
+  if (ctx->fill_pixels && ctx->fill_key == key && ctx->fill_image.header.w == width &&
+      ctx->fill_image.header.h == height) {
+    return true;
+  }
+  if (ctx->fill_pixels) {
+    lv_image_cache_drop(&ctx->fill_image);
+    lv_image_header_cache_drop(&ctx->fill_image);
+  }
+  if (pixels > ctx->fill_capacity) {
+    heap_caps_free(ctx->fill_pixels);
+    ctx->fill_pixels = static_cast<uint16_t*>(heap_caps_malloc(
+        pixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    ctx->fill_capacity = ctx->fill_pixels ? pixels : 0;
+    if (!ctx->fill_pixels) return false;
+  }
+
+  // The card stays exactly as LVGL converts it (it drops the low bits), and
+  // the fill dithers only the step above that, so the fade meets the card
+  // without a seam.
+  const uint16_t base = lv_color_to_u16(card);
+  const int32_t base_r = card.red >> 3, base_g = card.green >> 2, base_b = card.blue >> 3;
+  const float span_r = (color.red - card.red) * 31.0f / 255.0f;
+  const float span_g = (color.green - card.green) * 63.0f / 255.0f;
+  const float span_b = (color.blue - card.blue) * 31.0f / 255.0f;
+  static constexpr uint8_t kBayer[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
+  auto channel = [](int32_t base_level, float level, int32_t max) {
+    return LV_CLAMP(0, base_level + static_cast<int32_t>(floorf(level)), max);
+  };
+
+  auto y_at = [&](uint32_t i) {
+    return static_cast<float>(lv_map(values[i], ctx->chart_y_min, ctx->chart_y_max, height, 0));
+  };
+  uint32_t segment = 0;
+  for (int32_t x = 0; x < width; ++x) {
+    uint16_t* column = ctx->fill_pixels + x;
+    // The chart puts point i at width * i / (count - 1).
+    while (segment + 2 < count &&
+           static_cast<int64_t>(width) * (segment + 1) / (count - 1) <= x) {
+      ++segment;
+    }
+    float line = static_cast<float>(height);
+    if (values[segment] != LV_CHART_POINT_NONE && values[segment + 1] != LV_CHART_POINT_NONE) {
+      const int32_t x1 = static_cast<int32_t>(static_cast<int64_t>(width) * segment / (count - 1));
+      const int32_t x2 = static_cast<int32_t>(static_cast<int64_t>(width) * (segment + 1) / (count - 1));
+      const float t = x2 > x1 ? static_cast<float>(x - x1) / (x2 - x1) : 0.0f;
+      line = y_at(segment) + (y_at(segment + 1) - y_at(segment)) * t;
+    }
+    for (int32_t y = 0; y < height; ++y, column += width) {
+      // Partial coverage on the row the line crosses; the line covers it anyway.
+      const float cover = LV_CLAMP(0.0f, y + 1 - line, 1.0f);
+      if (cover <= 0.0f) { *column = base; continue; }
+      const float alpha = cover * kChartFillOpa / 255.0f * (height - 1 - y) / height;
+      const float threshold = (kBayer[y & 3][x & 3] + 0.5f) / 16.0f;
+      const int32_t r = channel(base_r, span_r * alpha + threshold, 31);
+      const int32_t g = channel(base_g, span_g * alpha + threshold, 63);
+      const int32_t b = channel(base_b, span_b * alpha + threshold, 31);
+      *column = static_cast<uint16_t>((r << 11) | (g << 5) | b);
+    }
+  }
+
+  ctx->fill_image = {};
+  ctx->fill_image.header.magic = LV_IMAGE_HEADER_MAGIC;
+  ctx->fill_image.header.cf = LV_COLOR_FORMAT_RGB565;
+  ctx->fill_image.header.w = width;
+  ctx->fill_image.header.h = height;
+  ctx->fill_image.header.stride = width * sizeof(uint16_t);
+  ctx->fill_image.data = reinterpret_cast<const uint8_t*>(ctx->fill_pixels);
+  ctx->fill_image.data_size = pixels * sizeof(uint16_t);
+  ctx->fill_key = key;
+  return true;
+}
+
+static void on_chart_fill_draw(lv_event_t* e) {
+  auto* ctx = static_cast<SensorPopupContext*>(lv_event_get_user_data(e));
+  lv_obj_t* chart = lv_event_get_target_obj(e);
+  lv_layer_t* layer = lv_event_get_layer(e);
+  if (!ctx || !ctx->series || !layer) return;
+  const uint32_t count = lv_chart_get_point_count(chart);
+  const int32_t* values = count > 1 ? lv_chart_get_series_y_array(chart, ctx->series) : nullptr;
+  if (!values || ctx->chart_y_max <= ctx->chart_y_min) return;
+  lv_area_t content;
+  lv_obj_get_content_coords(chart, &content);
+  const int32_t width = lv_area_get_width(&content);
+  const int32_t height = lv_area_get_height(&content);
+  if (width <= 0 || height <= 0) return;
+  const lv_area_t& clip = layer->_clip_area;
+  if (content.y2 < clip.y1 || content.y1 > clip.y2) return;
+
+  const lv_color_t color = lv_chart_get_series_color(chart, ctx->series);
+  const lv_color_t card = lv_obj_get_style_bg_color(ctx->card, LV_PART_MAIN);
+  // The fill is opaque and paints the card color above the line. The card
+  // keeps that color even while the popup shell draws it (the shell clears
+  // the card's opacity and fills its frame with the card color instead).
+  if (build_chart_fill(ctx, values, count, width, height, color, card)) {
+    lv_draw_image_dsc_t image;
+    lv_draw_image_dsc_init(&image);
+    image.src = &ctx->fill_image;
+    lv_draw_image(layer, &image, &content);
+  }
+
+  if (ctx->day_mark_count) {
+    // 7D: the midnights between the centred weekday labels, styled like the
+    // horizontal guides.
+    lv_draw_line_dsc_t mark;
+    lv_draw_line_dsc_init(&mark);
+    mark.color = lv_color_hex(ui_theme::icon());
+    mark.opa = kChartGuideOpa;
+    mark.width = 1;
+    mark.dash_width = kChartGuideDash;
+    mark.dash_gap = kChartGuideDash;
+    for (uint8_t i = 0; i < ctx->day_mark_count; ++i) {
+      const int32_t x = content.x1 + static_cast<int32_t>(ctx->day_marks[i] * width);
+      if (x < clip.x1 || x > clip.x2) continue;
+      mark.p1 = {static_cast<lv_value_precise_t>(x), static_cast<lv_value_precise_t>(content.y1)};
+      mark.p2 = {static_cast<lv_value_precise_t>(x), static_cast<lv_value_precise_t>(content.y2)};
+      lv_draw_line(layer, &mark);
+    }
   }
 }
 
@@ -609,25 +878,25 @@ static void apply_init_to_context(SensorPopupContext* ctx, const SensorPopupInit
   ctx->binary_device_class = init.binary_device_class;
   ctx->binary_last_changed = init.binary_last_changed;
   if (apply_header) apply_sensor_header(ctx, init);
+  {
+    // Range labels in the current language (the numeric graph and the state
+    // timelines share 24H and 7D).
+    const char* const* labels =
+        i18n::locale(configManager.getConfig().language).history_range_labels;
+    lv_obj_t* const buttons[kRangeCount] = {ctx->range_30m_btn, ctx->range_1h_btn,
+                                            ctx->range_12h_btn, ctx->range_day_btn,
+                                            ctx->range_week_btn};
+    for (int i = 0; i < kRangeCount; ++i) {
+      if (lv_obj_t* label = buttons[i] ? lv_obj_get_child(buttons[i], 0) : nullptr)
+        set_label_text_if_changed(label, labels[i]);
+    }
+  }
   if (ctx->state_history_mode) {
     if (!reuse_history) ensure_binary_view(ctx);
     if (ctx->chart_wrap && (!ctx->editable || ctx->editable_kind != "number"))
       lv_obj_add_flag(ctx->chart_wrap, LV_OBJ_FLAG_HIDDEN);
     if (ctx->binary_body) lv_obj_clear_flag(ctx->binary_body, LV_OBJ_FLAG_HIDDEN);
-    if (ctx->range_day_btn) {
-      lv_obj_t* label = lv_obj_get_child(ctx->range_day_btn, 0);
-      if (label) {
-        lv_label_set_text(label, i18n::binary_sensor_label(
-                                     configManager.getConfig().language, 6));
-      }
-    }
-    if (ctx->range_week_btn) {
-      lv_obj_t* label = lv_obj_get_child(ctx->range_week_btn, 0);
-      if (label) {
-        lv_label_set_text(label, i18n::binary_sensor_label(
-                                     configManager.getConfig().language, 7));
-      }
-    }
+    set_short_range_buttons_visible(ctx, false);
     if (ctx->binary_mode) {
       update_binary_state(ctx, init.value, init.binary_available,
                           init.binary_device_class, init.binary_last_changed,
@@ -640,14 +909,7 @@ static void apply_init_to_context(SensorPopupContext* ctx, const SensorPopupInit
   } else {
     if (ctx->chart_wrap) lv_obj_clear_flag(ctx->chart_wrap, LV_OBJ_FLAG_HIDDEN);
     if (ctx->binary_body) lv_obj_add_flag(ctx->binary_body, LV_OBJ_FLAG_HIDDEN);
-    if (ctx->range_day_btn) {
-      lv_obj_t* label = lv_obj_get_child(ctx->range_day_btn, 0);
-      if (label) lv_label_set_text(label, "24H");
-    }
-    if (ctx->range_week_btn) {
-      lv_obj_t* label = lv_obj_get_child(ctx->range_week_btn, 0);
-      if (label) lv_label_set_text(label, "7D");
-    }
+    set_short_range_buttons_visible(ctx, true);
     update_value_label(ctx, init.value, init.unit);
   }
   // A warm history retains its geometry unless the new header needs more
@@ -744,53 +1006,62 @@ static time_t next_local_midnight_after(time_t ts) {
   return mktime(&timeinfo);
 }
 
-static time_t next_local_6h_boundary_after(time_t ts) {
-  struct tm timeinfo;
+static void to_local_tm(time_t ts, struct tm& out) {
 #ifdef _WIN32
-  localtime_s(&timeinfo, &ts);
+  localtime_s(&out, &ts);
 #else
-  localtime_r(&ts, &timeinfo);
+  localtime_r(&ts, &out);
 #endif
-
-  const int current_hour = timeinfo.tm_hour;
-  int next_hour = ((current_hour / 6) + 1) * 6;
-  if (next_hour >= 24) {
-    next_hour -= 24;
-    timeinfo.tm_mday += 1;
-  }
-
-  timeinfo.tm_hour = next_hour;
-  timeinfo.tm_min = 0;
-  timeinfo.tm_sec = 0;
-  return mktime(&timeinfo);
 }
 
-static int calc_day24_axis(String out_labels[], float out_frac[], int max_markers) {
+// Clock label of an axis mark inside the hour: "14:30", or "2:30" with the
+// 12-hour clock (the short ranges leave no doubt about AM and PM).
+static String format_time_axis_clock(int hour24, int minute) {
+  const DeviceConfig& cfg = configManager.getConfig();
+  int hour = hour24;
+  if (clock_tile::resolve_time_format(clock_tile::TIME_FORMAT_AUTO, cfg.global_time_format,
+                                      cfg.language) != clock_tile::TIME_FORMAT_24H) {
+    hour %= 12;
+    if (hour == 0) hour = 12;
+  }
+  char text[8];
+  snprintf(text, sizeof(text), "%d:%02d", hour, minute);
+  return String(text);
+}
+
+// Marks on local clock multiples of step_minutes (a divisor of a day) inside
+// the last span_seconds. Steps of whole hours get hour labels ("6 PM"),
+// shorter steps clock times ("3:15").
+static int calc_step_axis(uint32_t span_seconds, uint16_t step_minutes, String out_labels[],
+                          float out_frac[], int max_markers) {
   struct tm now_tm;
-  if (!get_valid_local_time(now_tm)) return 0;
+  if (!get_valid_local_time(now_tm) || !span_seconds || !step_minutes) return 0;
 
-  time_t now_local = mktime(&now_tm);
+  const time_t now_local = mktime(&now_tm);
   if (now_local <= 0) return 0;
+  const time_t range_start = now_local - static_cast<time_t>(span_seconds);
+  const float span = static_cast<float>(span_seconds);
 
-  const time_t range_start = now_local - static_cast<time_t>(kHistoryHours24h) * 60 * 60;
-  const float span = static_cast<float>(now_local - range_start);
-  if (span <= 0.0f) return 0;
+  struct tm mark_tm;
+  to_local_tm(range_start, mark_tm);
+  const int minute_of_day = mark_tm.tm_hour * 60 + mark_tm.tm_min;
+  mark_tm.tm_hour = 0;
+  mark_tm.tm_min = (minute_of_day / step_minutes + 1) * step_minutes;
+  mark_tm.tm_sec = 0;
+  mark_tm.tm_isdst = -1;
 
   int count = 0;
-  time_t boundary = next_local_6h_boundary_after(range_start);
-  while (boundary < now_local && count < max_markers) {
-    struct tm boundary_tm;
-#ifdef _WIN32
-    localtime_s(&boundary_tm, &boundary);
-#else
-    localtime_r(&boundary, &boundary_tm);
-#endif
-    out_labels[count] = format_time_axis_label(boundary_tm.tm_hour);
-    out_frac[count] = static_cast<float>(boundary - range_start) / span;
+  for (time_t mark = mktime(&mark_tm); mark > range_start && mark < now_local && count < max_markers;) {
+    struct tm shown;
+    to_local_tm(mark, shown);
+    out_labels[count] = step_minutes % 60 ? format_time_axis_clock(shown.tm_hour, shown.tm_min)
+                                          : format_time_axis_label(shown.tm_hour);
+    out_frac[count] = static_cast<float>(mark - range_start) / span;
     ++count;
-    boundary = next_local_6h_boundary_after(boundary);
+    mark_tm.tm_min += step_minutes;
+    mark_tm.tm_isdst = -1;
+    mark = mktime(&mark_tm);
   }
-
   return count;
 }
 
@@ -821,6 +1092,7 @@ static int calc_day7_label_axis(String out_labels[], float out_frac[], int max_m
   return count;
 }
 
+// Midnights inside the 7-day range, as fractions of its span.
 static int calc_day7_boundary_axis(float out_frac[], int max_markers) {
   time_t now_local = 0;
   time_t range_start = 0;
@@ -847,11 +1119,19 @@ static int calc_day7_boundary_axis(float out_frac[], int max_markers) {
 static int calc_time_axis(const SensorPopupContext* ctx, String out_labels[], float out_frac[], int max_markers) {
   if (!ctx || max_markers < 1) return 0;
 
-  if (ctx->history_range == SensorHistoryRange::Day7) {
-    return calc_day7_label_axis(out_labels, out_frac, max_markers);
+  switch (ctx->history_range) {
+    case SensorHistoryRange::Day7:
+      return calc_day7_label_axis(out_labels, out_frac, max_markers);
+    case SensorHistoryRange::Min30:
+      return calc_step_axis(30U * 60U, 10, out_labels, out_frac, max_markers);
+    case SensorHistoryRange::Hour1:
+      return calc_step_axis(3600U, 15, out_labels, out_frac, max_markers);
+    case SensorHistoryRange::Hours12:
+      return calc_step_axis(12U * 3600U, 180, out_labels, out_frac, max_markers);
+    case SensorHistoryRange::Day24:
+    default:
+      return calc_step_axis(24U * 3600U, 360, out_labels, out_frac, max_markers);
   }
-
-  return calc_day24_axis(out_labels, out_frac, max_markers);
 }
 
 // Recalculate Y-axis layout based on actual label text widths.
@@ -904,16 +1184,17 @@ static void update_y_axis_layout(SensorPopupContext* ctx) {
 
   int chart_right_reserve = (max_time_label_w > 0) ? (max_time_label_w / 2 + kTimeAxisEdgeGap) : 0;
 
-  // Reposition guide lines (keep Y unchanged, only adjust X and width)
+  // Reposition guide lines (keep Y unchanged, only adjust X and length)
   int line_start = axis_w - kLineOverlap;
   int line_w = kAvailW - line_start - chart_right_reserve;
   if (line_w < 10) line_w = 10;
-  if (ctx->y_max_line) {
-    lv_obj_set_width(ctx->y_max_line, line_w);
+  if (ctx->y_max_line && ctx->y_min_line) {
+    if (ctx->guide_points[1].x != line_w - 1) {
+      ctx->guide_points[1].x = line_w - 1;
+      lv_line_set_points(ctx->y_max_line, ctx->guide_points, 2);
+      lv_line_set_points(ctx->y_min_line, ctx->guide_points, 2);
+    }
     lv_obj_set_x(ctx->y_max_line, line_start);
-  }
-  if (ctx->y_min_line) {
-    lv_obj_set_width(ctx->y_min_line, line_w);
     lv_obj_set_x(ctx->y_min_line, line_start);
   }
 
@@ -925,30 +1206,13 @@ static void update_y_axis_layout(SensorPopupContext* ctx) {
   int chart_draw_w = kAvailW - chart_left - chart_right_reserve;
   if (chart_draw_w < 10) return;
 
-  const bool is_week_range = ctx->history_range == SensorHistoryRange::Day7;
-  float week_boundary_fracs[kTimeAxisMarkerCount] = {};
-  int week_boundary_count = 0;
-  if (is_week_range) {
-    week_boundary_count = calc_day7_boundary_axis(week_boundary_fracs, kTimeAxisMarkerCount);
-  }
+  ctx->day_mark_count = kAreaGraph && ctx->history_range == SensorHistoryRange::Day7
+      ? static_cast<uint8_t>(calc_day7_boundary_axis(ctx->day_marks, kTimeAxisMarkerCount))
+      : 0;
 
   for (int i = 0; i < kTimeAxisMarkerCount; ++i) {
     if (i < n) {
       int label_x_anchor = chart_left + static_cast<int>(fracs[i] * chart_draw_w);
-      int line_x = label_x_anchor;
-      if (is_week_range) {
-        if (i < week_boundary_count) {
-          line_x = chart_left + static_cast<int>(week_boundary_fracs[i] * chart_draw_w);
-        }
-      }
-      if (ctx->time_lines[i]) {
-        if (is_week_range && i >= week_boundary_count) {
-          lv_obj_add_flag(ctx->time_lines[i], LV_OBJ_FLAG_HIDDEN);
-        } else {
-          lv_obj_set_x(ctx->time_lines[i], line_x);
-          lv_obj_clear_flag(ctx->time_lines[i], LV_OBJ_FLAG_HIDDEN);
-        }
-      }
       if (ctx->time_labels[i]) {
         lv_coord_t lbl_w = time_label_widths[i];
         int label_x = label_x_anchor - lbl_w / 2;
@@ -964,9 +1228,35 @@ static void update_y_axis_layout(SensorPopupContext* ctx) {
         lv_obj_clear_flag(ctx->time_labels[i], LV_OBJ_FLAG_HIDDEN);
       }
     } else {
-      if (ctx->time_lines[i]) lv_obj_add_flag(ctx->time_lines[i], LV_OBJ_FLAG_HIDDEN);
       if (ctx->time_labels[i]) lv_obj_add_flag(ctx->time_labels[i], LV_OBJ_FLAG_HIDDEN);
     }
+  }
+}
+
+// Area graph: rings on the newest highest and lowest point of the line, at
+// the current chart geometry (a history reply or an editor resize).
+static void place_extreme_markers(SensorPopupContext* ctx) {
+  if (!ctx->high_marker || !ctx->low_marker) return;
+  if (!ctx->extremes_shown || !ctx->chart || !ctx->series || !ctx->chart_wrap) {
+    lv_obj_add_flag(ctx->high_marker, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ctx->low_marker, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  // The chart padding follows the axis labels, which just changed.
+  lv_obj_update_layout(ctx->chart_wrap);
+  lv_area_t chart_area, wrap_area;
+  lv_obj_get_coords(ctx->chart, &chart_area);
+  lv_obj_get_coords(ctx->chart_wrap, &wrap_area);
+  const struct { lv_obj_t* marker; size_t index; } marks[] = {
+      {ctx->high_marker, ctx->high_index}, {ctx->low_marker, ctx->low_index}};
+  for (const auto& mark : marks) {
+    lv_point_t position;
+    lv_chart_get_point_pos_by_id(ctx->chart, ctx->series, static_cast<uint32_t>(mark.index),
+                                 &position);
+    lv_obj_set_pos(mark.marker,
+                   chart_area.x1 - wrap_area.x1 + position.x - kChartMarkerSize / 2,
+                   chart_area.y1 - wrap_area.y1 + position.y - kChartMarkerSize / 2);
+    lv_obj_remove_flag(mark.marker, LV_OBJ_FLAG_HIDDEN);
   }
 }
 
@@ -983,8 +1273,11 @@ static void clear_chart(SensorPopupContext* ctx, uint16_t points) {
   if (ctx->y_min_label) lv_label_set_text(ctx->y_min_label, "");
   if (ctx->y_max_line) lv_obj_add_flag(ctx->y_max_line, LV_OBJ_FLAG_HIDDEN);
   if (ctx->y_min_line) lv_obj_add_flag(ctx->y_min_line, LV_OBJ_FLAG_HIDDEN);
+  ctx->extremes_shown = false;
+  ctx->day_mark_count = 0;
+  if (ctx->high_marker) lv_obj_add_flag(ctx->high_marker, LV_OBJ_FLAG_HIDDEN);
+  if (ctx->low_marker) lv_obj_add_flag(ctx->low_marker, LV_OBJ_FLAG_HIDDEN);
   for (int i = 0; i < kTimeAxisMarkerCount; ++i) {
-    if (ctx->time_lines[i]) lv_obj_add_flag(ctx->time_lines[i], LV_OBJ_FLAG_HIDDEN);
     if (ctx->time_labels[i]) lv_obj_add_flag(ctx->time_labels[i], LV_OBJ_FLAG_HIDDEN);
   }
 }
@@ -2221,7 +2514,7 @@ static void build_readout_band(SensorPopupContext* ctx) {
 // and the time span of its linear axis. The PSRAM buffer is reused.
 static void keep_chart_history(SensorPopupContext* ctx, const std::vector<float>& values,
                                int32_t scale, uint64_t range_start, uint64_t range_end,
-                               uint16_t hours) {
+                               uint32_t span_seconds) {
   ctx->chart_scale = scale > 0 ? scale : 1;
   ctx->history_values_count = 0;
   ctx->readout_point = -1;
@@ -2237,7 +2530,7 @@ static void keep_chart_history(SensorPopupContext* ctx, const std::vector<float>
   }
   if (!range_end) range_end = static_cast<uint64_t>(time(nullptr));
   if (!range_start || range_start >= range_end)
-    range_start = range_end - static_cast<uint64_t>(hours) * 3600ULL;
+    range_start = range_end - span_seconds;
   const bool valid = range_end >= kReadoutMinEpoch && range_start < range_end;
   ctx->chart_range_start = valid ? range_start : 0;
   ctx->chart_range_end = valid ? range_end : 0;
@@ -2690,9 +2983,9 @@ static void resize_editable_chart(SensorPopupContext* ctx, int height) {
   if (ctx->y_min_label) lv_obj_set_y(ctx->y_min_label, height);
   if (ctx->y_min_line) lv_obj_set_y(ctx->y_min_line, overhang + height - 1);
   for (int i = 0; i < kTimeAxisMarkerCount; ++i) {
-    if (ctx->time_lines[i]) lv_obj_set_height(ctx->time_lines[i], height);
     if (ctx->time_labels[i]) lv_obj_set_y(ctx->time_labels[i], overhang + height + popup_layout::scale480(8));
   }
+  if (ctx->extremes_shown) place_extreme_markers(ctx);
 }
 
 static int editable_control_top(const SensorPopupContext* ctx) {
@@ -3043,8 +3336,11 @@ static void apply_history_payload(SensorPopupContext* ctx, const char* payload) 
 
   size_t count = values.size();
   if (ctx->editable && count > 288) return;
+  // A sensor without history hides the ranges, unless another range than the
+  // opening 24H is chosen: the way back must stay.
+  const bool keep_ranges = ctx->editable || ctx->history_range != SensorHistoryRange::Day24;
   if (count == 0) {
-    set_range_buttons_visible(ctx, ctx->editable);
+    set_range_buttons_visible(ctx, keep_ranges);
     clear_chart(ctx, range_cfg.points);
     return;
   }
@@ -3083,24 +3379,49 @@ static void apply_history_payload(SensorPopupContext* ctx, const char* payload) 
     }
   }
 
+  // A range that shows the newer part of its reply (30 minutes of the 1-hour
+  // reply) drops the older points; its time span shrinks with them.
+  uint64_t range_start = extract_epoch(doc["range_start"]);
+  const uint64_t range_end = extract_epoch(doc["range_end"]);
+  if (range_cfg.shown_minutes && count > 1 && !ctx->editable) {
+    const uint32_t reply_minutes = static_cast<uint32_t>(payload_hours) * 60U;
+    if (range_cfg.shown_minutes < reply_minutes) {
+      const size_t keep =
+          (count - 1) * range_cfg.shown_minutes / reply_minutes + 1;
+      plot_values.erase(plot_values.begin(), plot_values.end() - keep);
+      if (range_end && range_start < range_end) {
+        range_start = range_end - (range_end - range_start) * (keep - 1) / (count - 1);
+      } else {
+        range_start = 0;
+      }
+      count = keep;
+    }
+  }
+
   bool has_range = false;
   float min_v = 0.0f;
   float max_v = 0.0f;
   size_t numeric_count = 0;
+  size_t high_index = 0;
+  size_t low_index = 0;
 
-  for (float val : plot_values) {
+  for (size_t i = 0; i < count; ++i) {
+    const float val = plot_values[i];
     if (!isfinite(val)) continue;
     ++numeric_count;
     if (!has_range) {
       min_v = max_v = val;
+      high_index = low_index = i;
       has_range = true;
     } else {
-      if (val < min_v) min_v = val;
-      if (val > max_v) max_v = val;
+      // The newest high and low win a tie, like the readout's newest point.
+      if (val <= min_v) { min_v = val; low_index = i; }
+      if (val >= max_v) { max_v = val; high_index = i; }
     }
   }
+  const bool has_extremes = has_range && numeric_count > 1 && max_v > min_v;
 
-  set_range_buttons_visible(ctx, ctx->editable || numeric_count > 1);
+  set_range_buttons_visible(ctx, keep_ranges || numeric_count > 1);
 
   int scale = 1;
   if (has_range) {
@@ -3116,8 +3437,11 @@ static void apply_history_payload(SensorPopupContext* ctx, const char* payload) 
     }
   }
 
-  keep_chart_history(ctx, plot_values, scale, extract_epoch(doc["range_start"]),
-                     extract_epoch(doc["range_end"]), payload_hours);
+  keep_chart_history(ctx, plot_values, scale, range_start, range_end,
+                     range_cfg.shown_minutes && !ctx->editable
+                         ? history_shown_seconds(range_cfg)
+                         : static_cast<uint32_t>(payload_hours) * 3600U);
+  points = static_cast<uint16_t>(count);
   ctx->point_count = points;
   lv_chart_set_point_count(ctx->chart, points);
   int32_t* chart_values = lv_chart_get_series_y_array(ctx->chart, ctx->series);
@@ -3152,12 +3476,9 @@ static void apply_history_payload(SensorPopupContext* ctx, const char* payload) 
       min_v -= 1.0f;
       max_v += 1.0f;
     }
-    lv_chart_set_range(
-      ctx->chart,
-      LV_CHART_AXIS_PRIMARY_Y,
-      static_cast<lv_coord_t>(floorf(min_v * scale)),
-      static_cast<lv_coord_t>(ceilf(max_v * scale))
-    );
+    ctx->chart_y_min = static_cast<lv_coord_t>(floorf(min_v * scale));
+    ctx->chart_y_max = static_cast<lv_coord_t>(ceilf(max_v * scale));
+    lv_chart_set_range(ctx->chart, LV_CHART_AXIS_PRIMARY_Y, ctx->chart_y_min, ctx->chart_y_max);
   }
   const uint32_t chart_ready_ms = millis();
 
@@ -3196,7 +3517,6 @@ static void apply_history_payload(SensorPopupContext* ctx, const char* payload) 
     if (ctx->y_min_line) lv_obj_add_flag(ctx->y_min_line, LV_OBJ_FLAG_HIDDEN);
     // No valid range: hide the time axis too.
     for (int i = 0; i < kTimeAxisMarkerCount; ++i) {
-      if (ctx->time_lines[i]) lv_obj_add_flag(ctx->time_lines[i], LV_OBJ_FLAG_HIDDEN);
       if (ctx->time_labels[i]) lv_obj_add_flag(ctx->time_labels[i], LV_OBJ_FLAG_HIDDEN);
     }
   }
@@ -3204,6 +3524,10 @@ static void apply_history_payload(SensorPopupContext* ctx, const char* payload) 
   // One refresh is sufficient after the complete buffer, scale and labels
   // have been prepared.
   lv_chart_refresh(ctx->chart);
+  ctx->extremes_shown = has_extremes;
+  ctx->high_index = high_index;
+  ctx->low_index = low_index;
+  place_extreme_markers(ctx);
   refresh_sensor_readout(ctx);
 
   const uint32_t apply_finished_ms = millis();
@@ -3332,6 +3656,9 @@ static void on_overlay_delete(lv_event_t* e) {
   ctx->readout.cancel();
   heap_caps_free(ctx->history_values);
   ctx->history_values = nullptr;
+  if (ctx->fill_pixels) lv_image_cache_drop(&ctx->fill_image);
+  heap_caps_free(ctx->fill_pixels);
+  ctx->fill_pixels = nullptr;
   editable_control_delete(ctx->control); ctx->control = nullptr;
   if (g_sensor_popup_ctx == ctx) {
     g_sensor_first_frame.cancel();
@@ -3349,8 +3676,11 @@ static void on_range_click(lv_event_t* e) {
   lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
   if (!ctx || !target) return;
 
-  SensorHistoryRange next_range =
-      (target == ctx->range_week_btn) ? SensorHistoryRange::Day7 : SensorHistoryRange::Day24;
+  SensorHistoryRange next_range = SensorHistoryRange::Day24;
+  if (target == ctx->range_week_btn) next_range = SensorHistoryRange::Day7;
+  else if (target == ctx->range_12h_btn) next_range = SensorHistoryRange::Hours12;
+  else if (target == ctx->range_1h_btn) next_range = SensorHistoryRange::Hour1;
+  else if (target == ctx->range_30m_btn) next_range = SensorHistoryRange::Min30;
   if (!ctx->editable && ctx->history_range == next_range) return;
   // A new range starts at its newest point.
   ctx->readout.cancel();
@@ -3399,9 +3729,18 @@ static void build_popup_body(SensorPopupContext* ctx) {
   lv_obj_t* range_row = lv_obj_create(card);
   ctx->range_row = range_row;
   lv_obj_remove_style_all(range_row);
-  lv_obj_set_size(range_row, (kRangeButtonWidth * 2) + kRangeButtonGap, popup_layout::kNavHeight);
+  // As wide as the visible buttons: the state timelines show only two.
+  lv_obj_set_size(range_row, LV_SIZE_CONTENT, popup_layout::kNavHeight);
   lv_obj_align(range_row, LV_ALIGN_BOTTOM_MID, 0, -popup_layout::kNavBottomInset);
-  lv_obj_set_style_bg_opa(range_row, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_pad_all(range_row, kRangeRowPad, 0);
+  if (kAreaGraph) {
+    // One segmented bar: a faint track in the text color holds the chips.
+    lv_obj_set_style_radius(range_row, popup_layout::kNavHeight / 2, 0);
+    lv_obj_set_style_bg_color(range_row, lv_color_hex(ui_theme::text()), 0);
+    lv_obj_set_style_bg_opa(range_row, LV_OPA_10, 0);
+  } else {
+    lv_obj_set_style_bg_opa(range_row, LV_OPA_TRANSP, 0);
+  }
   lv_obj_set_layout(range_row, LV_LAYOUT_FLEX);
   lv_obj_set_flex_flow(range_row, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(range_row, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -3429,14 +3768,30 @@ static void build_popup_body(SensorPopupContext* ctx) {
     set_label_style(label, lv_color_hex(ui_theme::text()), popup_layout::font24());
     lv_label_set_text(label, text);
     lv_obj_center(label);
+    if (!kAreaGraph) {
+      // The minimal graph marks the chosen range with a short underline.
+      lv_obj_t* underline = lv_obj_create(btn);
+      lv_obj_remove_style_all(underline);
+      lv_obj_set_size(underline, kRangeUnderlineWidth, kRangeUnderlineHeight);
+      lv_obj_set_style_radius(underline, kRangeUnderlineHeight / 2, 0);
+      lv_obj_set_style_bg_opa(underline, LV_OPA_COVER, 0);
+      lv_obj_remove_flag(underline, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_align(underline, LV_ALIGN_BOTTOM_MID, 0, -popup_layout::scale(12));
+      lv_obj_add_flag(underline, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_add_event_cb(btn, on_range_click, LV_EVENT_CLICKED, ctx);
     return btn;
   };
 
-  // 7D sits left of 24H: the longer range reaches further into the past.
-  ctx->range_week_btn = make_range_button("7D");
-  ctx->range_day_btn = make_range_button("24H");
-  lv_obj_add_event_cb(ctx->range_day_btn, on_range_click, LV_EVENT_CLICKED, ctx);
-  lv_obj_add_event_cb(ctx->range_week_btn, on_range_click, LV_EVENT_CLICKED, ctx);
+  // Longer ranges sit further left: they reach further into the past.
+  // apply_init_to_context sets the labels again for the opened entity.
+  const char* const* range_labels =
+      i18n::locale(configManager.getConfig().language).history_range_labels;
+  ctx->range_week_btn = make_range_button(range_labels[4]);
+  ctx->range_day_btn = make_range_button(range_labels[3]);
+  ctx->range_12h_btn = make_range_button(range_labels[2]);
+  ctx->range_1h_btn = make_range_button(range_labels[1]);
+  ctx->range_30m_btn = make_range_button(range_labels[0]);
   update_range_buttons(ctx);
   set_range_buttons_visible(ctx, false);
 
@@ -3494,6 +3849,7 @@ static void build_popup_body(SensorPopupContext* ctx) {
   lv_obj_t* y_max = lv_label_create(chart_wrap);
   ctx->y_max_label = y_max;
   set_label_style(y_max, lv_color_hex(ui_theme::text()), y_font);
+  lv_obj_set_style_text_opa(y_max, kChartAxisTextOpa, 0);
   lv_obj_set_style_text_align(y_max, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_set_width(y_max, kYAxisWidth - 10);
   lv_label_set_text(y_max, "");
@@ -3503,6 +3859,7 @@ static void build_popup_body(SensorPopupContext* ctx) {
   lv_obj_t* y_min = lv_label_create(chart_wrap);
   ctx->y_min_label = y_min;
   set_label_style(y_min, lv_color_hex(ui_theme::text()), y_font);
+  lv_obj_set_style_text_opa(y_min, kChartAxisTextOpa, 0);
   lv_obj_set_style_text_align(y_min, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_set_width(y_min, kYAxisWidth - 10);
   lv_label_set_text(y_min, "");
@@ -3512,37 +3869,36 @@ static void build_popup_body(SensorPopupContext* ctx) {
   constexpr int kLineOverlap = popup_layout::scale(6);
   const int kLineStart = kYAxisWidth - kLineOverlap;
   const int kLineWidth = kCardWidth - (kCardPad * 2) - kLineStart;
+  // Area graph only: faint dashed guides. Both share ctx->guide_points;
+  // update_y_axis_layout sets their length.
+  ctx->guide_points[0] = {0, 0};
+  ctx->guide_points[1] = {kLineWidth - 1, 0};
   auto make_guide_line = [&](int16_t y_pos) -> lv_obj_t* {
-    lv_obj_t* line = lv_obj_create(chart_wrap);
+    lv_obj_t* line = lv_line_create(chart_wrap);
     lv_obj_remove_style_all(line);
-    lv_obj_set_size(line, kLineWidth, 1);
-    lv_obj_set_style_bg_color(line, lv_color_hex(ui_theme::icon()), 0);
-    lv_obj_set_style_bg_opa(line, LV_OPA_30, 0);
+    lv_line_set_points(line, ctx->guide_points, 2);
+    lv_obj_set_style_line_width(line, 1, 0);
+    lv_obj_set_style_line_color(line, lv_color_hex(ui_theme::icon()), 0);
+    lv_obj_set_style_line_opa(line, kChartGuideOpa, 0);
+    lv_obj_set_style_line_dash_width(line, kChartGuideDash, 0);
+    lv_obj_set_style_line_dash_gap(line, kChartGuideDash, 0);
     lv_obj_remove_flag(line, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_flag(line, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_pos(line, kLineStart, y_pos);
     lv_obj_add_flag(line, LV_OBJ_FLAG_HIDDEN);
     return line;
   };
-  ctx->y_max_line = make_guide_line(kLabelOverhang);
-  ctx->y_min_line = make_guide_line(kLabelOverhang + kChartHeight - 1);
+  if (kAreaGraph) {
+    ctx->y_max_line = make_guide_line(kLabelOverhang);
+    ctx->y_min_line = make_guide_line(kLabelOverhang + kChartHeight - 1);
+  }
 
-  // Vertical time marker lines (thin, same opacity as horizontal guides)
-  // Created hidden; positioned and shown in apply_history_payload.
+  // Time labels below the chart, created hidden; positioned and shown in
+  // update_y_axis_layout.
   for (int i = 0; i < kTimeAxisMarkerCount; ++i) {
-    lv_obj_t* vline = lv_obj_create(chart_wrap);
-    lv_obj_remove_style_all(vline);
-    lv_obj_set_size(vline, 1, kChartHeight);
-    lv_obj_set_style_bg_color(vline, lv_color_hex(ui_theme::icon()), 0);
-    lv_obj_set_style_bg_opa(vline, LV_OPA_30, 0);
-    lv_obj_remove_flag(vline, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_remove_flag(vline, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(vline, 0, kLabelOverhang);
-    lv_obj_add_flag(vline, LV_OBJ_FLAG_HIDDEN);
-    ctx->time_lines[i] = vline;
-
     lv_obj_t* tlbl = lv_label_create(chart_wrap);
     set_label_style(tlbl, lv_color_hex(ui_theme::text()), popup_layout::font20());
+    lv_obj_set_style_text_opa(tlbl, kChartAxisTextOpa, 0);
     lv_obj_set_style_text_align(tlbl, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(tlbl, LV_SIZE_CONTENT);
     lv_label_set_text(tlbl, "");
@@ -3568,8 +3924,35 @@ static void build_popup_body(SensorPopupContext* ctx) {
   lv_obj_set_style_line_color(chart, lv_color_hex(ui_theme::text()), LV_PART_ITEMS);
   lv_obj_set_style_line_rounded(chart, true, LV_PART_ITEMS);
   lv_obj_set_style_size(chart, 0, 0, LV_PART_INDICATOR);
+  if (kAreaGraph) {
+    lv_obj_add_event_cb(chart, on_chart_fill_draw, LV_EVENT_DRAW_MAIN_BEGIN, ctx);
+  }
 
-  ctx->series = lv_chart_add_series(chart, lv_color_hex(ui_theme::text()), LV_CHART_AXIS_PRIMARY_Y);
+  // The line takes the icon color (update_graph_accent).
+  ctx->series = lv_chart_add_series(chart, graph_accent_color(ctx), LV_CHART_AXIS_PRIMARY_Y);
+  if (kAreaGraph) {
+    // The guides go above the chart: its fill is opaque (build_chart_fill).
+    lv_obj_move_foreground(ctx->y_max_line);
+    lv_obj_move_foreground(ctx->y_min_line);
+    // Rings on the highest and lowest point, above the line.
+    auto make_marker = [&]() -> lv_obj_t* {
+      lv_obj_t* marker = lv_obj_create(chart_wrap);
+      lv_obj_remove_style_all(marker);
+      lv_obj_set_size(marker, kChartMarkerSize, kChartMarkerSize);
+      lv_obj_set_style_radius(marker, LV_RADIUS_CIRCLE, 0);
+      lv_obj_set_style_bg_color(marker, lv_obj_get_style_bg_color(ctx->card, LV_PART_MAIN), 0);
+      lv_obj_set_style_bg_opa(marker, LV_OPA_COVER, 0);
+      lv_obj_set_style_border_width(marker, kChartMarkerRing, 0);
+      lv_obj_set_style_border_color(marker, graph_accent_color(ctx), 0);
+      lv_obj_set_style_border_opa(marker, LV_OPA_COVER, 0);
+      lv_obj_remove_flag(marker, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_remove_flag(marker, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_add_flag(marker, LV_OBJ_FLAG_HIDDEN);
+      return marker;
+    };
+    ctx->high_marker = make_marker();
+    ctx->low_marker = make_marker();
+  }
   clear_chart(ctx, get_history_range_config(ctx->history_range).points);
 
   lv_obj_move_foreground(ctx->icon_label);

@@ -1,5 +1,6 @@
 // Every history popup put 24H (Today) left of 7D. The longer range reaches
-// further into the past, so 7D now sits left: Sensor (also Binary Sensor,
+// further into the past, so 7D now sits left (numeric Sensor graphs continue
+// with 12H, 1H and 30m): Sensor (also Binary Sensor,
 // Number, Select and Date/Time history and Activity), Weather and Energy.
 // Energy's day button names today instead of 24H, since it counts from
 // midnight.
@@ -8,8 +9,8 @@ import assert from 'node:assert/strict';
 import {readRepoFile} from '../../lib/admin-source.mjs';
 
 const sensor = readRepoFile('src/ui/popups/sensor/sensor_popup.cpp');
-assert.match(sensor, /ctx->range_week_btn = make_range_button\("7D"\);\s*ctx->range_day_btn = make_range_button\("24H"\);/,
-  'Sensor history: 7D is created first, so the flex row puts it left');
+assert.match(sensor, /ctx->range_week_btn = make_range_button\(range_labels\[4\]\);\s*ctx->range_day_btn = make_range_button\(range_labels\[3\]\);\s*ctx->range_12h_btn = make_range_button\(range_labels\[2\]\);\s*ctx->range_1h_btn = make_range_button\(range_labels\[1\]\);\s*ctx->range_30m_btn = make_range_button\(range_labels\[0\]\);/,
+  'Sensor history: 7D, 24H, 12H, 1H, 30m from left to right, longest first');
 
 const energy = readRepoFile('src/ui/popups/energy/energy_popup.cpp');
 assert.match(energy, /ctx->week_btn = make_button_label\(period_row, "7D", &ctx->week_label\);\s*ctx->day_btn = make_button_label\(period_row, today_button_label\(\), &ctx->day_label\);/,

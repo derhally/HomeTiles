@@ -38,6 +38,8 @@ const iconChar = name => String.fromCodePoint(parseInt(mdi.match(new RegExp('\\{
 const chartBuild = popup.slice(popup.indexOf('  // Chart wrapper: Y-axis labels'), popup.indexOf('  lv_obj_move_foreground(ctx->icon_label);'));
 const cpp = `
 #include <lvgl.h>
+#include <misc/cache/instance/lv_image_cache.h>
+#include <misc/cache/instance/lv_image_header_cache.h>
 #include "src/types/value/value_colors.h"
 #include "src/ui/shared/title_label.h"
 #include "src/ui/popups/popup_nav_style.h"
@@ -107,7 +109,8 @@ template<size_t N> void serializeJson(const StaticJsonDocument<N>&doc,String&tex
 struct EditableControl;
 void editable_control_refresh(EditableControl*);void editable_control_close(EditableControl*);
 ${control.slice(control.indexOf('int editable_control_height('))}
-constexpr int kCardWidth=popup_layout::kCardWidth,kCardPad=popup_layout::kCardPad,kChartHeight=popup_layout::contentScale(325),kTimeAxisMarkerCount=8,kChartLineWidth=popup_layout::scale(4),kHistoryPoints24h=288;
+constexpr int kCardWidth=popup_layout::kCardWidth,kCardPad=popup_layout::kCardPad,kChartHeight=popup_layout::contentScale(325),kTimeAxisMarkerCount=8;
+${popup.slice(popup.indexOf('#if defined(CONFIG_IDF_TARGET_ESP32P4)\n// P4 panels draw the area graph'), popup.indexOf('constexpr size_t kBinaryMaxSegments'))}
 #if defined(DEVICE_LAYOUT_480X480)
 constexpr int kContentLiftY=6,kBinaryTimelineHeight=22,kBinaryActivityRowHeight=42,kTimeAxisHeight=20;
 #elif defined(DEVICE_LAYOUT_1024X600)
@@ -115,20 +118,24 @@ constexpr int kContentLiftY=0,kBinaryTimelineHeight=24,kBinaryActivityRowHeight=
 #else
 constexpr int kContentLiftY=0,kBinaryTimelineHeight=30,kBinaryActivityRowHeight=50,kTimeAxisHeight=20;
 #endif
-enum class SensorHistoryRange {Day24,Day7};
+${popup.match(/enum class SensorHistoryRange : uint8_t \{[\s\S]*?\n\};/)[0]}
 constexpr int kBinaryVisibleActivityRows = SCREEN_HEIGHT <= 600 ? 4 : 5;
 struct SensorPopupContext {
  bool editable=true,state_history_mode=true,binary_icon_override=false;String editable_kind,entity_id,editable_history_id;SensorHistoryRange editable_requested_range=SensorHistoryRange::Day24;
- lv_obj_t *overlay=nullptr,*card=nullptr,*title_label=nullptr,*icon_label=nullptr,*control_row=nullptr,*range_day_btn=nullptr,*range_week_btn=nullptr;int chart_height=kChartHeight;SensorHistoryRange history_range=SensorHistoryRange::Day24;
+ lv_obj_t *overlay=nullptr,*card=nullptr,*title_label=nullptr,*icon_label=nullptr,*control_row=nullptr,*range_day_btn=nullptr,*range_week_btn=nullptr,*range_12h_btn=nullptr,*range_1h_btn=nullptr,*range_30m_btn=nullptr,*high_marker=nullptr,*low_marker=nullptr;lv_point_precise_t guide_points[2]={};int32_t chart_y_min=0,chart_y_max=100;uint16_t* fill_pixels=nullptr;size_t fill_capacity=0;uint32_t fill_key=0;lv_image_dsc_t fill_image={};bool extremes_shown=false;size_t high_index=0,low_index=0;float day_marks[8]={};uint8_t day_mark_count=0;int chart_height=kChartHeight;SensorHistoryRange history_range=SensorHistoryRange::Day24;
  lv_obj_t *body_box,*chart_wrap,*chart,*binary_body,*binary_activity_title,*binary_activity_date,*binary_activity_viewport,*binary_activity_status,*binary_history_title,*binary_timeline,*binary_history_status,*y_min_label,*y_max_label,*y_min_line,*y_max_line;
- lv_obj_t *binary_time_labels[8],*time_lines[8],*time_labels[8];lv_chart_series_t* series;
+ lv_obj_t *binary_time_labels[8],*time_labels[8];lv_chart_series_t* series;
  // The graph readout is covered by test-editable-history-lvgl.mjs.
  struct {void cancel(){}} readout;
 };
 void clear_chart(SensorPopupContext* ctx,int points){lv_chart_set_point_count(ctx->chart,points);lv_chart_set_range(ctx->chart,LV_CHART_AXIS_PRIMARY_Y,99,101);lv_chart_set_all_value(ctx->chart,ctx->series,100);}
 struct Range{int hours,points;};Range get_history_range_config(SensorHistoryRange range){return range==SensorHistoryRange::Day7?Range{168,288}:Range{24,288};}
 ${fn(popup,'set_label_style')}
+${fn(popup,'graph_accent_color')}
+${fn(popup,'build_chart_fill')}
+${fn(popup,'on_chart_fill_draw')}
 void build_chart(SensorPopupContext* ctx){auto* body_box=ctx->body_box;${chartBuild}}
+${fn(popup,'place_extreme_markers')}
 ${fn(popup,'resize_editable_chart')}
 void update_binary_time_axis(SensorPopupContext*);
 ${fn(popup,'editable_control_top')}
@@ -137,6 +144,7 @@ int history_requests=0,history_clears=0,header_aligns=0;
 void request_history_for_context(SensorPopupContext*ctx){++history_requests;ctx->editable_history_id=std::to_string(history_requests);}
 void clear_binary_history(SensorPopupContext*){++history_clears;}
 ${fn(popup,'style_range_button')}
+${fn(popup,'update_graph_accent')}
 ${fn(popup,'update_range_buttons')}
 ${fn(popup,'on_range_click')}
 ${fn(popup,'accept_editable_history_range')}
@@ -256,18 +264,20 @@ int main(int argc,char**argv){
  ctx.binary_icon_override=false;refresh_editable_popup_icon(&ctx);
  // Range buttons react immediately while existing history waits for a matching reply.
  ctx.range_day_btn=lv_button_create(card);ctx.range_week_btn=lv_button_create(card);
- for(auto*button:{ctx.range_day_btn,ctx.range_week_btn}){lv_obj_add_event_cb(button,on_range_click,LV_EVENT_CLICKED,&ctx);lv_obj_add_flag(button,LV_OBJ_FLAG_HIDDEN);}
+ for(auto*button:{ctx.range_day_btn,ctx.range_week_btn}){lv_label_create(button);lv_obj_add_flag(lv_obj_create(button),LV_OBJ_FLAG_HIDDEN);lv_obj_add_event_cb(button,on_range_click,LV_EVENT_CLICKED,&ctx);lv_obj_add_flag(button,LV_OBJ_FLAG_HIDDEN);}
+ // The area graph fills the chosen chip; the minimal graph underlines it.
+ auto selected=[](lv_obj_t*b){return kAreaGraph?lv_obj_get_style_bg_opa(b,LV_PART_MAIN)==40:lv_obj_get_style_bg_opa(b,LV_PART_MAIN)==LV_OPA_TRANSP&&!lv_obj_has_flag(lv_obj_get_child(b,1),LV_OBJ_FLAG_HIDDEN);};
  ctx.history_range=SensorHistoryRange::Day24;ctx.editable_requested_range=SensorHistoryRange::Day24;
- update_range_buttons(&ctx);assert(lv_obj_get_style_bg_opa(ctx.range_day_btn,LV_PART_MAIN)==40);
+ update_range_buttons(&ctx);assert(selected(ctx.range_day_btn));
  auto old_height=lv_obj_get_height(ctx.body_box);String old_date=lv_label_get_text(ctx.binary_activity_date);
  lv_obj_send_event(ctx.range_week_btn,LV_EVENT_CLICKED,nullptr);assert(history_requests==1&&history_clears==0&&ctx.history_range==SensorHistoryRange::Day24);
- assert(lv_obj_get_style_bg_opa(ctx.range_week_btn,LV_PART_MAIN)==40&&lv_obj_get_style_bg_opa(ctx.range_day_btn,LV_PART_MAIN)==LV_OPA_TRANSP);
+ assert(selected(ctx.range_week_btn)&&!selected(ctx.range_day_btn));
  assert(lv_obj_get_height(ctx.body_box)==old_height&&old_date==lv_label_get_text(ctx.binary_activity_date));
  DynamicJsonDocument reply(512);reply["request_id"]="old";reply["hours"]=168;assert(!accept_editable_history_range(&ctx,reply));
  reply["request_id"]=ctx.editable_history_id.c_str();reply["hours"]=24;assert(!accept_editable_history_range(&ctx,reply));
  reply["hours"]=168;assert(accept_editable_history_range(&ctx,reply)&&ctx.history_range==SensorHistoryRange::Day7);
  lv_obj_send_event(ctx.range_day_btn,LV_EVENT_CLICKED,nullptr);assert(ctx.history_range==SensorHistoryRange::Day7&&!accept_editable_history_range(&ctx,reply));
- assert(lv_obj_get_style_bg_opa(ctx.range_day_btn,LV_PART_MAIN)==40&&lv_obj_get_style_bg_opa(ctx.range_week_btn,LV_PART_MAIN)==LV_OPA_TRANSP);
+ assert(selected(ctx.range_day_btn)&&!selected(ctx.range_week_btn));
  reply["request_id"]=ctx.editable_history_id.c_str();reply["hours"]=24;assert(accept_editable_history_range(&ctx,reply)&&ctx.history_range==SensorHistoryRange::Day24);
  for(auto*button:{ctx.range_day_btn,ctx.range_week_btn})lv_obj_delete(button);
  assert(editable_control_height("number")==editable_control_height("select"));assert(editable_control_height("time")>editable_control_height("select"));
@@ -583,7 +593,7 @@ int main(int argc,char**argv){
 const source = path.join(out, 'test.cpp'); fs.writeFileSync(source, cpp);
 for (const [profile,width,height,define] of [['square',480,480,'DEVICE_LAYOUT_480X480'],['wide',1024,600,'DEVICE_LAYOUT_1024X600'],['ws8',1280,800,''],['portrait',720,1280,''],['base',720,720,''],['landscape',1280,720,''],['compact-wide',800,480,'DEVICE_LAYOUT_480X480']]) {
   const binary=path.join(out,profile+(process.platform==='win32'?'.exe':''));
-  let result=spawnSync(host.cxx,[...host.flags,'-std=c++17','-Wno-deprecated-declarations','-I',root,'-I',jsonInclude,'-I',out,'-DSCREEN_WIDTH='+width,'-DSCREEN_HEIGHT='+height,...(define?['-D'+define]:[]),...(profile==='square'?['-DDEVICE_GUITION_ESP32_4848S040']:[]),source,host.archive,'-o',binary],{encoding:'utf8'});
+  let result=spawnSync(host.cxx,[...host.flags,'-std=c++17','-Wno-deprecated-declarations','-I',root,'-I',path.join(host.library,'src'),'-I',jsonInclude,'-I',out,'-DSCREEN_WIDTH='+width,'-DSCREEN_HEIGHT='+height,...(define?['-D'+define]:[]),...(profile==='square'?['-DDEVICE_GUITION_ESP32_4848S040']:[]),source,host.archive,'-o',binary],{encoding:'utf8'});
   assert.equal(result.status,0,result.stdout+result.stderr);
   result=spawnSync(binary,[path.join(out,profile)],{encoding:'utf8',timeout:45000});assert.equal(result.status,0,profile+': '+result.stdout+result.stderr);
   fs.writeFileSync(path.join(out,profile+'.log'),result.stdout+result.stderr);
