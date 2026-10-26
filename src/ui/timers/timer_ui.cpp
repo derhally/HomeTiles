@@ -651,7 +651,7 @@ void build_alert() {
 void show_ringing() {
   if (!g_alert.backdrop) build_alert();
   const Timer& first = g_ring.timers[0];
-  lv_label_set_text(g_alert.name, first.name[0] ? first.name : tr().timer_done_title);
+  lv_label_set_text(g_alert.name, first.name[0] ? TimerName(first).text : tr().timer_done_title);
   char length[16];
   voice_timer::formatClock(first.total_s, length, sizeof(length));
   lv_label_set_text_fmt(g_alert.line, tr().timer_set_for, length);
@@ -757,6 +757,8 @@ void timer_label(const Timer& timer, char* out, size_t size) {
   if (!out || !size) return;
   if (timer.name[0]) {
     snprintf(out, size, "%s", timer.name);
+    // Voice names arrive in lower case as heard; show them like a title.
+    if (out[0] >= 'a' && out[0] <= 'z') out[0] = static_cast<char>(out[0] - 'a' + 'A');
     return;
   }
   char length[24];

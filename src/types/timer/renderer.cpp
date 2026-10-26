@@ -215,14 +215,8 @@ struct Name {
   explicit Name(const Timer& timer) { timer_ui::timer_label(timer, text, sizeof(text)); }
 };
 
-// Running timers by the time left, paused ones after them.
-bool sooner(const Timer& a, uint32_t a_left, const Timer& b, uint32_t b_left) {
-  if (a.active != b.active) return a.active;
-  return a_left < b_left;
-}
-
 // Big tiles: the next timer large with pause, +1 min and cancel and a
-// progress bar, the others as rows below it (the next one on top), each
+// progress bar, the others as rows below it in list order (soonest on top), each
 // with its own +1 min; a tap anywhere else opens the popup.
 void apply_big(View& view, bool has, const Timer& timer) {
   set_hidden(view.bar, !has);
@@ -232,21 +226,12 @@ void apply_big(View& view, bool has, const Timer& timer) {
     lv_obj_set_style_bg_color(view.bar_fill, lv_obj_get_style_text_color(view.icon, LV_PART_MAIN), 0);
   }
   Timer others[voice_timer::kMaxTimers];
-  uint32_t lefts[voice_timer::kMaxTimers] = {};
   size_t other_count = 0;
   const uint8_t count = voice_timers::count();
   for (uint8_t i = 0; has && i < count && other_count < voice_timer::kMaxTimers; ++i) {
     Timer other;
-    uint32_t left = 0;
-    if (!voice_timers::timerAt(i, &other, &left) || strcmp(other.id, timer.id) == 0) continue;
-    size_t at = other_count++;
-    while (at > 0 && sooner(other, left, others[at - 1], lefts[at - 1])) {
-      others[at] = others[at - 1];
-      lefts[at] = lefts[at - 1];
-      --at;
-    }
-    others[at] = other;
-    lefts[at] = left;
+    if (!voice_timers::timerAt(i, &other, nullptr) || strcmp(other.id, timer.id) == 0) continue;
+    others[other_count++] = other;
   }
   // More timers than rows: the last row says how many more there are.
   const bool overflow = other_count > view.big_row_count;

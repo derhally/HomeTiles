@@ -281,6 +281,25 @@ inline uint32_t secondsLeft(const Timer& timer, uint32_t elapsed_ms) {
   return gone >= timer.left_s ? 0 : timer.left_s - gone;
 }
 
+// Soonest first: running timers by the time left, paused ones after them.
+// The order then holds while the list counts down, since every running
+// timer loses the same seconds.
+inline void sortSoonest(TimerList* list) {
+  if (!list) return;
+  for (uint8_t i = 1; i < list->count; ++i) {
+    const Timer timer = list->timers[i];
+    uint8_t at = i;
+    while (at > 0) {
+      const Timer& before = list->timers[at - 1];
+      const bool sooner = timer.active != before.active ? timer.active : timer.left_s < before.left_s;
+      if (!sooner) break;
+      list->timers[at] = before;
+      --at;
+    }
+    list->timers[at] = timer;
+  }
+}
+
 // "4:32", "12:05" or "1:02:03".
 inline void formatClock(uint32_t seconds, char* out, size_t size) {
   const uint32_t h = seconds / 3600u, m = (seconds / 60u) % 60u, s = seconds % 60u;

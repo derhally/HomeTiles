@@ -87,6 +87,7 @@ bool handleCommandPayload(const uint8_t* payload, size_t length) {
     case voice_timer::Op::Timers: {
       voice_timer::TimerList list;
       if (voice_timer::parseTimers(text, length, &list)) {
+        voice_timer::sortSoonest(&list);
         s->list = list;
         s->received_ms = millis();
         ++g_generation;
@@ -144,25 +145,7 @@ bool timerAt(uint8_t index, voice_timer::Timer* out, uint32_t* left_s) {
   return true;
 }
 
-bool nextTimer(voice_timer::Timer* out, uint32_t* left_s) {
-  if (!g_state || g_state->list.count == 0) return false;
-  int best = -1;
-  uint32_t best_left = 0;
-  bool best_active = false;
-  for (uint8_t i = 0; i < g_state->list.count; ++i) {
-    const voice_timer::Timer& timer = g_state->list.timers[i];
-    const uint32_t left = voice_timer::secondsLeft(timer, millis() - g_state->received_ms);
-    const bool better = best < 0 || (timer.active && !best_active) ||
-                        (timer.active == best_active && left < best_left);
-    if (!better) continue;
-    best = i;
-    best_left = left;
-    best_active = timer.active;
-  }
-  if (out) *out = g_state->list.timers[best];
-  if (left_s) *left_s = best_left;
-  return true;
-}
+bool nextTimer(voice_timer::Timer* out, uint32_t* left_s) { return timerAt(0, out, left_s); }
 
 bool takeFinished(voice_timer::Timer* out) {
   if (!g_state || g_state->finished_count == 0) return false;

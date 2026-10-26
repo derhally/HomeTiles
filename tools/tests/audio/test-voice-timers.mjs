@@ -239,6 +239,23 @@ int main() {
   TimerList none;
   assert(!parseTimers("{\"op\":\"timers\"}", 15, &none));
 
+  // Soonest first: running by the time left, paused after them, ties stable.
+  {
+    TimerList order{};
+    const struct { const char* id; uint32_t left; bool active; } in[] = {
+        {"P1", 30, false}, {"A1", 392, true}, {"A2", 354, true}, {"P2", 10, false}, {"A3", 888, true}, {"A4", 354, true}};
+    for (const auto& t : in) {
+      Timer& timer = order.timers[order.count++];
+      snprintf(timer.id, sizeof(timer.id), "%s", t.id);
+      timer.left_s = t.left;
+      timer.active = t.active;
+    }
+    sortSoonest(&order);
+    const char* want[] = {"A2", "A4", "A1", "A3", "P2", "P1"};
+    for (int i = 0; i < 6; ++i) assert(std::string(order.timers[i].id) == want[i]);
+    sortSoonest(nullptr);
+  }
+
   // At most kMaxTimers.
   std::string many = "{\"op\":\"timers\",\"timers\":[";
   for (int i = 0; i < 12; ++i) many += std::string(i ? "," : "") + "{\"id\":\"T" + std::to_string(i) + "\",\"total\":60,\"left\":60}";

@@ -44,11 +44,16 @@ assert.match(renderer, /void on_card\(lv_event_t\*\) \{ timer_ui::open_popup\(\)
 assert.match(renderer, /view->big = view->wide && tile\.span_h >= 2;/);
 assert.match(renderer, /void on_row_add\(lv_event_t\* event\) \{[^}]*requestAdd\(row->id, 60\)/);
 assert.match(renderer, /lv_obj_set_width\(view\.bar_fill, w\)/);
-assert.match(renderer, /sooner\(other, left, others\[at - 1\], lefts\[at - 1\]\)/);
+assert.match(renderer, /others\[other_count\+\+\] = other;/, 'rows follow the list order (soonest first)');
+assert.match(read('src/ui/timers/voice_timers.cpp'), /voice_timer::sortSoonest\(&list\);\n\s*s->list = list;/);
+assert.match(read('src/ui/timers/voice_timers.cpp'), /bool nextTimer\([^)]*\) \{ return timerAt\(0, out, left_s\); \}/);
 // Unnamed timers show their length, never the tile's title.
 assert.match(renderer, /timer_ui::timer_label\(timer, text, sizeof\(text\)\)/);
 assert.doesNotMatch(renderer, /return view\.idle_title\.c_str\(\);/);
 assert.match(read('src/ui/timers/timer_ui.cpp'), /snprintf\(out, size, tr\(\)\.timer_unnamed, length\);/);
+// Voice names arrive in lower case: the first letter is capitalized.
+assert.match(read('src/ui/timers/timer_ui.cpp'), /if \(out\[0\] >= 'a' && out\[0\] <= 'z'\) out\[0\] = /);
+assert.match(read('src/ui/timers/timer_ui.cpp'), /first\.name\[0\] \? TimerName\(first\)\.text : tr\(\)\.timer_done_title/);
 assert.match(renderer, /tile_surface::scope\(view->card\)/, 'later updates draw on the card\'s surface');
 // Visible text only from the central translations: literals hold no words.
 for (const call of renderer.matchAll(/(?:set_text|lv_label_set_text|button_text)\([^,]+,\s*"([^"]*)"/g)) {

@@ -26,10 +26,11 @@ bool handleCommandPayload(const uint8_t* payload, size_t length);
 // Bumped by every list change (not by the countdown).
 uint32_t generation();
 uint8_t count();
-// Timer i of the list with its seconds left now; false past the end.
+// Timer i of the list, soonest first (voice_timer::sortSoonest), with its
+// seconds left now; false past the end.
 bool timerAt(uint8_t index, voice_timer::Timer* out, uint32_t* left_s);
-// The timer with the fewest seconds left among the running ones (else the
-// first paused one); false without timers.
+// The first timer: the running one with the fewest seconds left, else the
+// first paused one; false without timers.
 bool nextTimer(voice_timer::Timer* out, uint32_t* left_s);
 
 // Finished timers, oldest first, until the alert takes them.
