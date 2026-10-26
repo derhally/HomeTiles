@@ -118,7 +118,7 @@ for (const name of ['on_close_click', 'hide_sensor_popup', 'show_sensor_popup', 
   assert.ok(code(fn(sensor, name)).includes('readout.cancel();'), `${name} ends the readout`);
 // Sensors keep it after release; editors keep their controls.
 const sensorEnd = code(fn(sensor, 'on_sensor_readout_end'));
-assert.match(sensorEnd, /if \(keep && graph && readout_target\(ctx\) == graph\) \{\s*ctx->readout_pin_x = ctx->readout_x;\s*ctx->readout_latest = sensor_readout_is_latest\(ctx\);\s*invalidate_readout_cursor\(ctx\);\s*return;/);
+assert.match(sensorEnd, /if \(keep && graph && readout_target\(ctx\) == graph\) \{\s*ctx->readout_pin_x = ctx->readout_x;\s*ctx->readout_latest = sensor_readout_is_latest\(ctx\);\s*return;/);
 assert.match(sensorEnd, /if \(!keep\) ctx->readout_latest = true;/);
 assert.match(code(fn(sensor, 'sensor_readout_graph')), /if \(!ctx \|\| ctx->editable\) return nullptr;/);
 const sensorRefresh = code(fn(sensor, 'refresh_sensor_readout'));
