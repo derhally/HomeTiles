@@ -45,6 +45,7 @@
 #include "src/web/server/web_admin.h"
 #include "src/ui/tabs/settings/tab_settings.h"
 #include "src/ui/assist/assist_overlay.h"
+#include "src/ui/timers/timer_ui.h"
 #include "src/ui/startup/boot_splash.h"
 #include "src/ui/tabs/tiles/tab_tiles_unified.h"
 #include "src/ui/screensaver/image_screensaver.h"
@@ -1448,6 +1449,11 @@ void loop() {
         was_asleep = false;
         return;
       }
+      // A finished voice timer wakes it for its alert card.
+      if (timer_ui::serviceSleep()) {
+        was_asleep = false;
+        return;
+      }
       loop_stall::enter(loop_stall::Step::SleepTiles);
       // Keep live tile state current during sleep. The paused refresh timer
       // prevents drawing to the sleeping display, so wake needs no catch-up.
@@ -1628,6 +1634,7 @@ void loop() {
     local_camera::service();
     speaker::service();
     assist_overlay::service();
+    timer_ui::service();
     command_channel::service();
     camera_picture::service();
     loop_stall::enter(loop_stall::Step::MqttInbound);
