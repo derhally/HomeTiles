@@ -150,6 +150,7 @@
         !isExplicitlyDisabledValue(rawIcon)) {
       iconName = 'video';
     }
+    if (previewKind === 'timer_tile') iconName = timerPreviewIcon(rawIcon, iconName);
     let climatePreviewState = null;
     if (previewKind === 'climate') {
       climatePreviewState = parseClimatePreviewPayload(
@@ -303,7 +304,8 @@
         titleFromEntity(cameraEntity);
     }
     if (calendarTile) displayTitle = calendarPreviewTitle(calendarTile, displayTitle);
-    if (displayTitle) {
+    // The Timer tile shows its name at the bottom (timerPreviewHtml).
+    if (displayTitle && previewKind !== 'timer_tile') {
       html += '<div class="tile-title" id="' + tileId + '-title">' +
         tileTitleHtml(displayTitle) + '</div>';
     }
@@ -396,6 +398,7 @@
     }
 
     if (previewKind === 'switch') html += switchPreviewExtraHtml(switchStyle, halfHeight);
+    if (previewKind === 'timer_tile') html += timerPreviewHtml(title, tileSpan('span_w'), tileSpan('span_h'));
 
     html += getTileResizeHandlesHtml(type);
     // A title or icon moves the clock down (clock/renderer.cpp).

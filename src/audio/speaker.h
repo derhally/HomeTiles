@@ -130,6 +130,17 @@ void setAvailableAssistScreenStyles(uint32_t mask);
 // Republishes the Assist status (the screen files changed: assist_screen_store.h).
 void assistStatusChanged();
 
+// Voice timer chimes (timer_chime.h), generated on the worker: plays the
+// built-in chime `chime` `repeats` times (with a short gap) at the timer
+// volume `volume` (0..1, unmuted; the media volume and mute return after it).
+// It ends a clip that is playing; refused (false) while an Assist session
+// listens or without a codec. stopChime() ends a running chime only. Loop task.
+bool playChime(uint8_t chime, uint8_t repeats, float volume);
+void stopChime();
+// True while a chime plays, and while any clip plays or waits. Any task.
+bool chimePlaying();
+bool outputBusy();
+
 // "audio_output" flag in the Bridge capabilities: codec found and ready.
 bool bridgeCapability();
 
