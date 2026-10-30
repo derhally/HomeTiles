@@ -1,0 +1,135 @@
+import assert from 'node:assert/strict';
+import {existsSync, readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+const root = resolve(fileURLToPath(new URL('../../..', import.meta.url)));
+const read = path => readFileSync(resolve(root, path), 'utf8');
+const header = read('src/core/i18n/i18n.h');
+const strings = read('src/core/i18n/i18n.cpp');
+const speakerHeader = read('src/audio/speaker.h');
+const speaker = read('src/audio/speaker.cpp');
+const overlay = read('src/ui/assist/assist_overlay.cpp');
+const sketch = read('HomeTiles.ino');
+
+// The Assist screen strings and the Settings > Display & Sound Assist group's strings
+// are translated in every locale, read by their place in the schema.
+const fields = ['assist_listening', 'assist_thinking', 'assist_answering'];
+const styleFields = ['settings_assist', 'settings_assist_style', 'assist_style_atom', 'assist_style_reactor',
+  'assist_style_dot_halo', 'assist_style_voice_pills', 'assist_style_sentinel', 'assist_style_phosphor',
+  'assist_style_light_disc', 'assist_style_lens', 'assist_style_iris', 'settings_assist_preview'];
+const struct = header.slice(header.indexOf('struct Strings {'), header.indexOf('\n};', header.indexOf('struct Strings {')));
+const schema = [...struct.replace(/\/\/[^\n]*/g, '').matchAll(/const char\*\s+(\w+);/g)].map(m => m[1]);
+for (const group of [fields, styleFields]) {
+  const at = schema.indexOf(group[0]);
+  assert.deepEqual(schema.slice(at, at + group.length), group, `${group[0]}.. sit together`);
+}
+const english = [];
+for (const table of ['kStringsDe', 'kStringsEn', 'kStringsFr', 'kStringsPl', 'kStringsCs', 'kStringsEs', 'kStringsSk']) {
+  const body = strings.slice(strings.indexOf(`static const Strings ${table} = {`));
+  const values = [...body.slice(0, body.indexOf('};') + 2).matchAll(/"((?:[^"\\]|\\.)*)"/g)].map(m => m[1]);
+  assert.equal(values.length, schema.length, `${table} has one value per field`);
+  const screen = fields.map(f => values[schema.indexOf(f)]);
+  const style = styleFields.map(f => values[schema.indexOf(f)]);
+  for (const value of screen) assert.match(value, /…$/, `${table} has every Assist screen string`);
+  for (const value of style) assert.ok(value, `${table} has every Assist style string`);
+  if (table === 'kStringsEn') english.push(...screen);
+  else assert.notDeepEqual(screen, english, `${table} is translated`);
+}
+assert.deepEqual(english, ['Listening…', 'Thinking…', 'Answering…']);
+// The overlay shows them through the central schema.
+for (const f of fields) assert.match(overlay, new RegExp(`tr\\(\\)\\.${f}`));
+// Settings > Display & Sound: the model names the styles in their stored order, saves a
+// pick and previews; the page shows them as a dropdown row and a play row.
+const settings = read('src/ui/tabs/settings/tab_settings.cpp');
+for (const f of styleFields.slice(2, 11)) assert.match(settings, new RegExp(`return s\\.${f};`));
+// The list holds only the styles this panel offers; an index is a position in it.
+assert.match(settings, /assist_style_catalog::styleAt\(index, offered\)\)\);/);
+// The offered built-in styles, then the screen files from Home Assistant
+// (assist_screen_store.h; none without HOMETILES_ASSIST_DATA_SCREENS).
+assert.match(settings, /assist_style_catalog::count\(speaker::availableAssistScreenStyles\(\)\) \+\s*assist_screen_store::count\(\)/);
+assert.match(settings, /if \(index >= built_in\) return assist_screen_store::name\(index - built_in\);/);
+assert.match(settings, /assist_screen_store::choose\(assist_screen_store::id\(index - built_in\)\);/);
+assert.match(settings, /void assist_preview\(\) \{ assist_overlay::preview\(\); \}/);
+const page = read('src/ui/tabs/settings/settings_screen.cpp');
+assert.match(page, /settings_parts::section\(page, s\.settings_assist, false\);/);
+assert.match(page, /settings_parts::row\(assist, "palette-outline", s\.settings_assist_style,/);
+assert.match(page, /settings_parts::row\(assist, "animation-play-outline", s\.settings_assist_preview\);/);
+assert.match(page, /void on_preview_clicked\(lv_event_t\*\) \{ settings_model::assist_preview\(\); \}/);
+
+// Styles: stored by number (append only), nine of them, one module each.
+assert.match(speakerHeader, /enum class AssistScreenStyle : uint8_t \{\s*Atom = 0,\s*Reactor = 1,\s*DotHalo = 2,\s*VoicePills = 3,\s*Sentinel = 4,\s*Phosphor = 5,\s*LightDisc = 6,\s*Lens = 7,\s*Iris = 8\s*\};/);
+assert.match(speakerHeader, /kAssistScreenStyleCount = 9;/);
+const contract = read('src/audio/assist_contract.h');
+assert.match(contract, /"atom",\s*"reactor",\s*"dot_halo",\s*"voice_pills",\s*"sentinel",\s*"phosphor",\s*"light_disc",\s*"lens",\s*"iris"/);
+assert.match(speaker, /g_screen_style\.store\(style < kAssistScreenStyleCount \? style : 0\);/);
+assert.match(speaker, /prefs\.putUChar\(kPrefsScreenStyleKey, g_screen_style\.load\(\)\);/);
+// Every style is a screen file only: no C++ style left.
+for (const gone of ['assist_styles.cpp', 'assist_styles.h', 'assist_styles_shared.h', 'assist_styles_lines.cpp']) {
+  assert.ok(!existsSync(resolve(root, `src/ui/assist/${gone}`)), `${gone} is gone`);
+}
+assert.doesNotMatch(overlay, /assist_styles::/);
+assert.doesNotMatch(read('src/ui/assist/assist_style_catalog.h'), /kFileStyles/);
+const files = read('src/ui/assist/assist_screen_files.h');
+// Every style's file is built in (the engine draws about twice as fast as
+// the former C++ styles on the 7B).
+for (const id of ['atom', 'reactor', 'dot_halo', 'voice_pills', 'sentinel', 'phosphor', 'light_disc', 'lens', 'iris']) {
+  assert.match(files, new RegExp(`\\{"${id}", k`));
+}
+assert.doesNotMatch(files, /\{"robot", k|\{"retro_robot", k/);
+assert.match(read('src/ui/assist/assist_data_screens.h'), /#if defined\(HOMETILES_SPEAKER\)\s*#define HOMETILES_ASSIST_DATA_SCREENS 1/);
+assert.match(overlay, /unavailable, showing only the phase text/);
+// The label takes the screen file's colour (a plain one without a file).
+assert.match(overlay, /uint32_t label_color = kLabelColor;/);
+assert.match(overlay, /label_color = assist_screen::info\(g_screen\)\.label_color;/);
+assert.match(overlay, /lv_obj_set_style_text_color\(g_label, lv_color_hex\(label_color\), 0\);/);
+// The stage is cleaned, then the screen file's painter is built; without a
+// file nothing is drawn but the phase text.
+const rebuild = overlay.slice(overlay.indexOf('if (rebuild) {'), overlay.indexOf('lv_color_hex(label_color)'));
+assert.match(rebuild, /lv_obj_clean\(g_stage\);/);
+assert.match(rebuild, /g_data = loadScreenFile\(style\);\s*if \(g_data\) \{[\s\S]*\} else \{[\s\S]*showing only the phase text/);
+
+// Phase contract: any wake word or Assist start listens; a normal end of the
+// capture thinks; the answer clip answers; its end or a failure is idle.
+assert.match(speakerHeader, /enum class AssistUiPhase : uint8_t \{ Idle, Listening, Thinking, Answering \};/);
+assert.match(speaker, /setAssistPublic\(assist::PublicState::Wake, assist::ErrorCode::None\);\s*setUiPhase\(AssistUiPhase::Listening\);/);
+assert.match(speaker, /if \(!handoff\) \{\s*g_mic_level\.store\(0\);\s*setUiPhase\(AssistUiPhase::Listening\);/);
+assert.match(speaker, /answer_expected \? AssistUiPhase::Thinking : AssistUiPhase::Idle/);
+assert.match(speaker, /advanceUiPhase\(AssistUiPhase::Thinking, AssistUiPhase::Answering\);/);
+assert.match(speaker, /advanceUiPhase\(AssistUiPhase::Answering, AssistUiPhase::Idle\);/);
+assert.match(speaker, /ui_phase_age >= kAssistThinkingTimeoutMs/);
+// Every abandoned wake word handoff ends the listening screen.
+const handoff = speaker.slice(speaker.indexOf('bool handleWakeDetection('), speaker.indexOf('uint32_t wakeListen() {'));
+assert.equal((handoff.match(/advanceUiPhase\(AssistUiPhase::Listening, AssistUiPhase::Idle\);/g) || []).length, 3);
+
+// Phase transitions in plain JS, mirroring advanceUiPhase's compare-exchange.
+const run = events => {
+  let phase = 'Idle';
+  const advance = (from, to) => { if (phase === from) phase = to; };
+  for (const e of events) {
+    if (e === 'wake' || e === 'start') phase = 'Listening';
+    else if (e === 'handoff-start') { /* keeps the wake word's phase */ }
+    else if (e === 'stopped') advance('Listening', 'Thinking');
+    else if (e === 'error') advance('Listening', 'Idle');
+    else if (e === 'play') advance('Thinking', 'Answering');
+    else if (e === 'played') advance('Answering', 'Idle');
+    else if (e === 'tap') phase = 'Idle';
+  }
+  return phase;
+};
+assert.equal(run(['wake', 'handoff-start', 'stopped']), 'Thinking');
+assert.equal(run(['wake', 'start', 'stopped', 'play']), 'Answering');
+assert.equal(run(['wake', 'start', 'stopped', 'play', 'played']), 'Idle');
+assert.equal(run(['start', 'error']), 'Idle');
+assert.equal(run(['play']), 'Idle', 'music without a conversation shows nothing');
+assert.equal(run(['wake', 'tap', 'handoff-start', 'stopped', 'play']), 'Idle', 'a dismissed screen stays hidden');
+assert.equal(run(['wake', 'tap', 'start']), 'Listening', 'a new conversation shows it again');
+
+// Loop wiring: the active loop services the screen, the sleep loop wakes for it.
+assert.match(sketch, /speaker::service\(\);\s*assist_overlay::service\(\);/);
+assert.match(sketch, /if \(assist_overlay::serviceSleep\(\)\) \{\s*was_asleep = false;\s*return;\s*\}/);
+// No per-frame allocation and no layer-forcing opacity on the animated parts.
+const frame = overlay.slice(overlay.indexOf('void onFrame('), overlay.indexOf('void onTap('));
+assert.doesNotMatch(frame, /lv_obj_create|lv_.*_create\(|malloc|new /);
+assert.doesNotMatch(overlay, /lv_obj_set_style_opa\(|LV_BLEND_MODE_ADDITIVE/);
+console.log('Assist overlay checks passed.');

@@ -6,6 +6,47 @@
 namespace i18n {
 
 struct Strings {
+  // Web Admin > Settings > Diagnostics: the Assist screen's frame times
+  // measured on the panel (assist_timing.h): the card's title, its note, the
+  // Refresh and Reset buttons, the table's column headers and the empty note.
+  const char* assist_timing_title;
+  const char* assist_timing_note;
+  const char* assist_timing_refresh;
+  const char* assist_timing_reset;
+  const char* assist_timing_screen;
+  const char* assist_timing_phase;
+  const char* assist_timing_frames;
+  const char* assist_timing_draw;
+  const char* assist_timing_copy;
+  const char* assist_timing_pixels;
+  const char* assist_timing_engine;
+  const char* assist_timing_interval;
+  const char* assist_timing_late;
+  const char* assist_timing_empty;
+  // The LVGL draw buffer the card names (DisplayManager::drawBufferDescription).
+  const char* assist_timing_band;
+  // Settings > Display & Sound, Sound group: the microphone sensitivity row.
+  const char* settings_mic_sensitivity;
+  // On-panel Assist screen after a wake word: listening, Home Assistant
+  // working on the answer, and the answer playing.
+  const char* assist_listening;
+  const char* assist_thinking;
+  const char* assist_answering;
+  // Settings > Display & Sound, Assist group: the Assist screen look (a dropdown row of
+  // the nine styles in speaker::AssistScreenStyle order) and the row that
+  // plays it once.
+  const char* settings_assist;
+  const char* settings_assist_style;
+  const char* assist_style_atom;
+  const char* assist_style_reactor;
+  const char* assist_style_dot_halo;
+  const char* assist_style_voice_pills;
+  const char* assist_style_sentinel;
+  const char* assist_style_phosphor;
+  const char* assist_style_light_disc;
+  const char* assist_style_lens;
+  const char* assist_style_iris;
+  const char* settings_assist_preview;
   const char* code;
   const char* html_lang;
   const char* language_label;

@@ -153,6 +153,26 @@ void unpair();
 void allow_password();
 void remove_password();
 
+// The Sound group's microphone sensitivity (where the microphone answered):
+// the stored step and the last one.
+struct MicGain {
+  int step;  // 0..max
+  int max;
+};
+MicGain mic_gain();
+// A sensitivity step in tenths of a dB.
+unsigned mic_gain_tenths_db(int step);
+// `final` once the finger lifts (taken and saved then).
+void mic_gain_changed(int step, bool final);
+// The Assist screen's look (where the microphone answered): the styles in
+// their stored order, the stored one, a pick (saved at once) and a preview
+// that plays listening, thinking and answering once.
+uint8_t assist_style_count();
+const char* assist_style_name(uint8_t index);
+uint8_t assist_style();
+void assist_style_selected(uint8_t index);
+void assist_preview();
+
 // ---------- WiFi page ----------
 struct WifiNetwork {
   char ssid[33];

@@ -16,6 +16,9 @@ public:
 
   lv_display_t* getDisplay() { return disp; }
   lv_indev_t* getInput() { return indev; }
+  // Where LVGL renders: "SRAM 36 lines", "PSRAM 2x100 lines" or
+  // "PSRAM 1x100 lines" (the camera's single buffer), for the diagnostics.
+  static void drawBufferDescription(char* out, size_t size);
 
   void resetActivityTimer();
   uint32_t getLastActivityTime() { return last_activity_time; }

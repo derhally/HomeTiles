@@ -21,6 +21,10 @@ struct Capabilities {
   // Built-in MIPI-CSI camera with a verified board wiring. Profiles that do not
   // list it keep the default.
   bool has_builtin_camera = false;
+  // The UI is drawn into the hidden framebuffer and swapped in at the panel's
+  // refresh, so moving content does not tear. No profile sets it yet; the
+  // Assist screens that need it are not offered without it.
+  bool tear_free_ui = false;
 };
 
 struct Profile {

@@ -1,0 +1,80 @@
+# Assist Screens from Files
+
+The animated screen HomeTiles shows while Assist listens, thinks and answers can come from a small JSON file instead of the firmware. Anyone can make a new look, try it in a desktop lab, and put it on a panel without building firmware.
+
+!!! warning "Preview"
+    Screens from files are a preview and not in a release yet. Panels with Assist draw all nine built-in styles from files, with an engine that draws faster than the former C++ styles. Not every board has been measured yet.
+
+## The Built-in Styles as Files { data-toc-label="Built-in styles" }
+
+All nine styles in **Settings → Assist** are screen files built into the firmware: Atom, Reactor, Dot Halo, Voice Pills, Sentinel, Phosphor, Light Disc, Lens and Iris.
+
+<figure class="ht-screenshot">
+<img src="../images/assist-screens-styles.png" alt="The nine Assist screen styles while thinking: Atom, Reactor, Dot Halo, Voice Pills, Sentinel, Phosphor, Light Disc, Lens and Iris" width="1220" height="725" loading="lazy">
+<figcaption>The nine styles drawn from their files (thinking)</figcaption>
+</figure>
+
+Sentinel and Phosphor also bring layouts for square and portrait screens, so their readouts move instead of overlapping the rings.
+
+## New Looks { data-toc-label="New looks" }
+
+Two example screens show what a file can do beyond the built-in styles.
+
+**Robot**: a small robot in outline. Listening, it bobs, blinks and sound waves reach its ears with your voice. Thinking, its eyes wander, a hand goes to its chin and dots bounce above it. Answering, its mouth moves with the reply, its eyes turn happy and it waves.
+
+<figure class="ht-screenshot">
+<img src="../images/assist-screens-robot.png" alt="Robot screen while listening, thinking and answering" width="912" height="360" loading="lazy">
+<figcaption>Robot: listening, thinking, answering</figcaption>
+</figure>
+
+**Retro Robot**: a tall tin-can head with a visor and a grille mouth. Its eyes glance about while listening, its lids droop and a question mark bobs while thinking, and the grille teeth part with each word while answering.
+
+<figure class="ht-screenshot">
+<img src="../images/assist-screens-retro-robot.png" alt="Retro Robot screen while listening, thinking and answering" width="912" height="360" loading="lazy">
+<figcaption>Retro Robot: listening, thinking, answering</figcaption>
+</figure>
+
+## Put a Screen on the Panel { data-toc-label="Use a screen file" }
+
+Each time the Assist screen opens, the panel looks for a file for the style picked in **Settings → Assist**:
+
+1. Format a microSD card as FAT32 and insert it before switching the panel on.
+2. In the Web Admin file manager, create an `assist` folder on the card.
+3. Upload the screen as `<style>.json`, for example `atom.json` to replace Atom with the Robot.
+4. Pick that style in **Settings → Assist** and tap **Preview**.
+
+Without a file, the panel uses its built-in copy of the style. A file the panel cannot use is ignored and the built-in style shows instead; the serial log says why. Delete the file to go back.
+
+## Screens from Home Assistant { data-toc-label="From Home Assistant" }
+
+With the Bridge, screen files can live in Home Assistant instead of on a card:
+
+1. Put the `.json` files in the `hometiles/assist_screens` folder of your Home Assistant configuration (the Bridge creates it). Each file needs its own `id`; the nine built-in names are taken.
+2. Wait up to a minute: the Bridge checks the folder by itself. To send it at once, run the **Reload Assist screens** action (`tab5_lvgl.reload_assist_screens`) in **Developer tools → Actions**.
+3. The screens appear after the built-in styles in **Settings → Assist** on the panel, by their names, and in the panel's **Assist screen** select in Home Assistant.
+
+The panel keeps a copy of the chosen screen, so it still shows when Home Assistant is offline. A screen the panel cannot use shows the built-in style instead; the select's `screen_error` attribute and the Home Assistant log say why.
+
+## Make Your Own { data-toc-label="Make a screen" }
+
+A screen is one JSON file of a few kilobytes: colors, a few named values and a list of shapes (lines, arcs, discs, boxes, lines through points and short readouts) whose sizes, positions and colors are small formulas of time, voice level and phase. The format is described in `tools/assist-screen-lab/FORMAT.md` in the repository.
+
+The **Assist Screen Lab** draws screens on a computer with the same graphics library, fonts and timing as the panel:
+
+```sh
+node tools/assist-screen-lab/build.mjs
+build/assist-screen-lab/lab
+```
+
+It needs Node, git, a C++ compiler and, for the window, SDL2 (Linux or WSL: `sudo apt install build-essential libsdl2-dev`). Buttons switch screens, phases and panel sizes and report what a screen costs per frame. Saving the file reloads it.
+
+## Limits { data-toc-label="Limits" }
+
+A file can only draw shapes; it cannot run code or read Home Assistant data. The panel checks every file before it uses it:
+
+- at most 24 KB, 1,200 shapes and a fixed amount of work per frame
+- one fixed block of memory, about 108 KB
+- at most six screens' worth of drawing per frame; anything beyond is left out
+- the panel's own font sizes, and short readouts only: words such as "Listening…" come from the panel's translations
+
+A file over a limit is refused with a message naming the problem, and the built-in style stays.

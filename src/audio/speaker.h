@@ -85,6 +85,51 @@ inline uint16_t micGainTenthsDb(uint8_t step) {
 uint8_t micGainStep();
 void setMicGainStep(uint8_t step);
 
+// Where the current voice conversation stands, for the on-panel Assist
+// screen (src/ui/assist/assist_overlay.h). The worker advances it: a wake
+// word or an Assist start -> Listening; the capture ending normally (the
+// Bridge's stop after the end of speech, or max_ms) -> Thinking; the answer
+// starting to play -> Answering; the answer ending -> Idle. A failed capture,
+// an abandoned wake word handoff or a failed answer -> Idle. Thinking falls
+// back to Idle after kAssistThinkingTimeoutMs without an answer (service()).
+// Safe to read from any task.
+enum class AssistUiPhase : uint8_t { Idle, Listening, Thinking, Answering };
+constexpr uint32_t kAssistThinkingTimeoutMs = 15000;
+AssistUiPhase assistUiPhase();
+// Hides the screen for this conversation (the user tapped it); a new wake
+// word or Assist start shows it again. Loop task only.
+void dismissAssistUi();
+// Peak absolute sample (0..32767) of the newest microphone chunk while the
+// input is open, and of the newest speaker chunk while playing. Any task.
+uint16_t micPeakLevel();
+uint16_t outputPeakLevel();
+
+// Look of the on-panel Assist screen, stored (default Atom). Values are
+// stored in NVS by number: append new styles, never renumber.
+enum class AssistScreenStyle : uint8_t {
+  Atom = 0,
+  Reactor = 1,
+  DotHalo = 2,
+  VoicePills = 3,
+  Sentinel = 4,
+  Phosphor = 5,
+  LightDisc = 6,
+  Lens = 7,
+  Iris = 8
+};
+constexpr uint8_t kAssistScreenStyleCount = 9;
+// The shown style: the stored one when this panel offers it, else the first
+// offered (assist_style_catalog.h). Any task.
+AssistScreenStyle assistScreenStyle();
+// Stores a pick; styles the panel does not offer are ignored. Loop task.
+void setAssistScreenStyle(AssistScreenStyle style);
+// The styles this panel offers (bit n = style n; Atom always). The overlay
+// sets them once it knows the screen. Any task / loop task.
+uint32_t availableAssistScreenStyles();
+void setAvailableAssistScreenStyles(uint32_t mask);
+// Republishes the Assist status (the screen files changed: assist_screen_store.h).
+void assistStatusChanged();
+
 // "audio_output" flag in the Bridge capabilities: codec found and ready.
 bool bridgeCapability();
 

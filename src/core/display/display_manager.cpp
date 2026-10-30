@@ -1009,6 +1009,12 @@ bool DisplayManager::isTouchHeld() {
   return g_touch_held;
 }
 
+void DisplayManager::drawBufferDescription(char* out, size_t size) {
+  const char* where = g_fast_internal_draw_buffer ? "SRAM" : "PSRAM";
+  const unsigned buffers = buf2 ? 2u : 1u;
+  snprintf(out, size, "%s %ux%u lines", where, buffers, static_cast<unsigned>(g_buffer_lines));
+}
+
 void DisplayManager::resetActivityTimer() {
   last_activity_time = millis();
 }

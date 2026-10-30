@@ -343,11 +343,23 @@ void build_category_tile(lv_obj_t* panel, uint8_t index, int x, int y, int w, in
 
 // ---------- Display page ----------
 // Screen: Brightness, Sleep, Rotation, Design; Sound (boards with a speaker,
-// #123): Volume, Microphone; Screensaver: Starts after, Brightness (mockup
-// pageDisplay). All sliders start at the same x; the
+// #123): Volume, Microphone and its Sensitivity; Assist (where the microphone
+// answered): Screen style, Preview; Screensaver: Starts after, Brightness
+// (mockup pageDisplay). All sliders start at the same x; the
 // rotation offers the quarter turns where the panel supports them.
 
+lv_obj_t* g_mic_gain_value = nullptr;
+// The Assist style row: its value and chevron while its list is open.
+lv_obj_t* g_style_row = nullptr;
+lv_obj_t* g_style_value = nullptr;
+lv_obj_t* g_style_chevron = nullptr;
+
 void clear_display_refs() {
+  if (g_style_row) settings_parts::close_options();
+  g_mic_gain_value = nullptr;
+  g_style_row = nullptr;
+  g_style_value = nullptr;
+  g_style_chevron = nullptr;
   g_volume_value = nullptr;
   g_brightness_value = nullptr;
   g_sleep_value = nullptr;
@@ -415,6 +427,55 @@ void on_microphone(lv_event_t*) {
   lv_async_call(rebuild_display_async, nullptr);
 }
 
+void set_gain_text(lv_obj_t* label, int step) {
+  if (!label) return;
+  const unsigned tenths = settings_model::mic_gain_tenths_db(step);
+  char buf[16];
+  if (tenths % 10) {
+    snprintf(buf, sizeof(buf), "%u.%u dB", tenths / 10, tenths % 10);
+  } else {
+    snprintf(buf, sizeof(buf), "%u dB", tenths / 10);
+  }
+  lv_label_set_text(label, buf);
+}
+
+void on_mic_gain(lv_obj_t*, int32_t value, bool final) {
+  set_gain_text(g_mic_gain_value, value);
+  settings_model::mic_gain_changed(value, final);
+}
+
+// The Assist style list (the Localization rows' dropdown).
+const char* style_option_text(uint8_t, uint8_t index) { return settings_model::assist_style_name(index); }
+
+void on_style_picked(uint8_t, uint8_t index) {
+  if (index == settings_model::assist_style()) return;
+  settings_model::assist_style_selected(index);
+  if (g_style_value) lv_label_set_text(g_style_value, settings_model::assist_style_name(index));
+}
+
+void on_style_closed(uint8_t, const lv_point_t*) {
+  if (g_style_chevron) lv_label_set_text(g_style_chevron, getMdiChar("chevron-down").c_str());
+}
+
+void on_style_row_clicked(lv_event_t*) {
+  if (!g_style_row || !g_page) return;
+  settings_parts::OptionList spec = {};
+  spec.host = g_panel;
+  spec.row = g_style_row;
+  lv_obj_update_layout(g_panel);
+  lv_obj_get_coords(g_page, &spec.bounds);
+  spec.count = settings_model::assist_style_count();
+  spec.selected = settings_model::assist_style();
+  spec.card = g_built_card;
+  spec.selected_color = settings_style::tone(g_built_card, settings_style::kDisplayColor).disc;
+  spec.text_x = settings_style::kRowPadLeft + settings_parts::icon_width() + settings_style::kRowGap;
+  spec.handler = {style_option_text, on_style_picked, on_style_closed};
+  settings_parts::open_options(spec);
+  if (g_style_chevron) lv_label_set_text(g_style_chevron, getMdiChar("chevron-up").c_str());
+}
+
+void on_preview_clicked(lv_event_t*) { settings_model::assist_preview(); }
+
 }  // namespace
 
 lv_obj_t* rotation_segment(lv_obj_t* row, uint32_t track) {
@@ -436,7 +497,8 @@ namespace {
 int display_slider_width(int page_width) {
   const i18n::Strings& s = settings_model::text();
   int name = 0;
-  for (const char* text : {s.settings_brightness, s.settings_volume, s.settings_sleep, s.settings_starts_after}) {
+  for (const char* text : {s.settings_brightness, s.settings_volume, s.settings_mic_sensitivity, s.settings_sleep,
+                           s.settings_starts_after}) {
     const int width = settings_parts::text_width(settings_style::row_font(), text);
     if (width > name) name = width;
   }
@@ -501,7 +563,34 @@ void build_display_page(lv_obj_t* page) {
       settings_parts::Row mic = settings_parts::row(audio, "microphone", s.settings_microphone);
       settings_parts::toggle(mic.row, sound.mic_on, settings_style::kDisplayColor, palette.group, true, on_microphone,
                              nullptr);
+      // The microphone's input gain (0 to 37.5 dB, stored, applied when the
+      // input opens).
+      const settings_model::MicGain gain = settings_model::mic_gain();
+      display_slider_row(audio, "microphone-settings", s.settings_mic_sensitivity, width, 0, gain.max, gain.step,
+                         on_mic_gain, &g_mic_gain_value);
+      set_gain_text(g_mic_gain_value, gain.step);
     }
+  }
+
+  // Assist, where the microphone answered: the screen's look as a dropdown
+  // row and a row that plays it.
+  if (sound.speaker && sound.microphone) {
+    settings_parts::section(page, s.settings_assist, false);
+    lv_obj_t* assist = settings_parts::group(page, palette);
+    const bool stacked = g_card_width < settings_style::kStackedCardWidth;
+    const char* style = settings_model::assist_style_name(settings_model::assist_style());
+    settings_parts::Row look = settings_parts::row(assist, "palette-outline", s.settings_assist_style,
+                                                   stacked ? style : nullptr);
+    g_style_row = look.row;
+    g_style_value = stacked ? look.sub
+                            : settings_parts::trailing_text(
+                                  look.row, style,
+                                  (g_page_width - settings_style::kRowPadLeft - settings_style::kRowPadRight) / 2);
+    g_style_chevron = settings_parts::trailing_icon(look.row, "chevron-down");
+    settings_parts::make_tap(look.row, palette.button, on_style_row_clicked, nullptr);
+    settings_parts::Row preview = settings_parts::row(assist, "animation-play-outline", s.settings_assist_preview);
+    settings_parts::trailing_icon(preview.row, "play");
+    settings_parts::make_tap(preview.row, palette.button, on_preview_clicked, nullptr);
   }
 
   settings_parts::section(page, s.settings_screensaver, false);

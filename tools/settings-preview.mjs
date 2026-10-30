@@ -124,7 +124,9 @@ const icons = ['cog', 'window-close', 'monitor', 'wifi', 'wifi-off', 'access-poi
   'pencil-outline', 'eye', 'eye-off', 'lock-outline', 'apple-keyboard-shift', 'apple-keyboard-caps',
   'backspace-outline', 'check-bold', 'shield-check', 'loading', 'cellphone-wireless', 'book-open-variant', 'qrcode',
   'view-grid-plus-outline', 'chevron-left', 'wifi-lock', 'wifi-strength-4-lock', 'wifi-strength-outline',
-  'theme-light-dark', 'page-layout-header', 'tune-variant', 'volume-high', 'microphone', 'monitor-speaker'];
+  'theme-light-dark', 'page-layout-header', 'tune-variant', 'volume-high', 'microphone', 'microphone-settings',
+  'monitor-speaker', 'palette-outline', 'animation-play-outline',
+  'play'];
 const iconTable = icons.map(name => {
   const match = mdi.match(new RegExp(`\\{"${name}", (0x[0-9A-Fa-f]+)\\}`));
   if (!match) throw new Error(`MDI icon ${name} missing`);
@@ -296,6 +298,21 @@ SoundValues sound_values() {
 }
 void volume_changed(int, bool) {}
 void microphone_selected(bool) {}
+// The microphone at 30 dB.
+MicGain mic_gain() { return MicGain{10, 14}; }
+unsigned mic_gain_tenths_db(int step) { return step <= 10 ? step * 30 : 330 + (step - 11) * 15; }
+void mic_gain_changed(int, bool) {}
+uint8_t assist_style_count() { return 9; }
+const char* assist_style_name(uint8_t index) {
+  const char* const kNames[] = {text().assist_style_atom, text().assist_style_reactor, text().assist_style_dot_halo,
+                                text().assist_style_voice_pills, text().assist_style_sentinel,
+                                text().assist_style_phosphor, text().assist_style_light_disc,
+                                text().assist_style_lens, text().assist_style_iris};
+  return kNames[index < 9 ? index : 0];
+}
+uint8_t assist_style() { return 0; }
+void assist_style_selected(uint8_t) {}
+void assist_preview() {}
 uint8_t theme_index() { return 0; }
 uint8_t theme_choice() { return 0; }
 void theme_selected(uint8_t) {}

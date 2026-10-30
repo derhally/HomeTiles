@@ -8,6 +8,8 @@
 #include "src/audio/speaker_contract.h"
 #include "src/network/mqtt/mqtt_topics.h"
 #include "src/network/network_manager.h"
+#include "src/ui/assist/assist_screen_store.h"
+#include "src/ui/assist/assist_style_catalog.h"
 
 #if defined(HOMETILES_SPEAKER)
 #include <HTTPClient.h>
@@ -103,6 +105,49 @@ assist::WakeSetting wakeSetting() {
   setting.listen = g_wake_listen.load();
   return setting;
 }
+
+// On-panel Assist screen (speaker.h AssistUiPhase) and the levels it shows.
+std::atomic<uint8_t> g_ui_phase{static_cast<uint8_t>(AssistUiPhase::Idle)};
+std::atomic<uint32_t> g_ui_phase_ms{0};
+std::atomic<uint16_t> g_mic_level{0};
+std::atomic<uint16_t> g_out_level{0};
+static_assert(assist::kScreenStyleCount == kAssistScreenStyleCount,
+              "the MQTT style ids follow speaker::AssistScreenStyle");
+static_assert(assist_style_catalog::kStyleCount == kAssistScreenStyleCount,
+              "the style catalog lists every speaker::AssistScreenStyle");
+// The stored pick; the shown style is the first offered one when the panel
+// does not offer it (assist_style_catalog.h).
+std::atomic<uint8_t> g_screen_style{static_cast<uint8_t>(AssistScreenStyle::Atom)};
+// Styles the panel offers, set once the screen size is known.
+std::atomic<uint32_t> g_screen_styles{assist_style_catalog::kAllStyles};
+// A Listening phase older than the longest session plus the wake word
+// handoff is stale; service() clears it.
+constexpr uint32_t kAssistListeningLimitMs =
+    assist::kMaxMaxMs + assist::kWakeHandoffMs + 5000;
+
+[[maybe_unused]] void setUiPhase(AssistUiPhase phase) {
+  g_ui_phase_ms.store(millis());
+  g_ui_phase.store(static_cast<uint8_t>(phase));
+}
+
+// Moves only from the expected phase, so a dismissed screen stays dismissed
+// and a newer conversation is not ended by an older one.
+[[maybe_unused]] void advanceUiPhase(AssistUiPhase from, AssistUiPhase to) {
+  uint8_t expected = static_cast<uint8_t>(from);
+  if (g_ui_phase.compare_exchange_strong(expected, static_cast<uint8_t>(to))) {
+    g_ui_phase_ms.store(millis());
+  }
+}
+
+[[maybe_unused]] uint16_t peakLevel(const int16_t* samples, size_t count) {
+  int32_t peak = 0;
+  for (size_t i = 0; i < count; ++i) {
+    const int32_t v = samples[i] < 0 ? -static_cast<int32_t>(samples[i]) : samples[i];
+    if (v > peak) peak = v;
+  }
+  return static_cast<uint16_t>(peak > 32767 ? 32767 : peak);
+}
+
 // The model could not run; the status then offers no wake words.
 std::atomic<bool> g_wake_failed{false};
 
@@ -133,6 +178,7 @@ constexpr const char* kPrefsWakeWordsKey = "wake_words";
 constexpr const char* kPrefsWakeListenKey = "wake_listen";
 constexpr const char* kPrefsMicKey = "mic_on";
 constexpr const char* kPrefsMicGainKey = "mic_gain";
+constexpr const char* kPrefsScreenStyleKey = "assist_look";
 // Volume sliders send many steps; store once they settle and nothing plays
 // (flash writes stall both cores and would click in the output).
 constexpr uint32_t kPersistDelayMs = 3000;
@@ -456,6 +502,7 @@ ErrorCode openOutput(uint32_t rate, bool live = false) {
 }
 
 bool writeFrames(const int16_t* samples, size_t frames) {
+  g_out_level.store(peakLevel(samples, frames));
   size_t written = 0;
   return i2s_channel_write(g_tx, samples, frames * sizeof(int16_t), &written,
                            kI2sWriteTimeoutMs) == ESP_OK;
@@ -1204,11 +1251,13 @@ void playRequest(const PlayRequest& request, uint8_t* stream_memory) {
   if (!g_codec_ready.load()) {
     setStatusId(request.id);
     setPublic(PublicState::Idle, ErrorCode::CodecUnavailable);
+    advanceUiPhase(AssistUiPhase::Thinking, AssistUiPhase::Idle);
     return;
   }
   if (!stream_memory) {
     setStatusId(request.id);
     setPublic(PublicState::Idle, ErrorCode::OutOfMemory);
+    advanceUiPhase(AssistUiPhase::Thinking, AssistUiPhase::Idle);
     return;
   }
   if (!bridge_stream) {
@@ -1226,6 +1275,8 @@ void playRequest(const PlayRequest& request, uint8_t* stream_memory) {
   g_clip_stats.internal_lowest = g_clip_stats.internal_before;
   if (!bridge_stream) setPublic(PublicState::Playing, ErrorCode::None);
   g_live_lead_ms.store(request.live ? request.lead_ms : 0);
+  // The first clip after the end of speech is the answer.
+  advanceUiPhase(AssistUiPhase::Thinking, AssistUiPhase::Answering);
   Serial.printf("%s Playing %s\n", kLogPrefix, request.id);
   ErrorCode result = playUrl(request.id, request.url, request.live, generation, stream_memory);
   // A long pause can outlast the server's patience: the connection is gone
@@ -1264,6 +1315,8 @@ void playRequest(const PlayRequest& request, uint8_t* stream_memory) {
   if (!(g_play_pending.load() && result == ErrorCode::None)) {
     setStatusId(request.id);
     setPublic(PublicState::Idle, result);
+    g_out_level.store(0);
+    advanceUiPhase(AssistUiPhase::Answering, AssistUiPhase::Idle);
   }
 }
 
@@ -1375,6 +1428,7 @@ int readMono() {
   } else {
     assist::stereoToMono(g_chunk, frames, g_mono);
   }
+  g_mic_level.store(peakLevel(g_mono, frames));
   return static_cast<int>(frames);
 }
 
@@ -1441,10 +1495,15 @@ void captureSession(const AssistRequest& request, uint32_t generation, bool hand
       publishAudioFrame(topic.c_str(), header, request.id, id_length, 0, 0, true);
     }
     setAssistPublic(assist::PublicState::Idle, result);
+    advanceUiPhase(AssistUiPhase::Listening, AssistUiPhase::Idle);
     return;
   }
 
   setAssistPublic(assist::PublicState::Listening, assist::ErrorCode::None);
+  if (!handoff) {
+    g_mic_level.store(0);
+    setUiPhase(AssistUiPhase::Listening);
+  }
   Serial.printf("%s Assist capture %s started (max %lu ms%s)\n", kLogPrefix, request.id,
                 static_cast<unsigned long>(request.max_ms),
                 handoff ? ", after the wake word" : "");
@@ -1501,7 +1560,15 @@ void captureSession(const AssistRequest& request, uint32_t generation, bool hand
   // A newer start keeps the state "listening" instead of flashing idle.
   if (!(g_assist_pending.load() && result == assist::ErrorCode::None)) {
     setAssistPublic(assist::PublicState::Idle, result);
+    // The Bridge stops the capture at the end of speech; Home Assistant then
+    // works on the answer. Anything else ends the conversation here.
+    const bool answer_expected =
+        (result == assist::ErrorCode::None && strcmp(end_reason, "stopped") == 0) ||
+        result == assist::ErrorCode::Timeout;
+    advanceUiPhase(AssistUiPhase::Listening,
+                   answer_expected ? AssistUiPhase::Thinking : AssistUiPhase::Idle);
   }
+  g_mic_level.store(0);
 }
 
 // Takes the newest Assist start. The generation is read under the mutex: a
@@ -1630,6 +1697,7 @@ bool handleWakeDetection(const char* word, const String& topic, uint32_t mask, u
   ++g_wake_sequence;
   setAssistStatusId(nullptr);
   setAssistPublic(assist::PublicState::Wake, assist::ErrorCode::None);
+  setUiPhase(AssistUiPhase::Listening);
   g_ring.clear();
   const uint32_t detected_ms = millis();
   for (;;) {
@@ -1649,6 +1717,7 @@ bool handleWakeDetection(const char* word, const String& topic, uint32_t mask, u
       closeInput();
       g_ring.clear();
       setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::None);
+      advanceUiPhase(AssistUiPhase::Listening, AssistUiPhase::Idle);
       *bits = pending & ~kNotifyWake;
       return false;
     }
@@ -1657,6 +1726,7 @@ bool handleWakeDetection(const char* word, const String& topic, uint32_t mask, u
                     static_cast<unsigned long>(assist::kWakeHandoffMs));
       g_ring.clear();
       setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::None);
+      advanceUiPhase(AssistUiPhase::Listening, AssistUiPhase::Idle);
       return true;
     }
     const int frames = readMono();
@@ -1664,6 +1734,7 @@ bool handleWakeDetection(const char* word, const String& topic, uint32_t mask, u
       closeInput();
       g_ring.clear();
       setAssistPublic(assist::PublicState::Idle, assist::ErrorCode::None);
+      advanceUiPhase(AssistUiPhase::Listening, AssistUiPhase::Idle);
       g_wake_resume_ms = millis() + kWakeRetryMs;
       return false;
     }
@@ -1801,6 +1872,7 @@ void storeSettings() {
   prefs.putBool(kPrefsWakeListenKey, g_wake_listen.load());
   prefs.putBool(kPrefsMicKey, g_mic_enabled.load());
   prefs.putUChar(kPrefsMicGainKey, g_mic_gain.load());
+  prefs.putUChar(kPrefsScreenStyleKey, g_screen_style.load());
   if (!BatchedNvsWrite::finish(prefs)) {
     Serial.printf("%s Could not save the speaker settings\n", kLogPrefix);
   }
@@ -1851,6 +1923,15 @@ void publishAssistStatus() {
   fields.wake_listen = g_wake_listen.load();
   fields.mic_state = true;
   fields.mic_enabled = g_mic_enabled.load();
+  fields.screen_style_state = true;
+  fields.screen_style = static_cast<uint8_t>(assistScreenStyle());
+  fields.available_screen_styles = g_screen_styles.load();
+  fields.file_styles = assist_screen_store::ids();
+  fields.file_style_count = assist_screen_store::count();
+  // The chosen file is the style even while the Bridge does not offer it
+  // (before its catalog arrives after a restart): the panel shows its kept copy.
+  fields.chosen_file = assist_screen_store::chosen();
+  fields.screen_error = assist_screen_store::error();
   char id[assist::kMaxRequestIdLength + 1] = {};
 #if defined(HOMETILES_SPEAKER)
   portENTER_CRITICAL(&g_id_mux);
@@ -1858,7 +1939,8 @@ void publishAssistStatus() {
   portEXIT_CRITICAL(&g_id_mux);
 #endif
   if (id[0]) fields.id = id;
-  char payload[384];
+  // Loop task only; room for the screen file ids (assist_contract.h).
+  static char payload[1280];
   if (!assist::buildStatusJson(payload, sizeof(payload), fields)) return;
   networkManager.mqttEnqueuePublish(topic, payload, true);
 }
@@ -1870,6 +1952,14 @@ uint8_t capabilityBits() {
 }  // namespace
 
 bool supported() { return kSupported; }
+
+AssistUiPhase assistUiPhase() { return static_cast<AssistUiPhase>(g_ui_phase.load()); }
+
+void dismissAssistUi() { setUiPhase(AssistUiPhase::Idle); }
+
+uint16_t micPeakLevel() { return g_mic_level.load(); }
+
+uint16_t outputPeakLevel() { return g_out_level.load(); }
 
 void begin() {
 #if defined(HOMETILES_SPEAKER)
@@ -1889,8 +1979,11 @@ void begin() {
     g_mic_enabled.store(prefs.getBool(kPrefsMicKey, false));
     const uint8_t gain = prefs.getUChar(kPrefsMicGainKey, kDefaultMicGainStep);
     g_mic_gain.store(gain > kMaxMicGainStep ? kDefaultMicGainStep : gain);
+    const uint8_t style = prefs.getUChar(kPrefsScreenStyleKey, 0);
+    g_screen_style.store(style < kAssistScreenStyleCount ? style : 0);
     prefs.end();
   }
+  assist_screen_store::begin();
   g_request_mutex = xSemaphoreCreateMutex();
   g_request = static_cast<PlayRequest*>(heap_caps_calloc(1, sizeof(PlayRequest), MALLOC_CAP_SPIRAM));
   g_parse_url = static_cast<char*>(heap_caps_calloc(1, kMaxUrlLength + 1, MALLOC_CAP_SPIRAM));
@@ -1927,6 +2020,15 @@ void service() {
     if (networkManager.isMqttConnected()) networkManager.publishBridgeConfig();
   }
 #if defined(HOMETILES_SPEAKER)
+  // No answer came (Home Assistant answered elsewhere or failed), or a
+  // Listening phase outlived every session limit.
+  const AssistUiPhase ui_phase = assistUiPhase();
+  const uint32_t ui_phase_age = millis() - g_ui_phase_ms.load();
+  if (ui_phase == AssistUiPhase::Thinking && ui_phase_age >= kAssistThinkingTimeoutMs) {
+    advanceUiPhase(AssistUiPhase::Thinking, AssistUiPhase::Idle);
+  } else if (ui_phase == AssistUiPhase::Listening && ui_phase_age >= kAssistListeningLimitMs) {
+    advanceUiPhase(AssistUiPhase::Listening, AssistUiPhase::Idle);
+  }
   if (g_persist_pending && !g_shutdown.load() &&
       static_cast<int32_t>(millis() - g_persist_due_ms) >= 0 &&
       static_cast<PublicState>(g_public_state.load()) == PublicState::Idle &&
@@ -2104,6 +2206,26 @@ void handleAssistCommandPayload(const uint8_t* payload, size_t length, bool seal
                   wake.listen ? "on" : "off");
     return;
   }
+  if (command.kind == assist::CommandKind::ScreenStyle) {
+    if (command.screen_style == assist::kFileScreenStyle) {
+      // A screen file the Bridge offers (assist_screen_store.h).
+      if (!assist_screen_store::choose(command.screen_file)) {
+        Serial.printf("%s Assist screen %s refused: not a style or a screen file of this panel\n", kLogPrefix,
+                      command.screen_file);
+      }
+      return;
+    }
+    if (!(g_screen_styles.load() & (1u << command.screen_style))) {
+      Serial.printf("%s Assist screen style %s refused: not offered on this panel\n", kLogPrefix,
+                    assist::kScreenStyleIds[command.screen_style]);
+      return;
+    }
+    assist_screen_store::choose(nullptr);
+    setAssistScreenStyle(static_cast<AssistScreenStyle>(command.screen_style));
+    Serial.printf("%s Assist screen style: %s\n", kLogPrefix,
+                  assist::kScreenStyleIds[command.screen_style]);
+    return;
+  }
   if (command.kind == assist::CommandKind::Mic) {
     // Off always applies; on needs the encrypted channel (see the contract).
     if (command.mic_enabled && !sealed) {
@@ -2168,6 +2290,7 @@ void handleAssistCommandPayload(const uint8_t* payload, size_t length, bool seal
     }
     case assist::CommandKind::WakeWords:
     case assist::CommandKind::Mic:
+    case assist::CommandKind::ScreenStyle:
     case assist::CommandKind::Invalid:
       break;
   }
@@ -2198,6 +2321,39 @@ void setVolume(float volume) {
 }
 
 uint8_t micGainStep() { return g_mic_gain.load(); }
+
+AssistScreenStyle assistScreenStyle() {
+  return static_cast<AssistScreenStyle>(
+      assist_style_catalog::effective(g_screen_style.load(), g_screen_styles.load()));
+}
+
+uint32_t availableAssistScreenStyles() { return g_screen_styles.load(); }
+
+void setAvailableAssistScreenStyles(uint32_t mask) {
+  mask = (mask & assist_style_catalog::kAllStyles) | 1u;
+  if (g_screen_styles.exchange(mask) == mask) return;
+#if defined(HOMETILES_SPEAKER)
+  // The Bridge's select takes its options from the next status.
+  g_assist_state_generation.fetch_add(1);
+#endif
+}
+
+void assistStatusChanged() {
+#if defined(HOMETILES_SPEAKER)
+  g_assist_state_generation.fetch_add(1);
+#endif
+}
+
+void setAssistScreenStyle(AssistScreenStyle style) {
+  const uint8_t value = static_cast<uint8_t>(style);
+  if (value >= kAssistScreenStyleCount || !(g_screen_styles.load() & (1u << value))) return;
+#if defined(HOMETILES_SPEAKER)
+  if (g_screen_style.exchange(value) == value) return;
+  g_assist_state_generation.fetch_add(1);
+  g_persist_pending = true;
+  g_persist_due_ms = millis() + kPersistDelayMs;
+#endif
+}
 
 void setMicGainStep(uint8_t step) {
 #if defined(HOMETILES_SPEAKER)

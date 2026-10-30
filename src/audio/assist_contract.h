@@ -39,6 +39,28 @@
 //       panel's own switch cannot be undone by an unauthenticated message.
 //       While off, starts are refused with "error":"mic_off" and no wake
 //       word runs. The status adds "mic_enabled":true|false.
+//
+// v1 addendum, Assist screen look (stored in NVS, default "atom"):
+//   {base}/cmnd/assist {"v":1,"op":"screen_style","style":"reactor"}
+//       Picks the on-panel Assist screen style; unknown ids are refused.
+//       Cosmetic, so accepted on the plain topic like wake_words. The status
+//       adds "screen_style":"<id>" and "screen_styles":[...] (every style
+//       this panel offers, in catalog order; see assist_style_catalog.h).
+//
+// Assist screens from Home Assistant (firmware with
+// HOMETILES_ASSIST_DATA_SCREENS; docs-dev/assist-screens.md):
+//   {base}/assist/screens   Bridge -> panel, retained:
+//       {"v":1,"screens":[{"id":"robot","name":"Robot"},...]}: the screen
+//       files the Bridge offers (at most kMaxFileScreens; ids follow the wake
+//       word id rule and never repeat a built-in id). Empty = none.
+//   {base}/assist/screen/<id>   Bridge -> panel, retained: that screen file
+//       (assist_screen.h format, at most 24 KB). The panel subscribes only to
+//       the chosen one and keeps a copy for when the Bridge is away.
+//   "screen_style":"<file id>" picks a file screen; the status then lists the
+//       file ids after the built-in styles in "screen_styles" (the chosen one
+//       also while the Bridge does not offer it), names the file in
+//       "screen_style", and adds "screen_error":"<reason>" while the chosen
+//       file was refused (the built-in style shows meanwhile).
 //   {base}/stat/assist_wake   panel -> Bridge, QoS0, not retained:
 //       {"v":1,"word":"okay_nabu","seq":<uint32 per boot>} on a detection.
 //       The panel then buffers up to 3 s of audio and sends it first when a
@@ -55,6 +77,12 @@ namespace assist_contract {
 
 constexpr int kProtocolVersion = 1;
 constexpr const char* kCommandLeaf = "/cmnd/assist";
+constexpr const char* kScreensLeaf = "/assist/screens";
+constexpr const char* kScreenLeaf = "/assist/screen/";  // + <id>
+constexpr size_t kMaxFileScreens = 16;
+constexpr size_t kMaxScreenErrorChars = 96;
+// Command::screen_style for a file screen (the id is in screen_file).
+constexpr uint8_t kFileScreenStyle = 0xFF;
 constexpr const char* kStatusLeaf = "/stat/assist";
 constexpr const char* kAudioLeaf = "/stat/assist_audio";
 constexpr const char* kWakeLeaf = "/stat/assist_wake";
@@ -95,6 +123,20 @@ constexpr uint32_t kWakeHandoffMs = 3000;
 // Longest list the stored setting and the status payload need: every catalog
 // id plus separators.
 constexpr size_t kMaxWakeWordListChars = kWakeWordCount * (kMaxWakeWordIdLength + 3) + 1;
+
+// Assist screen styles in speaker::AssistScreenStyle order (stored by
+// number, so entries are only appended).
+constexpr const char* kScreenStyleIds[] = {"atom",     "reactor",    "dot_halo", "voice_pills", "sentinel",
+                                           "phosphor", "light_disc", "lens",     "iris"};
+constexpr size_t kScreenStyleCount = sizeof(kScreenStyleIds) / sizeof(kScreenStyleIds[0]);
+
+inline int screenStyleIndex(const char* id) {
+  if (!id) return -1;
+  for (size_t i = 0; i < kScreenStyleCount; ++i) {
+    if (strcmp(id, kScreenStyleIds[i]) == 0) return static_cast<int>(i);
+  }
+  return -1;
+}
 
 enum class ErrorCode : uint8_t {
   None,
@@ -297,6 +339,20 @@ struct StatusFields {
   // Adds "mic_enabled" (the privacy switch) when set.
   bool mic_state = false;
   bool mic_enabled = true;
+  // Adds "screen_style" and "screen_styles" when set.
+  bool screen_style_state = false;
+  uint8_t screen_style = 0;
+  // The styles the panel offers (bit n = kScreenStyleIds[n]); the shown
+  // style is always listed.
+  uint32_t available_screen_styles = 0xFFFFFFFFu;
+  // Screen files from the Bridge, listed after the built-in styles; when
+  // chosen_file is set it is the "screen_style".
+  const char* const* file_styles = nullptr;
+  size_t file_style_count = 0;
+  const char* chosen_file = nullptr;
+  // Why the chosen file was refused ("screen_error"); quotes and control
+  // characters become spaces.
+  const char* screen_error = nullptr;
 };
 
 // Appends ,"<key>":[...] for the ids in mask. Returns false when it does not
@@ -352,6 +408,57 @@ inline size_t buildStatusJson(char* out, size_t size, const StatusFields& fields
                        fields.mic_enabled ? "true" : "false");
     if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
     used += static_cast<size_t>(written);
+  }
+  if (fields.screen_style_state) {
+    const uint8_t style = fields.screen_style < kScreenStyleCount ? fields.screen_style : 0;
+    const char* chosen = fields.chosen_file && isValidWakeWordId(fields.chosen_file, strlen(fields.chosen_file))
+                             ? fields.chosen_file
+                             : nullptr;
+    // A chosen file shows instead of the stored built-in style, which stays offered.
+    const uint32_t offered = fields.available_screen_styles | (chosen ? 0u : (1u << style));
+    written = snprintf(out + used, size - used, ",\"screen_style\":\"%s\",\"screen_styles\":[",
+                       chosen ? chosen : kScreenStyleIds[style]);
+    if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
+    used += static_cast<size_t>(written);
+    bool first = true;
+    for (size_t i = 0; i < kScreenStyleCount; ++i) {
+      if (!(offered & (1u << i))) continue;
+      written = snprintf(out + used, size - used, "%s\"%s\"", first ? "" : ",", kScreenStyleIds[i]);
+      first = false;
+      if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
+      used += static_cast<size_t>(written);
+    }
+    bool chosen_listed = !chosen;
+    for (size_t i = 0; fields.file_styles && i < fields.file_style_count && i < kMaxFileScreens; ++i) {
+      const char* id = fields.file_styles[i];
+      if (!id || !isValidWakeWordId(id, strlen(id)) || screenStyleIndex(id) >= 0) continue;
+      if (chosen && strcmp(id, chosen) == 0) chosen_listed = true;
+      written = snprintf(out + used, size - used, "%s\"%s\"", first ? "" : ",", id);
+      first = false;
+      if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
+      used += static_cast<size_t>(written);
+    }
+    // The panel shows its kept copy of the chosen file even before (or after)
+    // the Bridge offers it, so the chosen file is always one of the options.
+    if (!chosen_listed) {
+      written = snprintf(out + used, size - used, "%s\"%s\"", first ? "" : ",", chosen);
+      if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
+      used += static_cast<size_t>(written);
+    }
+    if (used + 1 >= size) return 0;
+    out[used++] = ']';
+    if (chosen && fields.screen_error && fields.screen_error[0]) {
+      char reason[kMaxScreenErrorChars + 1];
+      size_t n = 0;
+      for (const char* c = fields.screen_error; *c && n < kMaxScreenErrorChars; ++c, ++n) {
+        const unsigned char ch = static_cast<unsigned char>(*c);
+        reason[n] = (ch < 0x20 || ch == '"' || ch == '\\') ? ' ' : static_cast<char>(ch);
+      }
+      reason[n] = '\0';
+      written = snprintf(out + used, size - used, ",\"screen_error\":\"%s\"", reason);
+      if (written < 0 || static_cast<size_t>(written) >= size - used) return 0;
+      used += static_cast<size_t>(written);
+    }
   }
   if (used + 2 > size) return 0;
   out[used++] = '}';
