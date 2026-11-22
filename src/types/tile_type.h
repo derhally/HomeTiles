@@ -35,8 +35,16 @@ enum TileType : uint8_t {
   TILE_POWER_FLOW = 28,
   TILE_VACUUM = 29,
   // Voice timers (types/timer): no entity, the panel's Home Assistant timers.
-  TILE_TIMER = 100
+  TILE_TIMER = 30
 };
+
+// Fork builds before v0.9.8 stored the Timer tile as type 100; such tiles
+// (flash grids, screensaver grid, imported backups) read as TILE_TIMER.
+static constexpr uint8_t kLegacyForkTimerTileType = 100;
+
+static constexpr TileType tileTypeFromStored(int raw) {
+  return raw == kLegacyForkTimerTileType ? TILE_TIMER : static_cast<TileType>(raw);
+}
 
 static constexpr bool isRetiredTileType(TileType type) {
   return type == TILE_KEY || type == TILE_IMAGE ||

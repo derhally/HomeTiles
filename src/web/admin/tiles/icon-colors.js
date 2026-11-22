@@ -16,7 +16,7 @@
   // Clock, Text and Timer have no entity of their own and use another entity only
   // (tileTypeHasFixedIconColorOnly / tileTypeRulesUseOwnEntity in
   // tile_type_policy.h).
-  const ICON_COLOR_FIXED_TYPES = ['2', '4', '8', '9', '10', '18', '100'];
+  const ICON_COLOR_FIXED_TYPES = ['2', '4', '8', '9', '10', '18', '30'];
   const ICON_COLOR_OWN_TYPES = ['1', '5', '12', '14', '15', '17', '19', '20', '21', '22', '23', '24', '25', '26', '29'];
   // The own entity field of each type (pairs, not an object with numeric keys).
   const ICON_COLOR_ENTITY_FIELDS = [['1', '_sensor_entity'], ['5', '_switch_entity'], ['12', '_weather_entity'],

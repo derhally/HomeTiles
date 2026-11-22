@@ -681,7 +681,8 @@ void WebAdminServer::handleSaveTiles() {
   }
 
   int index = server.arg("index").toInt();
-  int type = server.arg("type").toInt();
+  // An export from an older fork build carries the Timer tile as 100.
+  int type = tileTypeFromStored(server.arg("type").toInt());
 
   if (!get_tile_type_descriptor(static_cast<TileType>(type))) {
     server.send(

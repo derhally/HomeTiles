@@ -13,7 +13,15 @@ const read = (file) => readRepoFile(file).replace(/\r\n?/g, '\n');
 
 // --- Stable ID, registry, policies ------------------------------------------
 const tileType = read('src/types/tile_type.h');
-assert.match(tileType, /TILE_VACUUM = 29,\n(?:\s*\/\/.*\n)*\s*TILE_TIMER = 100\n\};/, 'TILE_TIMER is kept at 100, out of the upstream range');
+assert.match(tileType, /TILE_VACUUM = 29,\n(?:\s*\/\/.*\n)*\s*TILE_TIMER = 30\n\};/, 'TILE_TIMER is appended as 30');
+// Older fork builds stored the Timer tile as 100: flash grids and imported
+// backups read it as 30.
+assert.match(tileType, /kLegacyForkTimerTileType = 100;/);
+assert.match(tileType, /tileTypeFromStored\(int raw\) \{\s*return raw == kLegacyForkTimerTileType \? TILE_TIMER : static_cast<TileType>\(raw\);/);
+const tileConfig = read('src/tiles/config/tile_config.cpp');
+assert.match(tileConfig, /unpackTileV7\(const PackedTileV7& in, Tile& out\) \{\s*TileType type = tileTypeFromStored\(in\.type\);/);
+assert.match(tileConfig, /unpackTileEntityOnlyV7\([^)]*\) \{\s*TileType t = tileTypeFromStored\(in\.type\);/);
+assert.match(read('src/web/server/handlers/web_admin_tiles.cpp'), /int type = tileTypeFromStored\(server\.arg\("type"\)\.toInt\(\)\);/);
 const registry = read('src/types/types_registry.cpp');
 assert.match(registry, /\{\s*TILE_TIMER,\s*"Timer",\s*"timer_tile",\s*"timer_tile",\s*"timer_tile",\s*nullptr,\s*"loadTimerFields",\s*"saveTimerFields",\s*"resetTimerFields",\s*0x2A2A2A,\s*false,\s*render_timer_wrapper,\s*apply_timer_wrapper,\s*append_timer_fields_wrapper,\s*append_timer_styles,\s*append_timer_scripts\s*\}/);
 assert.match(registry, /case TILE_TIMER: return tr\.timer_default_name;/);
@@ -28,7 +36,7 @@ for (const name of ['entityTileStoresSensorEntity', 'tileTypeUsesCachedEntitySta
 }
 const handler = read('src/types/timer/web_handler.cpp');
 assert.match(handler, /tile\.sensor_entity = "";/, 'an earlier type\'s entity goes');
-assert.match(read('src/web/admin/tiles/icon-colors.js'), /const ICON_COLOR_FIXED_TYPES = \[[^\]]*'100'\];/);
+assert.match(read('src/web/admin/tiles/icon-colors.js'), /const ICON_COLOR_FIXED_TYPES = \[[^\]]*'30'\];/);
 assert.ok(JSON.parse(read('src/web/admin/bundle.json')).sources.includes('src/types/timer/admin.js'));
 
 // --- Loop wiring and lifecycle -----------------------------------------------

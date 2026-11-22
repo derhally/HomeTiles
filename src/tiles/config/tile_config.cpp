@@ -1582,7 +1582,7 @@ static void applyLongEntityIdsFromSd(uint16_t folder_id, TileGridConfig& grid) {
 }
 
 static void unpackTileV7(const PackedTileV7& in, Tile& out) {
-  TileType type = static_cast<TileType>(in.type);
+  TileType type = tileTypeFromStored(in.type);
   if (type == TILE_FOLDER) {
     if (in.sensor_decimals == LEGACY_NAV_KIND_SETTINGS) {
       type = TILE_SETTINGS;
@@ -1689,7 +1689,7 @@ static void unpackTileV7(const PackedTileV7& in, Tile& out) {
 // full per-tile unpack (measured: ~44ms/grid across 35 tiles on this device's
 // fragmented internal heap).
 static void unpackTileEntityOnlyV7(const PackedTileV7& in, TileType& type, String& sensor_entity) {
-  TileType t = static_cast<TileType>(in.type);
+  TileType t = tileTypeFromStored(in.type);
   if (t == TILE_FOLDER) {
     if (in.sensor_decimals == LEGACY_NAV_KIND_SETTINGS) {
       t = TILE_SETTINGS;

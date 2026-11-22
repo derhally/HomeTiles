@@ -1,5 +1,5 @@
 
-  // Timer tile (types/timer, type 100): only the shared fields (title, icon,
+  // Timer tile (types/timer, type 30): only the shared fields (title, icon,
   // icon colors); the panel shows its Home Assistant voice timers.
   function loadTimerFields(tab, data) {
     loadIconColorFields(tab, data);
