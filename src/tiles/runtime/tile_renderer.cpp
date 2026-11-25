@@ -47,6 +47,7 @@
 #include "src/io/hardware_io.h"
 #include "src/web/server/web_admin.h"
 #include "src/ui/screensaver/screensaver_config.h"
+#include "src/ui/screensaver/screensaver_tile_look.h"
 #include "src/ui/shared/ui_surface_style.h"
 #include "src/ui/shared/rounded_corners.h"
 #include <Arduino.h>
@@ -5310,6 +5311,10 @@ static uint8_t tile_surface_rule_of(const Tile& tile, GridType grid_type) {
       camera_picture::head_over_picture(tile)) {
     return 0;
   }
+  // A screensaver tile with its own card color (zd, screensaver_tile_look.h)
+  // keeps it like a page tile in its own color: a fill took the theme's card
+  // and never gave the own color back.
+  if (grid_type == GridType::SCREENSAVER && screensaver_tile_look::has_card_color(tile)) return 0;
   if (tileFills(tile)) {
     return tile.type == TILE_SWITCH ? tile_surface::kFollowTint : tile_surface::kFollowTint | tile_surface::kNeutralIdle;
   }

@@ -46,6 +46,14 @@ assert.match(fn(panel, 'apply_slot_look'),
 assert.match(fn(panel, 'build_slot_tile'), /\} else if \(!tile\.ss_fill \|\| screensaver_tile_look::has_card_color\(tile\)\) \{\n\s*tile_icon_disc::refresh_fills/,
   'the circles follow the card color');
 assert.match(html, /const bool own_card = screensaver_mode && screensaver_tile_look::has_card_color\(tile\);/);
+// The light design's fills leave an own card color alone: a fill took the
+// theme's card and never gave the own color back (v0.9.8 gave screensaver
+// tiles the light design's rules).
+const renderer = read('src/tiles/runtime/tile_renderer.cpp');
+assert.match(renderer, /#include "src\/ui\/screensaver\/screensaver_tile_look\.h"/);
+assert.match(fn(renderer, 'tile_surface_rule_of'),
+  /if \(grid_type == GridType::SCREENSAVER && screensaver_tile_look::has_card_color\(tile\)\) return 0;/,
+  'an own card color takes no fill rule');
 const config = read('src/ui/screensaver/screensaver_config.cpp');
 assert.match(config, /if \(card\.length\(\)\) item\["card"\] = card;/);
 assert.match(config,
